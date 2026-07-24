@@ -45,6 +45,9 @@ class Pack:
     project_marker: str
     spec_scope_prefix: str
     context_layer: ContextLayer | None = None
+    # Fetch-time User-Agent for the public-docs snapshot. Only set it when a vendor's docs host
+    # bot-gates the default self-identifying agent (ADR-0007); the gating itself is a scored finding.
+    public_docs_user_agent: str | None = None
     # Validation / mode metadata (ADR-0002, ADR-0003). All optional.
     mode: str | None = None                       # e.g. "diagnosis" for a two-condition prospect pack
     spec_ref_file_prefix: str | None = None       # constrain task spec_ref.file paths to a spec subtree
@@ -83,6 +86,7 @@ class Pack:
             docs_cache_dir=root / cfg.get("docs_cache_dir", "docs-cache"),
             public_docs_source_label=pd.get("source_label", f"{display} documentation"),
             public_docs_budget_tokens=int(pd.get("budget_tokens", DEFAULT_DOCS_BUDGET_TOKENS)),
+            public_docs_user_agent=pd.get("user_agent") or None,
             project_marker=(cfg.get("canary", {}) or {}).get("project_marker", ""),
             spec_scope_prefix=(cfg.get("specs_scope", "") or ""),
             context_layer=context_layer,

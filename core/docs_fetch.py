@@ -39,19 +39,24 @@ def cache_path_for(cache_dir: str | Path, task_id: str, url: str) -> Path:
     return Path(cache_dir) / task_id / f"{slug_for(url)}.txt"
 
 
-def _fetch(url: str, timeout: int = 30) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent or USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         raw = resp.read()
     return raw.decode(charset, errors="replace")
 
 
-def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None) -> dict:
+def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None,
+              user_agent: str | None = None) -> dict:
     """Fetch every page in the manifest, cache text, and update manifest entries in place.
 
     Returns a summary dict {task_id: [(url, byte_size, status)]}. Errors are recorded
     per page (status='error: ...') without aborting the rest.
+
+    `user_agent` overrides the default self-identifying agent for vendors whose docs host
+    bot-gates it (ADR-0007). The manifest records which agent retrieved each page, so a
+    snapshot taken under an override is never silently indistinguishable from a default one.
     """
     manifest_path = Path(manifest_path)
     cache_dir = Path(cache_dir)
@@ -64,7 +69,7 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
             url = page["url"]
             dest = cache_path_for(cache_dir, task_id, url)
             try:
-                html = _fetch(url)
+                html = _fetch(url, user_agent=user_agent)
                 text = html_to_text(html)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(text)
@@ -73,6 +78,8 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 page["content_hash"] = f"sha256:{digest}"
                 page["byte_size"] = len(text.encode("utf-8"))
                 page["cache_file"] = f"{cache_dir.name}/{dest.relative_to(cache_dir)}"
+                if user_agent:
+                    page["fetched_with_user_agent"] = user_agent
                 summary[task_id].append((url, page["byte_size"], "ok"))
             except Exception as exc:  # network / decode errors — record, don't abort
                 page["fetch_date"] = today
