@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import re
+import time
 import urllib.request
 from pathlib import Path
 
@@ -22,6 +23,25 @@ from .html_text import html_to_text
 ROLE_PRIORITY = ["api-reference", "topic-guide", "getting-started"]
 
 USER_AGENT = "ai-readiness-eval-docs"
+
+# Attempts per page when a docs host answers 2xx with an empty body (ADR-0009). The first
+# attempt is not a retry, so this is 1 fetch + (DEFAULT_RETRIES - 1) backoff retries.
+DEFAULT_RETRIES = 4
+# Floor for the pause between retries when a pack declares no delay of its own. Measured against
+# a real throttling host: its penalty window outlasts ~90s of cumulative backoff, and every
+# retry made while throttled appears to restart it. Fewer, longer waits clear it; rapid retries
+# do not. The linear schedule below therefore reaches a 180s gap before giving up.
+MIN_BACKOFF_SECONDS = 60
+
+
+class EmptyDocument(RuntimeError):
+    """A 2xx response that carried no document.
+
+    Some docs hosts throttle automated readers with a success status and a zero-length body
+    (one measured vendor's support portal answers HTTP 202 with 0 bytes). Left alone that is
+    indistinguishable from a real page: the text extracts to nothing, hashes cleanly, and is
+    recorded as a valid snapshot. Raising here forces it down the same path as a 404.
+    """
 
 
 def load_manifest(path: str | Path) -> dict:
@@ -43,12 +63,36 @@ def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
+        status = getattr(resp, "status", None)
         raw = resp.read()
+    if not raw.strip():
+        raise EmptyDocument(f"HTTP {status} with an empty body (throttled or non-document response)")
     return raw.decode(charset, errors="replace")
 
 
+def _fetch_with_retry(url: str, *, user_agent: str | None, delay_seconds: float,
+                      retries: int, sleep=time.sleep) -> str:
+    """Fetch `url`, retrying with linear backoff when the host answers 2xx-but-empty.
+
+    Only EmptyDocument is retried. A 404 or a connection error is a fact about the page and
+    is recorded on the first attempt; a throttle is a fact about our request rate, and
+    retrying is the honest response to it.
+    """
+    backoff = max(delay_seconds, MIN_BACKOFF_SECONDS)
+    last: Exception | None = None
+    for attempt in range(max(1, retries)):
+        try:
+            return _fetch(url, user_agent=user_agent)
+        except EmptyDocument as exc:
+            last = exc
+            if attempt < retries - 1:
+                sleep(backoff * (attempt + 1))
+    raise last  # type: ignore[misc]
+
+
 def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None,
-              user_agent: str | None = None) -> dict:
+              user_agent: str | None = None, delay_seconds: float = 0.0,
+              retries: int = DEFAULT_RETRIES, sleep=time.sleep) -> dict:
     """Fetch every page in the manifest, cache text, and update manifest entries in place.
 
     Returns a summary dict {task_id: [(url, byte_size, status)]}. Errors are recorded
@@ -57,19 +101,27 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
     `user_agent` overrides the default self-identifying agent for vendors whose docs host
     bot-gates it (ADR-0007). The manifest records which agent retrieved each page, so a
     snapshot taken under an override is never silently indistinguishable from a default one.
+
+    `delay_seconds` paces requests for hosts that throttle a rapid loop (ADR-0009). It
+    defaults to 0, so a pack that declares nothing fetches exactly as it did before.
     """
     manifest_path = Path(manifest_path)
     cache_dir = Path(cache_dir)
     manifest = load_manifest(manifest_path)
     today = today or datetime.date.today().isoformat()
     summary: dict[str, list] = {}
+    first = True
     for task_id, entry in (manifest.get("tasks") or {}).items():
         summary[task_id] = []
         for page in entry.get("pages", []):
             url = page["url"]
             dest = cache_path_for(cache_dir, task_id, url)
+            if delay_seconds and not first:
+                sleep(delay_seconds)
+            first = False
             try:
-                html = _fetch(url, user_agent=user_agent)
+                html = _fetch_with_retry(url, user_agent=user_agent,
+                                         delay_seconds=delay_seconds, retries=retries, sleep=sleep)
                 text = html_to_text(html)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(text)

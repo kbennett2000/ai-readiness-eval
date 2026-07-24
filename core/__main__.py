@@ -559,8 +559,11 @@ def cmd_fetch_docs(args: argparse.Namespace) -> int:
     try:
         if pack.public_docs_user_agent:
             print(f"  (pack declares a fetch User-Agent: {pack.public_docs_user_agent})")
+        if pack.public_docs_fetch_delay_seconds:
+            print(f"  (pack declares a fetch delay: {pack.public_docs_fetch_delay_seconds}s between pages)")
         summary = fetch_all(pack.docs_manifest_path, pack.docs_cache_dir,
-                            user_agent=pack.public_docs_user_agent)
+                            user_agent=pack.public_docs_user_agent,
+                            delay_seconds=pack.public_docs_fetch_delay_seconds)
     except Exception as exc:
         print(f"ERROR: fetch-docs failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
