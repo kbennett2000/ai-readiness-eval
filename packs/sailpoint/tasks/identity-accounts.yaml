@@ -1,0 +1,31 @@
+id: identity-accounts
+category: foundational
+prompt: >
+  Given an identity's ID, list all of the accounts tied to that identity across our connected
+  sources in ISC.
+ground_truth:
+  endpoints:
+    - method: GET
+      path: /v3/accounts
+      api_version: v3
+      operation_id: listAccounts
+      spec_ref: { file: idn/v3/paths/accounts.yaml, operation_id: listAccounts }
+  auth_flow: OAuth2 bearer token (see auth-token).
+  required_scopes:
+    - idn:accounts:read
+    - "idn:accounts:manage   # also accepted"
+  key_parameters:
+    - { name: filters, in: query, required: true, note: 'identityId eq "2c9180858082150f0180893dbaf44201"' }
+    - { name: limit, in: query, required: false, note: "page size (default 250)" }
+    - { name: offset, in: query, required: false, note: "pagination offset" }
+    - { name: detailLevel, in: query, required: false, note: "SLIM | FULL (FULL default)" }
+  success_shape: >
+    200 OK with a JSON array of Account objects (id, name, nativeIdentity, sourceId, identityId,
+    disabled, locked, ...), filtered to the given identity.
+  common_failure_modes:
+    - "Omitting the filters param and getting every account in the tenant instead of one identity's."
+    - "Wrong filter operator — identityId supports eq/in/sw (see the accounts.yaml filters doc)."
+    - "Missing idn:accounts:read scope → 403."
+notes: >
+  You typically obtain the identityId first via find-identity (Search or public-identities). The
+  accounts.yaml spec documents the supported filter fields/operators, including identityId eq/in/sw.

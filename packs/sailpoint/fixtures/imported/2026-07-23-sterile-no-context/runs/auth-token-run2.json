@@ -1,0 +1,61 @@
+{
+  "task_id": "auth-token",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": null,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/token",
+      "gt_api_version": "oauth",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/token",
+      "answer_api_version": "oauth"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/personal-access-tokens",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 766,
+  "cost_usd": 0.0406779,
+  "duration_ms": 11784,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "SailPoint ISC uses the **OAuth2 client credentials** flow. POST to your tenant's token endpoint with the PAT credentials in the form body.\n\n## curl\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={client_id}&client_secret={client_secret}\"\n```\n\n## Python (requests)\n\n```python\nimport requests\n\ntenant = \"your-org\"\nclient_id = \"your-client-id\"\nclient_secret = \"your-client-secret\"\n\nresponse = requests.post(\n    f\"https://{tenant}.api.identitynow.com/oauth/token\",\n    data={\n        \"grant_type\": \"client_credentials\",\n        \"client_id\": client_id,\n        \"client_secret\": client_secret,\n    },\n)\nresponse.raise_for_status()\naccess_token = response.json()[\"access_token\"]\n```\n\n## Using the token\n\nPass it as a Bearer token on subsequent requests:\n\n```bash\ncurl -H \"Authorization: Bearer {access_token}\" \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts\"\n```\n\n**Notes:**\n- Replace `{tenant}` with your org name (e.g., `acme` \u2192 `acme.api.identitynow.com`).\n- The returned `access_token` is a short-lived JWT (typically 30\u201360 minutes). Cache it and refresh when it expires rather than fetching a new one on every call.\n- No `scope` parameter is required for PAT-based client credentials; the token inherits the scopes granted when the PAT was created in the ISC UI.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 client credentials\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret]\n```"
+    }
+  ],
+  "raw_response": "SailPoint ISC uses the **OAuth2 client credentials** flow. POST to your tenant's token endpoint with the PAT credentials in the form body.\n\n## curl\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={client_id}&client_secret={client_secret}\"\n```\n\n## Python (requests)\n\n```python\nimport requests\n\ntenant = \"your-org\"\nclient_id = \"your-client-id\"\nclient_secret = \"your-client-secret\"\n\nresponse = requests.post(\n    f\"https://{tenant}.api.identitynow.com/oauth/token\",\n    data={\n        \"grant_type\": \"client_credentials\",\n        \"client_id\": client_id,\n        \"client_secret\": client_secret,\n    },\n)\nresponse.raise_for_status()\naccess_token = response.json()[\"access_token\"]\n```\n\n## Using the token\n\nPass it as a Bearer token on subsequent requests:\n\n```bash\ncurl -H \"Authorization: Bearer {access_token}\" \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts\"\n```\n\n**Notes:**\n- Replace `{tenant}` with your org name (e.g., `acme` \u2192 `acme.api.identitynow.com`).\n- The returned `access_token` is a short-lived JWT (typically 30\u201360 minutes). Cache it and refresh when it expires rather than fetching a new one on every call.\n- No `scope` parameter is required for PAT-based client credentials; the token inherits the scopes granted when the PAT was created in the ISC UI.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 client credentials\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

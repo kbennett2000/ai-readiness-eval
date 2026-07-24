@@ -1,0 +1,49 @@
+id: source-aggregation
+category: multi-step
+prompt: >
+  Set up a source in ISC and then kick off an account aggregation on it so ISC pulls in the
+  accounts. Walk me through the API calls.
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/sources
+      api_version: v3
+      operation_id: createSource
+      spec_ref: { file: idn/v3/paths/sources.yaml, operation_id: createSource }
+    - method: GET
+      path: /v3/sources
+      api_version: v3
+      operation_id: listSources
+      spec_ref: { file: idn/v3/paths/sources.yaml, operation_id: listSources }
+    - method: POST
+      path: /beta/sources/{sourceId}/load-accounts
+      api_version: beta
+      operation_id: importAccounts
+      spec_ref: { file: idn/beta/paths/load-accounts.yaml, operation_id: importAccounts }
+    - method: GET
+      path: /beta/account-aggregations/{id}/status
+      api_version: beta
+      operation_id: getAccountAggregationStatus
+      spec_ref: { file: idn/beta/paths/account-aggregation-status.yaml, operation_id: getAccountAggregationStatus }
+  auth_flow: >
+    OAuth2 bearer token (see auth-token). The beta calls also require the
+    `X-SailPoint-Experimental: true` header.
+  required_scopes:
+    - "idn:sources:manage   # createSource and importAccounts"
+    - "idn:sources:read     # listSources"
+  key_parameters:
+    - { name: sourceId, in: path, required: true, note: "target source for load-accounts / aggregation" }
+    - { name: disableOptimization, in: body, required: false, note: "load-accounts: force full (non-optimized) aggregation" }
+  success_shape: >
+    createSource → 201 with the new Source. importAccounts → 202 with a task/aggregation id.
+    getAccountAggregationStatus → 200 with aggregation progress/status.
+  common_failure_modes:
+    - "Calling load-accounts on the /v3 base — it is beta-only; use /beta and the experimental header."
+    - "Omitting X-SailPoint-Experimental: true on the beta calls → request rejected."
+    - "Assuming aggregation is synchronous — poll the aggregation status."
+notes: >
+  VERSION DIVERGENCE: creating/reading a source is v3 (createSource / listSources), but triggering
+  an account aggregation (importAccounts, POST /beta/sources/{id}/load-accounts) and checking its
+  status (getAccountAggregationStatus) are BETA-only at the pinned SHA and require the
+  `X-SailPoint-Experimental: true` header. There is no v3 endpoint that triggers a generic account
+  aggregation. This is a deliberately cross-version, multi-step task.

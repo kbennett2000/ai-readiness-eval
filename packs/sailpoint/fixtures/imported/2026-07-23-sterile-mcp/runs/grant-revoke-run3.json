@@ -1,0 +1,150 @@
+{
+  "task_id": "grant-revoke",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1492,
+  "cost_usd": 0.100082,
+  "duration_ms": 27545,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "role assignment grant revoke user",
+        "max_results": 8
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "grant revoke role to user assignment",
+        "limit": 10
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createAccessRequest"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "access request revoke remove role",
+        "limit": 5
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant ISC role assignment APIs."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "The `createAccessRequest` result looks promising. Let me get its full spec and also search more specifically for role-related operations."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Both grant and revoke use the **same single endpoint** \u2014 `POST /v3/access-requests` \u2014 differentiated only by the `requestType` field.\n\n---\n\n## Grant a Role\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180887701fb2014143dcb365a158c\",\n      \"comment\": \"Granting role for onboarding\"\n    }\n  ]\n}\n```\n\n## Revoke a Role\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180887701fb2014143dcb365a158c\",\n      \"comment\": \"Revoking role \u2014 offboarding\"\n    }\n  ]\n}\n```\n\n---\n\n## Key notes\n\n| Field | Values / Notes |\n|---|---|\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedFor` | Array of **identity IDs** (not usernames) |\n| `requestedItems[].type` | `ROLE` (also supports `ACCESS_PROFILE`, `ENTITLEMENT`) |\n| `requestedItems[].id` | The role's ID (get it from `GET /v3/roles`) |\n| `requestedItems[].comment` | Optional but recommended for audit trail |\n\n**Important:** This endpoint goes through the standard ISC approval workflow. If the role requires approval, the access isn't granted/revoked instantly \u2014 you'll receive a request ID back and the change is pending approval. Use `GET /v3/access-request-status` with the returned request ID to poll the outcome.\n\n### Required OAuth scope\nUse either `idn:access-request:manage` (admin/service accounts) or `idn:access-request-self:manage` (self-service only).\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage]\nkey_parameters: [requestType, requestedFor, requestedItems, type, id, comment]\n```"
+    }
+  ],
+  "raw_response": "Both grant and revoke use the **same single endpoint** \u2014 `POST /v3/access-requests` \u2014 differentiated only by the `requestType` field.\n\n---\n\n## Grant a Role\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180887701fb2014143dcb365a158c\",\n      \"comment\": \"Granting role for onboarding\"\n    }\n  ]\n}\n```\n\n## Revoke a Role\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180887701fb2014143dcb365a158c\",\n      \"comment\": \"Revoking role \u2014 offboarding\"\n    }\n  ]\n}\n```\n\n---\n\n## Key notes\n\n| Field | Values / Notes |\n|---|---|\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedFor` | Array of **identity IDs** (not usernames) |\n| `requestedItems[].type` | `ROLE` (also supports `ACCESS_PROFILE`, `ENTITLEMENT`) |\n| `requestedItems[].id` | The role's ID (get it from `GET /v3/roles`) |\n| `requestedItems[].comment` | Optional but recommended for audit trail |\n\n**Important:** This endpoint goes through the standard ISC approval workflow. If the role requires approval, the access isn't granted/revoked instantly \u2014 you'll receive a request ID back and the change is pending approval. Use `GET /v3/access-request-status` with the returned request ID to poll the outcome.\n\n### Required OAuth scope\nUse either `idn:access-request:manage` (admin/service accounts) or `idn:access-request-self:manage` (self-service only).\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage]\nkey_parameters: [requestType, requestedFor, requestedItems, type, id, comment]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

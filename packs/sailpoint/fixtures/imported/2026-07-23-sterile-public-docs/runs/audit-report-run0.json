@@ -1,0 +1,50 @@
+{
+  "task_id": "audit-report",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2115,
+  "cost_usd": 0.1269179,
+  "duration_ms": 37461,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Querying ISC Audit Events via the Search API\n\nThe right tool for ad-hoc event queries is the **Search API**, which the docs describe as \"suitable for ad-hoc reporting\" and explicitly lists **events** as a searchable object type. The Reports Data Extraction API is for running and retrieving predefined reports, not free-form queries.\n\n### Step 1: Authenticate and get an access token\n\nFor scripts/automation, use the Client Credentials grant with a PAT:\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nExtract `access_token` from the JSON response.\n\n### Step 2: POST to /v3/search filtering for events\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/v3/search' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:ACCESS_REQUEST AND created:[now-24h TO now]\"\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250\n  }'\n```\n\n**Key points:**\n\n- `indices: [\"events\"]` \u2014 restricts the search to event documents only. Other valid values include `identities`, `roles`, `access profiles`, `entitlements`, `account activities`.\n- `query.query` uses Elasticsearch syntax. The date math `[now-24h TO now]` is a range filter on the `created` field.\n- Replace `ACCESS_REQUEST` with whatever event type you need (e.g., `AUTHENTICATION`, `PROVISIONING`, `ROLE_ADDED`).\n- The search engine is Elasticsearch, so there is a small ingestion lag (seconds to minutes) between when events occur and when they appear in results.\n- Use `limit` (max 250 per page) and `offset` for pagination over large result sets.\n\n**Example for multiple event types in the last 24 hours:**\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": {\n    \"query\": \"type:(ACCESS_REQUEST OR ACCESS_REQUEST_APPROVED) AND created:[now-24h TO now]\"\n  },\n  \"sort\": [\"-created\"],\n  \"limit\": 250,\n  \"offset\": 0\n}\n```\n\nIf you only need a count (not the full results), use the **Count documents** endpoint instead of Perform search \u2014 same body, different endpoint, returns just a number.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials grant with PAT)\nrequired_scopes: []\nkey_parameters: [indices, query, sort, limit, offset]\n```"
+    }
+  ],
+  "raw_response": "## Querying ISC Audit Events via the Search API\n\nThe right tool for ad-hoc event queries is the **Search API**, which the docs describe as \"suitable for ad-hoc reporting\" and explicitly lists **events** as a searchable object type. The Reports Data Extraction API is for running and retrieving predefined reports, not free-form queries.\n\n### Step 1: Authenticate and get an access token\n\nFor scripts/automation, use the Client Credentials grant with a PAT:\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nExtract `access_token` from the JSON response.\n\n### Step 2: POST to /v3/search filtering for events\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/v3/search' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:ACCESS_REQUEST AND created:[now-24h TO now]\"\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250\n  }'\n```\n\n**Key points:**\n\n- `indices: [\"events\"]` \u2014 restricts the search to event documents only. Other valid values include `identities`, `roles`, `access profiles`, `entitlements`, `account activities`.\n- `query.query` uses Elasticsearch syntax. The date math `[now-24h TO now]` is a range filter on the `created` field.\n- Replace `ACCESS_REQUEST` with whatever event type you need (e.g., `AUTHENTICATION`, `PROVISIONING`, `ROLE_ADDED`).\n- The search engine is Elasticsearch, so there is a small ingestion lag (seconds to minutes) between when events occur and when they appear in results.\n- Use `limit` (max 250 per page) and `offset` for pagination over large result sets.\n\n**Example for multiple event types in the last 24 hours:**\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": {\n    \"query\": \"type:(ACCESS_REQUEST OR ACCESS_REQUEST_APPROVED) AND created:[now-24h TO now]\"\n  },\n  \"sort\": [\"-created\"],\n  \"limit\": 250,\n  \"offset\": 0\n}\n```\n\nIf you only need a count (not the full results), use the **Count documents** endpoint instead of Perform search \u2014 same body, different endpoint, returns just a number.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials grant with PAT)\nrequired_scopes: []\nkey_parameters: [indices, query, sort, limit, offset]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "task_id": "source-aggregation",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources/{}/load-accounts",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources/{}/load-accounts",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/account-aggregations/{}/status",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1930,
+  "cost_usd": 0.1336089,
+  "duration_ms": 32741,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's the full sequence of API calls to create a source and trigger account aggregation in ISC.\n\n---\n\n## Step 1: Authenticate (Client Credentials Grant)\n\nUse your PAT's Client ID and Client Secret to get a bearer token.\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nPull the `access_token` from the response \u2014 you'll use it as `Authorization: Bearer {access_token}` on every subsequent call.\n\n---\n\n## Step 2: Create the Source\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/sources' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"My LDAP Source\",\n    \"description\": \"Corporate LDAP directory\",\n    \"owner\": {\n      \"type\": \"IDENTITY\",\n      \"id\": \"{ownerIdentityId}\",\n      \"name\": \"{ownerName}\"\n    },\n    \"connector\": \"active-directory\",\n    \"connectorClass\": \"sailpoint.connector.ADLDAPConnector\",\n    \"connectorAttributes\": {\n      \"IQServiceHost\": \"iqservice.example.com\",\n      \"IQServicePort\": \"5050\",\n      \"forest\": \"example.com\"\n    }\n  }'\n```\n\nThe response body will include the new source's `id`. Save it \u2014 you need it for subsequent calls.\n\n**Required fields per the docs:** Source Name, Description, Source Owner, and Connection Type (connector).\n\n---\n\n## Step 3: (Optional) Check the Source Connection\n\nBefore aggregating, verify the connector can actually reach the source:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/sources/{sourceId}/connector/check-connection' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\nA successful response means ISC can communicate with the source.\n\n---\n\n## Step 4: Trigger Account Aggregation\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/beta/sources/{sourceId}/load-accounts' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"disableOptimization\": false\n  }'\n```\n\n- `disableOptimization: false` lets ISC do a delta aggregation if supported by the connector.\n- Set it to `true` to force a full re-aggregation.\n\nThe response returns a task object with a task `id` you can poll to track completion.\n\n---\n\n## Step 5: (Optional) Poll the Task Status\n\n```bash\ncurl -X GET \\\n  'https://[tenant].api.identitynow.com/beta/task-status/{taskId}' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\nWhen `completionStatus` is `SUCCESS`, the aggregation is done and accounts are loaded into ISC. You can then view associated accounts, entitlements, and identity correlations from the source record.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /v3/sources/{sourceId}/connector/check-connection\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{sourceId}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/task-status/{taskId}\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret, name, description, owner, connector, connectorClass, connectorAttributes, disableOptimization]\n```"
+    }
+  ],
+  "raw_response": "Here's the full sequence of API calls to create a source and trigger account aggregation in ISC.\n\n---\n\n## Step 1: Authenticate (Client Credentials Grant)\n\nUse your PAT's Client ID and Client Secret to get a bearer token.\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nPull the `access_token` from the response \u2014 you'll use it as `Authorization: Bearer {access_token}` on every subsequent call.\n\n---\n\n## Step 2: Create the Source\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/sources' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"My LDAP Source\",\n    \"description\": \"Corporate LDAP directory\",\n    \"owner\": {\n      \"type\": \"IDENTITY\",\n      \"id\": \"{ownerIdentityId}\",\n      \"name\": \"{ownerName}\"\n    },\n    \"connector\": \"active-directory\",\n    \"connectorClass\": \"sailpoint.connector.ADLDAPConnector\",\n    \"connectorAttributes\": {\n      \"IQServiceHost\": \"iqservice.example.com\",\n      \"IQServicePort\": \"5050\",\n      \"forest\": \"example.com\"\n    }\n  }'\n```\n\nThe response body will include the new source's `id`. Save it \u2014 you need it for subsequent calls.\n\n**Required fields per the docs:** Source Name, Description, Source Owner, and Connection Type (connector).\n\n---\n\n## Step 3: (Optional) Check the Source Connection\n\nBefore aggregating, verify the connector can actually reach the source:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/sources/{sourceId}/connector/check-connection' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\nA successful response means ISC can communicate with the source.\n\n---\n\n## Step 4: Trigger Account Aggregation\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/beta/sources/{sourceId}/load-accounts' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"disableOptimization\": false\n  }'\n```\n\n- `disableOptimization: false` lets ISC do a delta aggregation if supported by the connector.\n- Set it to `true` to force a full re-aggregation.\n\nThe response returns a task object with a task `id` you can poll to track completion.\n\n---\n\n## Step 5: (Optional) Poll the Task Status\n\n```bash\ncurl -X GET \\\n  'https://[tenant].api.identitynow.com/beta/task-status/{taskId}' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\nWhen `completionStatus` is `SUCCESS`, the aggregation is done and accounts are loaded into ISC. You can then view associated accounts, entitlements, and identity correlations from the source record.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /v3/sources/{sourceId}/connector/check-connection\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{sourceId}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/task-status/{taskId}\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret, name, description, owner, connector, connectorClass, connectorAttributes, disableOptimization]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

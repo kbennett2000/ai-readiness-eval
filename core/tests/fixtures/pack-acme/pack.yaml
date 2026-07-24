@@ -1,0 +1,23 @@
+# Synthetic vendor pack for the core test suite. Deliberately carries NO real vendor identity so the
+# core guard test (no vendor tokens under core/) stays clean.
+vendor:
+  id: acme
+  display_name: Acme Widget Cloud
+tasks_dir: tasks
+docs_manifest: docs-manifest.yaml
+specs: specs.yaml
+docs_cache_dir: docs-cache
+specs_scope: widgets/
+public_docs:
+  source_label: "Acme's official documentation"
+  budget_tokens: 15000
+context_layer:
+  external: false
+  external_note: "synthetic in-repo test server"
+  mcp_server_key: acme
+  mcp_tool_prefix: "mcp__acme__"
+  discovery_tool: ToolSearch
+  expected_tools: [search_operations, get_operation, get_scopes, get_auth_guide]
+  spawn_command: [python, -m, acme_server]
+canary:
+  project_marker: acme-eval-project

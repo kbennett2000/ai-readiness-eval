@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": false,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2006,
+  "cost_usd": 0.1318099,
+  "duration_ms": 35325,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Subscribing to ISC Event Triggers via API\n\n### Step 1: Authenticate\n\nGet a JWT access token using the Client Credentials grant flow with a Personal Access Token (PAT):\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nUse the returned `access_token` as a `Bearer` token in all subsequent requests.\n\n---\n\n### Step 2: Identify the Right Trigger(s)\n\nBased on your lifecycle use cases, the relevant trigger IDs are:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Dynamic approver selection | `idn:access-request-dynamic-approver` | REQUEST_RESPONSE |\n\n**Key constraint:** `REQUEST_RESPONSE` triggers allow only **one** subscription each. `FIRE_AND_FORGET` triggers allow up to **50** subscriptions each.\n\n---\n\n### Step 3: Create a Subscription\n\nPOST to the trigger subscriptions endpoint with your trigger ID and the HTTP endpoint where ISC should deliver payloads:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/webhook\",\n      \"httpAuthenticationType\": \"BASIC_AUTH\",\n      \"basicAuthConfig\": {\n        \"userName\": \"webhookUser\",\n        \"password\": \"webhookPassword\"\n      }\n    }\n  }'\n```\n\nFor a `REQUEST_RESPONSE` trigger (like `idn:access-request-pre-approval`), your endpoint **must** return a response body that ISC will use to continue processing (e.g., an approval decision).\n\n---\n\n### Step 4: Verify and Manage\n\n- **List subscriptions:** `GET /v3/trigger-subscriptions`\n- **Test a subscription:** Use the \"Start a test invocation\" endpoint to fire a synthetic payload without waiting for a real event.\n- **Validate a filter:** Use \"Validate a subscription filter\" if you want to filter which events trigger your webhook.\n\n---\n\n### Important Notes\n\n- Your webhook URL **must be reachable from the public internet** \u2014 ISC cannot call private/internal endpoints.\n- For `FIRE_AND_FORGET` triggers, ISC sends the payload and does not wait for or use your response.\n- For `REQUEST_RESPONSE` triggers, your service must respond within ISC's timeout window with the expected payload structure.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/trigger-subscriptions\n    api_version: v3\n  - method: GET\n    path: /v3/trigger-subscriptions\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials with PAT)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType]\n```"
+    }
+  ],
+  "raw_response": "## Subscribing to ISC Event Triggers via API\n\n### Step 1: Authenticate\n\nGet a JWT access token using the Client Credentials grant flow with a Personal Access Token (PAT):\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nUse the returned `access_token` as a `Bearer` token in all subsequent requests.\n\n---\n\n### Step 2: Identify the Right Trigger(s)\n\nBased on your lifecycle use cases, the relevant trigger IDs are:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Dynamic approver selection | `idn:access-request-dynamic-approver` | REQUEST_RESPONSE |\n\n**Key constraint:** `REQUEST_RESPONSE` triggers allow only **one** subscription each. `FIRE_AND_FORGET` triggers allow up to **50** subscriptions each.\n\n---\n\n### Step 3: Create a Subscription\n\nPOST to the trigger subscriptions endpoint with your trigger ID and the HTTP endpoint where ISC should deliver payloads:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/webhook\",\n      \"httpAuthenticationType\": \"BASIC_AUTH\",\n      \"basicAuthConfig\": {\n        \"userName\": \"webhookUser\",\n        \"password\": \"webhookPassword\"\n      }\n    }\n  }'\n```\n\nFor a `REQUEST_RESPONSE` trigger (like `idn:access-request-pre-approval`), your endpoint **must** return a response body that ISC will use to continue processing (e.g., an approval decision).\n\n---\n\n### Step 4: Verify and Manage\n\n- **List subscriptions:** `GET /v3/trigger-subscriptions`\n- **Test a subscription:** Use the \"Start a test invocation\" endpoint to fire a synthetic payload without waiting for a real event.\n- **Validate a filter:** Use \"Validate a subscription filter\" if you want to filter which events trigger your webhook.\n\n---\n\n### Important Notes\n\n- Your webhook URL **must be reachable from the public internet** \u2014 ISC cannot call private/internal endpoints.\n- For `FIRE_AND_FORGET` triggers, ISC sends the payload and does not wait for or use your response.\n- For `REQUEST_RESPONSE` triggers, your service must respond within ISC's timeout window with the expected payload structure.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/trigger-subscriptions\n    api_version: v3\n  - method: GET\n    path: /v3/trigger-subscriptions\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials with PAT)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

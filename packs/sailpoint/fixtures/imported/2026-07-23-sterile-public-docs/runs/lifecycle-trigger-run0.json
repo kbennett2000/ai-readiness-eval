@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2123,
+  "cost_usd": 0.1336259,
+  "duration_ms": 35567,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Subscribing to ISC Event Triggers via API\n\n### Step 1: Authenticate\n\nGet a bearer token using the Client Credentials grant with a Personal Access Token (PAT):\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nUse the returned `access_token` as `Authorization: Bearer {access_token}` on all subsequent calls.\n\n---\n\n### Step 2: Identify the Trigger(s) You Need\n\nFor lifecycle events, the relevant triggers are:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved/decided | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Identity created | `idn:identity-created` | FIRE_AND_FORGET |\n| Identity attributes changed | `idn:identity-attributes-changed` | FIRE_AND_FORGET |\n\n**Important constraint from the docs:**\n- `FIRE_AND_FORGET` triggers allow up to **50 subscriptions** each.\n- `REQUEST_RESPONSE` triggers allow only **1 subscription** each \u2014 ISC expects your service to respond with a decision.\n\n---\n\n### Step 3: Create a Subscription\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/sailpoint/webhook\",\n      \"httpAuthenticationType\": \"BEARER_TOKEN\",\n      \"bearerTokenAuthConfig\": {\n        \"bearerToken\": \"your-inbound-secret\"\n      }\n    },\n    \"name\": \"Provisioning Completed Listener\",\n    \"description\": \"Notifies our service when provisioning finishes\"\n  }'\n```\n\nFor a `REQUEST_RESPONSE` trigger like `idn:access-request-pre-approval`, your endpoint must respond with the expected payload (e.g., an approval decision) \u2014 ISC will wait for it.\n\n---\n\n### Step 4: (Optional) List or Validate Your Subscriptions\n\n```bash\n# List all subscriptions\ncurl -X GET 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}'\n\n# Validate a filter expression before attaching it to a subscription\ncurl -X POST 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions/validate' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{ \"input\": { ... }, \"filter\": \"$[?($.identityId == \\\"abc123\\\")]\" }'\n```\n\n---\n\n### Key Notes\n\n- Your webhook endpoint **must be reachable from the public internet** \u2014 ISC pushes events to it.\n- For `REQUEST_RESPONSE` triggers, your service must respond within the timeout; a non-response will block the workflow.\n- You can add a `filter` (JSONPath expression) to the subscription to limit which events fire your webhook, reducing noise.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions/validate\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials with PAT)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType, name, filter]\n```"
+    }
+  ],
+  "raw_response": "## Subscribing to ISC Event Triggers via API\n\n### Step 1: Authenticate\n\nGet a bearer token using the Client Credentials grant with a Personal Access Token (PAT):\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nUse the returned `access_token` as `Authorization: Bearer {access_token}` on all subsequent calls.\n\n---\n\n### Step 2: Identify the Trigger(s) You Need\n\nFor lifecycle events, the relevant triggers are:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved/decided | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Identity created | `idn:identity-created` | FIRE_AND_FORGET |\n| Identity attributes changed | `idn:identity-attributes-changed` | FIRE_AND_FORGET |\n\n**Important constraint from the docs:**\n- `FIRE_AND_FORGET` triggers allow up to **50 subscriptions** each.\n- `REQUEST_RESPONSE` triggers allow only **1 subscription** each \u2014 ISC expects your service to respond with a decision.\n\n---\n\n### Step 3: Create a Subscription\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/sailpoint/webhook\",\n      \"httpAuthenticationType\": \"BEARER_TOKEN\",\n      \"bearerTokenAuthConfig\": {\n        \"bearerToken\": \"your-inbound-secret\"\n      }\n    },\n    \"name\": \"Provisioning Completed Listener\",\n    \"description\": \"Notifies our service when provisioning finishes\"\n  }'\n```\n\nFor a `REQUEST_RESPONSE` trigger like `idn:access-request-pre-approval`, your endpoint must respond with the expected payload (e.g., an approval decision) \u2014 ISC will wait for it.\n\n---\n\n### Step 4: (Optional) List or Validate Your Subscriptions\n\n```bash\n# List all subscriptions\ncurl -X GET 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}'\n\n# Validate a filter expression before attaching it to a subscription\ncurl -X POST 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions/validate' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{ \"input\": { ... }, \"filter\": \"$[?($.identityId == \\\"abc123\\\")]\" }'\n```\n\n---\n\n### Key Notes\n\n- Your webhook endpoint **must be reachable from the public internet** \u2014 ISC pushes events to it.\n- For `REQUEST_RESPONSE` triggers, your service must respond within the timeout; a non-response will block the workflow.\n- You can add a `filter` (JSONPath expression) to the subscription to limit which events fire your webhook, reducing noise.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions/validate\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials with PAT)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType, name, filter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

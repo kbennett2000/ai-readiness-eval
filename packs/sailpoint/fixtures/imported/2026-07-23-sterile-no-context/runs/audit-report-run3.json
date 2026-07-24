@@ -1,0 +1,50 @@
+{
+  "task_id": "audit-report",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2290,
+  "cost_usd": 0.06355190000000001,
+  "duration_ms": 37350,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "SailPoint ISC gives you two main options for pulling audit/activity data: the **Search API** (flexible, Elasticsearch-style) and the dedicated **Audit Events endpoint** (simpler, filter-based). For \"all events of a given type in the last 24 hours,\" the Search API is usually the better fit.\n\n---\n\n## Step 1 \u2014 Get an access token\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}\"\n```\n\nUse the `access_token` from the response as a Bearer token on every subsequent call.\n\n---\n\n## Option A \u2014 Search API (recommended for complex filters)\n\n`POST /v3/search` against the `events` index supports full Lucene/Elasticsearch query syntax, including relative date math (`now-24h`).\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer {TOKEN}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:PROVISIONING AND created:[now-24h TO now]\"\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250,\n    \"searchAfter\": []\n  }'\n```\n\nReplace `PROVISIONING` with whatever event type you need (e.g. `ACCESS_REQUEST`, `PASSWORD_CHANGE`, `IDENTITY_ATTRIBUTE_UPDATE`, etc.).\n\n**Paginating**: each response includes a `searchAfter` array; pass it back in the next request until you get fewer results than your `limit`.\n\n---\n\n## Option B \u2014 Audit Events endpoint (simpler, SCIM-style filters)\n\n```bash\ncurl -X GET \"https://{tenant}.api.identitynow.com/v3/audit-events\" \\\n  -H \"Authorization: Bearer {TOKEN}\" \\\n  -G \\\n  --data-urlencode 'filters=type eq \"PROVISIONING\" and created gt \"2026-07-22T12:00:00Z\"' \\\n  --data-urlencode 'sorters=-created' \\\n  --data-urlencode 'limit=250' \\\n  --data-urlencode 'offset=0'\n```\n\nPaginate by incrementing `offset` until results come back empty.\n\n---\n\n## Key parameters\n\n| Parameter | Where | Purpose |\n|---|---|---|\n| `indices` | Search body | Must include `\"events\"` for audit data |\n| `query.query` | Search body | Lucene query string; supports `type:X` and `created:[now-24h TO now]` |\n| `filters` | Audit Events query | SCIM filter: `type eq \"X\" and created gt \"ISO8601\"` |\n| `sort` / `sorters` | Both | `-created` for newest-first |\n| `limit` / `offset` | Both | Pagination |\n| `searchAfter` | Search body | Cursor-based pagination (preferred for large sets) |\n\n---\n\n## Required scopes\n\nYour API client needs at minimum `idn:audit-read:read` (or `sp:scopes:all` for broad access). The Search API additionally needs `idn:search:read`.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /v3/audit-events\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [idn:audit-read:read, idn:search:read]\nkey_parameters: [indices, query, filters, sort, sorters, limit, offset, searchAfter]\n```"
+    }
+  ],
+  "raw_response": "SailPoint ISC gives you two main options for pulling audit/activity data: the **Search API** (flexible, Elasticsearch-style) and the dedicated **Audit Events endpoint** (simpler, filter-based). For \"all events of a given type in the last 24 hours,\" the Search API is usually the better fit.\n\n---\n\n## Step 1 \u2014 Get an access token\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}\"\n```\n\nUse the `access_token` from the response as a Bearer token on every subsequent call.\n\n---\n\n## Option A \u2014 Search API (recommended for complex filters)\n\n`POST /v3/search` against the `events` index supports full Lucene/Elasticsearch query syntax, including relative date math (`now-24h`).\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer {TOKEN}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:PROVISIONING AND created:[now-24h TO now]\"\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250,\n    \"searchAfter\": []\n  }'\n```\n\nReplace `PROVISIONING` with whatever event type you need (e.g. `ACCESS_REQUEST`, `PASSWORD_CHANGE`, `IDENTITY_ATTRIBUTE_UPDATE`, etc.).\n\n**Paginating**: each response includes a `searchAfter` array; pass it back in the next request until you get fewer results than your `limit`.\n\n---\n\n## Option B \u2014 Audit Events endpoint (simpler, SCIM-style filters)\n\n```bash\ncurl -X GET \"https://{tenant}.api.identitynow.com/v3/audit-events\" \\\n  -H \"Authorization: Bearer {TOKEN}\" \\\n  -G \\\n  --data-urlencode 'filters=type eq \"PROVISIONING\" and created gt \"2026-07-22T12:00:00Z\"' \\\n  --data-urlencode 'sorters=-created' \\\n  --data-urlencode 'limit=250' \\\n  --data-urlencode 'offset=0'\n```\n\nPaginate by incrementing `offset` until results come back empty.\n\n---\n\n## Key parameters\n\n| Parameter | Where | Purpose |\n|---|---|---|\n| `indices` | Search body | Must include `\"events\"` for audit data |\n| `query.query` | Search body | Lucene query string; supports `type:X` and `created:[now-24h TO now]` |\n| `filters` | Audit Events query | SCIM filter: `type eq \"X\" and created gt \"ISO8601\"` |\n| `sort` / `sorters` | Both | `-created` for newest-first |\n| `limit` / `offset` | Both | Pagination |\n| `searchAfter` | Search body | Cursor-based pagination (preferred for large sets) |\n\n---\n\n## Required scopes\n\nYour API client needs at minimum `idn:audit-read:read` (or `sp:scopes:all` for broad access). The Search API additionally needs `idn:search:read`.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /v3/audit-events\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [idn:audit-read:read, idn:search:read]\nkey_parameters: [indices, query, filters, sort, sorters, limit, offset, searchAfter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

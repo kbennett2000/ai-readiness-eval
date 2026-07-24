@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 0.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": false,
+      "answer_method": "GET",
+      "answer_path": "/triggers",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": false,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1738,
+  "cost_usd": 0.1278499,
+  "duration_ms": 27894,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Subscribing to ISC Event Triggers via API\n\n### Step 1: Authenticate\n\nGet a JWT access token using the Client Credentials grant flow with your PAT:\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nUse the returned `access_token` as `Authorization: Bearer {access_token}` in all subsequent calls.\n\n---\n\n### Step 2: Identify the Trigger(s) You Need\n\nFor lifecycle events, the relevant trigger IDs are:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Identity attributes changed | `idn:identity-attributes-changed` | FIRE_AND_FORGET |\n\nYou can also list all available triggers:\n\n```bash\ncurl -X GET 'https://[tenant].api.identitynow.com/v3/triggers' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\n---\n\n### Step 3: Create a Subscription\n\nPOST to `/v3/trigger-subscriptions` with the trigger ID and your HTTP endpoint:\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/v3/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/webhook\",\n      \"httpAuthenticationType\": \"NO_AUTH\"\n    }\n  }'\n```\n\n**Important notes:**\n\n- `FIRE_AND_FORGET` triggers allow up to **50 subscriptions** each. These fire and don't wait for a response \u2014 your endpoint just needs to return `200 OK`.\n- `REQUEST_RESPONSE` triggers (like `idn:access-request-pre-approval`) allow only **1 subscription** and expect your endpoint to return a structured JSON response (e.g., an approval decision).\n- Your webhook URL **must be reachable from the public internet** \u2014 ISC pushes to it directly.\n- To validate your subscription filter before going live, use the `POST /v3/trigger-subscriptions/{id}/validate-filter` endpoint.\n\n---\n\n### Step 4: Manage Subscriptions\n\n```bash\n# List all your subscriptions\nGET /v3/trigger-subscriptions\n\n# Update a subscription\nPUT /v3/trigger-subscriptions/{id}\n\n# Delete a subscription\nDELETE /v3/trigger-subscriptions/{id}\n```\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: GET\n    path: /v3/triggers\n    api_version: v3\n  - method: POST\n    path: /v3/trigger-subscriptions\n    api_version: v3\n  - method: GET\n    path: /v3/trigger-subscriptions\n    api_version: v3\n  - method: DELETE\n    path: /v3/trigger-subscriptions/{id}\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType]\n```"
+    }
+  ],
+  "raw_response": "## Subscribing to ISC Event Triggers via API\n\n### Step 1: Authenticate\n\nGet a JWT access token using the Client Credentials grant flow with your PAT:\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nUse the returned `access_token` as `Authorization: Bearer {access_token}` in all subsequent calls.\n\n---\n\n### Step 2: Identify the Trigger(s) You Need\n\nFor lifecycle events, the relevant trigger IDs are:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Identity attributes changed | `idn:identity-attributes-changed` | FIRE_AND_FORGET |\n\nYou can also list all available triggers:\n\n```bash\ncurl -X GET 'https://[tenant].api.identitynow.com/v3/triggers' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\n---\n\n### Step 3: Create a Subscription\n\nPOST to `/v3/trigger-subscriptions` with the trigger ID and your HTTP endpoint:\n\n```bash\ncurl -X POST 'https://[tenant].api.identitynow.com/v3/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/webhook\",\n      \"httpAuthenticationType\": \"NO_AUTH\"\n    }\n  }'\n```\n\n**Important notes:**\n\n- `FIRE_AND_FORGET` triggers allow up to **50 subscriptions** each. These fire and don't wait for a response \u2014 your endpoint just needs to return `200 OK`.\n- `REQUEST_RESPONSE` triggers (like `idn:access-request-pre-approval`) allow only **1 subscription** and expect your endpoint to return a structured JSON response (e.g., an approval decision).\n- Your webhook URL **must be reachable from the public internet** \u2014 ISC pushes to it directly.\n- To validate your subscription filter before going live, use the `POST /v3/trigger-subscriptions/{id}/validate-filter` endpoint.\n\n---\n\n### Step 4: Manage Subscriptions\n\n```bash\n# List all your subscriptions\nGET /v3/trigger-subscriptions\n\n# Update a subscription\nPUT /v3/trigger-subscriptions/{id}\n\n# Delete a subscription\nDELETE /v3/trigger-subscriptions/{id}\n```\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: GET\n    path: /v3/triggers\n    api_version: v3\n  - method: POST\n    path: /v3/trigger-subscriptions\n    api_version: v3\n  - method: GET\n    path: /v3/trigger-subscriptions\n    api_version: v3\n  - method: DELETE\n    path: /v3/trigger-subscriptions/{id}\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

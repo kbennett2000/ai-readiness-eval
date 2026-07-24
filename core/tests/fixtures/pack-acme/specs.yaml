@@ -1,0 +1,4 @@
+spec_repo: acme-oss/api-specs
+spec_sha: "0000000000000000000000000000000000000000"
+spec_pinned_at: "2026-07-24"
+base_url: https://example.invalid/acme-oss/api-specs/blob/0000000000000000000000000000000000000000/

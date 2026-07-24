@@ -1,0 +1,145 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/triggers",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 8,
+  "output_tokens": 1595,
+  "cost_usd": 0.0903999,
+  "duration_ms": 32019,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "trigger subscription event lifecycle",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "sailpoint trigger subscription",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "subscribe event trigger lifecycle",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createSubscription"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "listTriggers"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the SailPoint event trigger subscription API."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's how to subscribe to ISC event triggers via the API. There are two steps: discover available triggers, then create a subscription.\n\n---\n\n## Step 1 \u2014 Discover available triggers\n\n```http\nGET /beta/triggers\nX-SailPoint-Experimental: true\nAuthorization: Bearer {token}\n```\n\nThis returns all trigger IDs available in your tenant. For identity lifecycle events, look for IDs like:\n- `idn:access-request-submitted`\n- `idn:access-request-pre-approval`\n- `idn:provisioning-action-completed`\n- `idn:identity-attributes-changed`\n\nYou can filter with `?filters=id eq \"idn:provisioning-action-completed\"`.\n\n---\n\n## Step 2 \u2014 Create a subscription\n\n```http\nPOST /beta/trigger-subscriptions\nX-SailPoint-Experimental: true\nAuthorization: Bearer {token}\nContent-Type: application/json\n```\n\n### HTTP webhook subscription (most common)\n\n```json\n{\n  \"name\": \"My Provisioning Webhook\",\n  \"triggerId\": \"idn:provisioning-action-completed\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://your-service.example.com/hooks/isc\",\n    \"httpAuthenticationType\": \"BASIC_AUTH\",\n    \"basicAuthConfig\": {\n      \"userName\": \"webhook-user\",\n      \"password\": \"secret\"\n    }\n  },\n  \"filter\": \"$[?($.identityId == '2c91808b7...' )]\",\n  \"enabled\": true,\n  \"responseDeadline\": \"PT1H\"\n}\n```\n\n### AWS EventBridge subscription\n\n```json\n{\n  \"name\": \"My EventBridge Subscription\",\n  \"triggerId\": \"idn:access-request-submitted\",\n  \"type\": \"EVENTBRIDGE\",\n  \"eventBridgeConfig\": {\n    \"awsAccount\": \"123456789012\",\n    \"awsRegion\": \"us-east-1\"\n  },\n  \"enabled\": true\n}\n```\n\n---\n\n## Key fields\n\n| Field | Required | Notes |\n|---|---|---|\n| `name` | Yes | Display name for the subscription |\n| `triggerId` | Yes | The trigger ID from Step 1 |\n| `type` | Yes | `HTTP` or `EVENTBRIDGE` |\n| `httpConfig` | When `type=HTTP` | URL + auth details for your webhook |\n| `eventBridgeConfig` | When `type=EVENTBRIDGE` | AWS account + region |\n| `filter` | No | JSONPath expression to filter which events fire |\n| `enabled` | No | Defaults to `true` |\n| `responseDeadline` | No | ISO 8601 duration; ISC waits this long for a `REQUEST_RESPONSE` trigger reply |\n\n---\n\n## Auth requirements\n\n- Both endpoints are in the `beta` API and **require** the `X-SailPoint-Experimental: true` header.\n- Required OAuth scope: `sp:trigger-service-subscriptions:manage` (covers both reading triggers and managing subscriptions).\n\nGet a token via client credentials:\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={PAT_client_id}\n&client_secret={PAT_client_secret}\n```\n\n---\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\nauth_flow: OAuth2 bearer token\nrequired_scopes:\n  - sp:trigger-service-subscriptions:read\n  - sp:trigger-service-subscriptions:manage\nkey_parameters:\n  - name\n  - triggerId\n  - type\n  - httpConfig\n  - eventBridgeConfig\n  - filter\n  - enabled\n  - responseDeadline\n```"
+    }
+  ],
+  "raw_response": "Here's how to subscribe to ISC event triggers via the API. There are two steps: discover available triggers, then create a subscription.\n\n---\n\n## Step 1 \u2014 Discover available triggers\n\n```http\nGET /beta/triggers\nX-SailPoint-Experimental: true\nAuthorization: Bearer {token}\n```\n\nThis returns all trigger IDs available in your tenant. For identity lifecycle events, look for IDs like:\n- `idn:access-request-submitted`\n- `idn:access-request-pre-approval`\n- `idn:provisioning-action-completed`\n- `idn:identity-attributes-changed`\n\nYou can filter with `?filters=id eq \"idn:provisioning-action-completed\"`.\n\n---\n\n## Step 2 \u2014 Create a subscription\n\n```http\nPOST /beta/trigger-subscriptions\nX-SailPoint-Experimental: true\nAuthorization: Bearer {token}\nContent-Type: application/json\n```\n\n### HTTP webhook subscription (most common)\n\n```json\n{\n  \"name\": \"My Provisioning Webhook\",\n  \"triggerId\": \"idn:provisioning-action-completed\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://your-service.example.com/hooks/isc\",\n    \"httpAuthenticationType\": \"BASIC_AUTH\",\n    \"basicAuthConfig\": {\n      \"userName\": \"webhook-user\",\n      \"password\": \"secret\"\n    }\n  },\n  \"filter\": \"$[?($.identityId == '2c91808b7...' )]\",\n  \"enabled\": true,\n  \"responseDeadline\": \"PT1H\"\n}\n```\n\n### AWS EventBridge subscription\n\n```json\n{\n  \"name\": \"My EventBridge Subscription\",\n  \"triggerId\": \"idn:access-request-submitted\",\n  \"type\": \"EVENTBRIDGE\",\n  \"eventBridgeConfig\": {\n    \"awsAccount\": \"123456789012\",\n    \"awsRegion\": \"us-east-1\"\n  },\n  \"enabled\": true\n}\n```\n\n---\n\n## Key fields\n\n| Field | Required | Notes |\n|---|---|---|\n| `name` | Yes | Display name for the subscription |\n| `triggerId` | Yes | The trigger ID from Step 1 |\n| `type` | Yes | `HTTP` or `EVENTBRIDGE` |\n| `httpConfig` | When `type=HTTP` | URL + auth details for your webhook |\n| `eventBridgeConfig` | When `type=EVENTBRIDGE` | AWS account + region |\n| `filter` | No | JSONPath expression to filter which events fire |\n| `enabled` | No | Defaults to `true` |\n| `responseDeadline` | No | ISO 8601 duration; ISC waits this long for a `REQUEST_RESPONSE` trigger reply |\n\n---\n\n## Auth requirements\n\n- Both endpoints are in the `beta` API and **require** the `X-SailPoint-Experimental: true` header.\n- Required OAuth scope: `sp:trigger-service-subscriptions:manage` (covers both reading triggers and managing subscriptions).\n\nGet a token via client credentials:\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={PAT_client_id}\n&client_secret={PAT_client_secret}\n```\n\n---\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\nauth_flow: OAuth2 bearer token\nrequired_scopes:\n  - sp:trigger-service-subscriptions:read\n  - sp:trigger-service-subscriptions:manage\nkey_parameters:\n  - name\n  - triggerId\n  - type\n  - httpConfig\n  - eventBridgeConfig\n  - filter\n  - enabled\n  - responseDeadline\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

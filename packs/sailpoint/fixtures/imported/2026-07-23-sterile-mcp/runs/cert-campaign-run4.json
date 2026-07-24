@@ -1,0 +1,290 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 0.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/run-report/{}",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/campaigns/{}/reports",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 10,
+  "output_tokens": 3116,
+  "cost_usd": 0.20047350000000003,
+  "duration_ms": 56758,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "certification campaign access review",
+        "max_results": 10
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "sailpoint campaign",
+        "max_results": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "create certification campaign access review",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "start campaign activate certification",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createCampaign"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "startCampaign"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "getCampaignReports"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "list certifications decisions identity certification items",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "list identity certifications reviewer campaign certification",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_auth_guide",
+      "input": {}
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "identity certifications list get certifier reviewer workitems",
+        "limit": 8
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "startCampaignReport"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for SailPoint ISC certification/campaign tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Good. Now let me pull full details on each operation plus search for pulling reviewer decisions/certifications."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me also look up the identity certifications list endpoint and the auth guide."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_auth_guide"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me also look up the identity certifications endpoint (the per-reviewer workitems within a campaign)."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "I have everything needed. Here's the full API walkthrough:\n\n---\n\n## Access Review (Certification) Campaign \u2014 Full API Flow\n\nAll calls require an `Authorization: Bearer <token>` header. The token comes from a client-credentials grant using a PAT.\n\n---\n\n### Step 0 \u2014 Authenticate\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\n\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={pat_client_id}\n&client_secret={pat_client_secret}\n```\n\nThe response contains `access_token`. Use it as a bearer token on every subsequent call. Rate limit is 100 requests per token per 10 seconds.\n\n---\n\n### Step 1 \u2014 Create the Campaign\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Manager Access Review\",\n  \"description\": \"Quarterly review of all manager-assigned entitlements\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-09-30T23:59:59.000Z\",\n  \"emailNotificationEnabled\": true,\n  \"recommendationsEnabled\": true,\n  \"mandatoryCommentRequirement\": \"REVOKE_ONLY\",\n  \"sunsetCommentsRequired\": true\n}\n```\n\n**`type` values:** `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`\n\nFor a `SEARCH`-type campaign you'd also include a `searchCampaignInfo` block to define the target population via a search query.\n\n**Response:** The full campaign object including `\"id\"` and `\"status\": \"STAGED\"`. Save the `id`.\n\n**Required scope:** `idn:campaign:manage`\n\n---\n\n### Step 2 \u2014 Activate (Start) the Campaign\n\nThe campaign must be in `STAGED` status before activation.\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{id}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"timeZone\": \"America/Chicago\"\n}\n```\n\nThis submits an async job. The campaign transitions `STAGED \u2192 ACTIVE`. Reviewers receive notifications and their workitems become available.\n\n**Required scope:** `idn:campaign:manage`\n\n---\n\n### Step 3 \u2014 Poll Campaign Status (Optional but Recommended)\n\nWhile the activation job runs, you can poll to confirm the campaign is `ACTIVE`:\n\n```http\nGET https://{tenant}.api.identitynow.com/v3/campaigns?filters=id eq \"{id}\"\nAuthorization: Bearer {access_token}\n```\n\n---\n\n### Step 4 \u2014 Pull Results\n\nTwo sub-steps: trigger a report generation, then fetch the metadata list to get download details.\n\n#### 4a \u2014 Run a Report\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{id}/run-report/{type}\nAuthorization: Bearer {access_token}\n```\n\nCommon `{type}` values:\n| Type | Contents |\n|------|----------|\n| `CAMPAIGN_COMPOSITION` | All items included in the campaign |\n| `CERTIFICATION_DECISIONS` | Approve/revoke decisions made so far |\n\n#### 4b \u2014 Fetch Report List\n\n```http\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{id}/reports\nAuthorization: Bearer {access_token}\n```\n\nReturns an array of report objects with `downloadUrl` links for each completed report.\n\n**Required scope:** `idn:campaign-report:read` or `idn:campaign-report:manage`\n\n---\n\n### Summary Table\n\n| # | Method | Path | Scope |\n|---|--------|------|-------|\n| 0 | `POST` | `/oauth/token` | *(PAT exchange, no scope)* |\n| 1 | `POST` | `/v3/campaigns` | `idn:campaign:manage` |\n| 2 | `POST` | `/v3/campaigns/{id}/activate` | `idn:campaign:manage` |\n| 3 | `GET` | `/v3/campaigns` | `idn:campaign:read` |\n| 4a | `POST` | `/v3/campaigns/{id}/run-report/{type}` | `idn:campaign-report:manage` |\n| 4b | `GET` | `/v3/campaigns/{id}/reports` | `idn:campaign-report:read` |\n\n---\n\n### Key Notes\n\n- Campaigns are created in `STAGED` status and must be explicitly activated \u2014 they don't auto-start.\n- Activation is asynchronous; poll `GET /v3/campaigns` to confirm `status` becomes `ACTIVE`.\n- Report generation (4a) is also async; poll `GET /v3/campaigns/{id}/reports` until the report's `status` is `COMPLETE` and a `downloadUrl` appears.\n- The caller must be `ORG_ADMIN` or `CERT_ADMIN` for campaign management; `REPORT_ADMIN` is sufficient for reports.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/run-report/{type}\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\nauth_flow: OAuth2 client credentials via Personal Access Token (PAT)\nrequired_scopes:\n  - idn:campaign:manage\n  - idn:campaign-report:manage\n  - idn:campaign-report:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - emailNotificationEnabled\n  - recommendationsEnabled\n  - mandatoryCommentRequirement\n  - sunsetCommentsRequired\n  - searchCampaignInfo\n  - timeZone\n  - id\n  - grant_type\n  - client_id\n  - client_secret\n```"
+    }
+  ],
+  "raw_response": "I have everything needed. Here's the full API walkthrough:\n\n---\n\n## Access Review (Certification) Campaign \u2014 Full API Flow\n\nAll calls require an `Authorization: Bearer <token>` header. The token comes from a client-credentials grant using a PAT.\n\n---\n\n### Step 0 \u2014 Authenticate\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\n\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={pat_client_id}\n&client_secret={pat_client_secret}\n```\n\nThe response contains `access_token`. Use it as a bearer token on every subsequent call. Rate limit is 100 requests per token per 10 seconds.\n\n---\n\n### Step 1 \u2014 Create the Campaign\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Manager Access Review\",\n  \"description\": \"Quarterly review of all manager-assigned entitlements\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-09-30T23:59:59.000Z\",\n  \"emailNotificationEnabled\": true,\n  \"recommendationsEnabled\": true,\n  \"mandatoryCommentRequirement\": \"REVOKE_ONLY\",\n  \"sunsetCommentsRequired\": true\n}\n```\n\n**`type` values:** `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`\n\nFor a `SEARCH`-type campaign you'd also include a `searchCampaignInfo` block to define the target population via a search query.\n\n**Response:** The full campaign object including `\"id\"` and `\"status\": \"STAGED\"`. Save the `id`.\n\n**Required scope:** `idn:campaign:manage`\n\n---\n\n### Step 2 \u2014 Activate (Start) the Campaign\n\nThe campaign must be in `STAGED` status before activation.\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{id}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"timeZone\": \"America/Chicago\"\n}\n```\n\nThis submits an async job. The campaign transitions `STAGED \u2192 ACTIVE`. Reviewers receive notifications and their workitems become available.\n\n**Required scope:** `idn:campaign:manage`\n\n---\n\n### Step 3 \u2014 Poll Campaign Status (Optional but Recommended)\n\nWhile the activation job runs, you can poll to confirm the campaign is `ACTIVE`:\n\n```http\nGET https://{tenant}.api.identitynow.com/v3/campaigns?filters=id eq \"{id}\"\nAuthorization: Bearer {access_token}\n```\n\n---\n\n### Step 4 \u2014 Pull Results\n\nTwo sub-steps: trigger a report generation, then fetch the metadata list to get download details.\n\n#### 4a \u2014 Run a Report\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{id}/run-report/{type}\nAuthorization: Bearer {access_token}\n```\n\nCommon `{type}` values:\n| Type | Contents |\n|------|----------|\n| `CAMPAIGN_COMPOSITION` | All items included in the campaign |\n| `CERTIFICATION_DECISIONS` | Approve/revoke decisions made so far |\n\n#### 4b \u2014 Fetch Report List\n\n```http\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{id}/reports\nAuthorization: Bearer {access_token}\n```\n\nReturns an array of report objects with `downloadUrl` links for each completed report.\n\n**Required scope:** `idn:campaign-report:read` or `idn:campaign-report:manage`\n\n---\n\n### Summary Table\n\n| # | Method | Path | Scope |\n|---|--------|------|-------|\n| 0 | `POST` | `/oauth/token` | *(PAT exchange, no scope)* |\n| 1 | `POST` | `/v3/campaigns` | `idn:campaign:manage` |\n| 2 | `POST` | `/v3/campaigns/{id}/activate` | `idn:campaign:manage` |\n| 3 | `GET` | `/v3/campaigns` | `idn:campaign:read` |\n| 4a | `POST` | `/v3/campaigns/{id}/run-report/{type}` | `idn:campaign-report:manage` |\n| 4b | `GET` | `/v3/campaigns/{id}/reports` | `idn:campaign-report:read` |\n\n---\n\n### Key Notes\n\n- Campaigns are created in `STAGED` status and must be explicitly activated \u2014 they don't auto-start.\n- Activation is asynchronous; poll `GET /v3/campaigns` to confirm `status` becomes `ACTIVE`.\n- Report generation (4a) is also async; poll `GET /v3/campaigns/{id}/reports` until the report's `status` is `COMPLETE` and a `downloadUrl` appears.\n- The caller must be `ORG_ADMIN` or `CERT_ADMIN` for campaign management; `REPORT_ADMIN` is sufficient for reports.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/run-report/{type}\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\nauth_flow: OAuth2 client credentials via Personal Access Token (PAT)\nrequired_scopes:\n  - idn:campaign:manage\n  - idn:campaign-report:manage\n  - idn:campaign-report:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - emailNotificationEnabled\n  - recommendationsEnabled\n  - mandatoryCommentRequirement\n  - sunsetCommentsRequired\n  - searchCampaignInfo\n  - timeZone\n  - id\n  - grant_type\n  - client_id\n  - client_secret\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (10 call(s))",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,32 @@
+id: access-request
+category: daily-automation
+prompt: >
+  Submit an access request in ISC to give a user a specific access profile (or role /
+  entitlement). How do I call the API to request that access?
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/access-requests
+      api_version: v3
+      operation_id: createAccessRequest
+      spec_ref: { file: idn/v3/paths/access-requests.yaml, operation_id: createAccessRequest }
+  auth_flow: OAuth2 bearer token (see auth-token).
+  required_scopes:
+    - "idn:access-request:manage        # ORG_ADMIN level — request on behalf of others"
+    - "idn:access-request-self:manage   # USER level — self request"
+  key_parameters:
+    - { name: requestedFor, in: body, required: true, note: "array of identity IDs the access is for" }
+    - { name: requestedItems, in: body, required: true, note: "array of { type: ACCESS_PROFILE|ROLE|ENTITLEMENT, id, operation: Add }" }
+    - { name: requestType, in: body, required: false, note: "GRANT_ACCESS (default intent here); see grant-revoke" }
+  success_shape: >
+    202 Accepted (asynchronous). A success response means the request was queued for ISC's
+    approval/provisioning workflow — it does not confirm provisioning completed.
+  common_failure_modes:
+    - "400 when exceeding limits: max 25 entitlements and 10 identities per request when entitlements are involved."
+    - "Silent duplicate cancellation: requesting access an identity already has (unchanged) is auto-canceled as a duplicate."
+    - "Assuming synchronous completion — poll List Access Request Status to confirm."
+notes: >
+  Processing is asynchronous; the 202 only means "queued." Best practice per the spec: check
+  existing access (List Access Request Status / Pending Approvals / Search) before submitting to
+  avoid duplicates. Grant vs revoke is the same endpoint differentiated by requestType — see
+  grant-revoke.

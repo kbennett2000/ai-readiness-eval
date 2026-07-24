@@ -1,0 +1,139 @@
+{
+  "task_id": "access-request",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1335,
+  "cost_usd": 0.091806,
+  "duration_ms": 24892,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "access request submit ISC",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "submit access request access profile role entitlement",
+        "limit": 10
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation,mcp__sailpoint__get_scopes",
+        "max_results": 2
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createAccessRequest"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "operation": "createAccessRequest"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint ISC API tools for submitting access requests."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's how to submit an access request via the ISC API.\n\n## `POST /v3/access-requests`\n\n### Required body fields\n\n| Field | Type | Description |\n|---|---|---|\n| `requestedFor` | `string[]` | Identity IDs of the users receiving access |\n| `requestedItems` | `object[]` | The access items being requested |\n\nEach entry in `requestedItems` needs:\n- `type` \u2014 `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT`\n- `id` \u2014 the ID of the access profile / role / entitlement\n- `comment` *(optional)* \u2014 justification comment\n\n### Example request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"2c9180858082150f0180893dbaf44201\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"2c9180858082150f0180893dbaf55555\",\n      \"comment\": \"Needed for project Orion onboarding\"\n    }\n  ]\n}\n```\n\nTo request a **role** or **entitlement** instead, just change `type`:\n\n```json\n{ \"type\": \"ROLE\",        \"id\": \"<role-id>\" }\n{ \"type\": \"ENTITLEMENT\", \"id\": \"<entitlement-id>\" }\n```\n\n### `requestType` values\n\n| Value | Meaning |\n|---|---|\n| `GRANT_ACCESS` *(default)* | Add the access |\n| `REVOKE_ACCESS` | Remove the access |\n\n### Scopes\n\nYour OAuth token needs **one** of:\n- `idn:access-request:manage` \u2014 full access request management (ORG_ADMIN)\n- `idn:access-request-self:manage` \u2014 request access on behalf of self only (USER)\n\nUse `idn:access-request:manage` when submitting on behalf of another user.\n\n### cURL example\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"<access-profile-id>\",\n        \"comment\": \"Requesting access for user onboarding\"\n      }\n    ]\n  }'\n```\n\nThe API returns `202 Accepted` on success \u2014 the request then flows through any configured approval workflows in ISC.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage, idn:access-request-self:manage]\nkey_parameters: [requestedFor, requestedItems, requestType, type, id, comment]\n```"
+    }
+  ],
+  "raw_response": "Here's how to submit an access request via the ISC API.\n\n## `POST /v3/access-requests`\n\n### Required body fields\n\n| Field | Type | Description |\n|---|---|---|\n| `requestedFor` | `string[]` | Identity IDs of the users receiving access |\n| `requestedItems` | `object[]` | The access items being requested |\n\nEach entry in `requestedItems` needs:\n- `type` \u2014 `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT`\n- `id` \u2014 the ID of the access profile / role / entitlement\n- `comment` *(optional)* \u2014 justification comment\n\n### Example request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"2c9180858082150f0180893dbaf44201\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"2c9180858082150f0180893dbaf55555\",\n      \"comment\": \"Needed for project Orion onboarding\"\n    }\n  ]\n}\n```\n\nTo request a **role** or **entitlement** instead, just change `type`:\n\n```json\n{ \"type\": \"ROLE\",        \"id\": \"<role-id>\" }\n{ \"type\": \"ENTITLEMENT\", \"id\": \"<entitlement-id>\" }\n```\n\n### `requestType` values\n\n| Value | Meaning |\n|---|---|\n| `GRANT_ACCESS` *(default)* | Add the access |\n| `REVOKE_ACCESS` | Remove the access |\n\n### Scopes\n\nYour OAuth token needs **one** of:\n- `idn:access-request:manage` \u2014 full access request management (ORG_ADMIN)\n- `idn:access-request-self:manage` \u2014 request access on behalf of self only (USER)\n\nUse `idn:access-request:manage` when submitting on behalf of another user.\n\n### cURL example\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"<access-profile-id>\",\n        \"comment\": \"Requesting access for user onboarding\"\n      }\n    ]\n  }'\n```\n\nThe API returns `202 Accepted` on success \u2014 the request then flows through any configured approval workflows in ISC.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage, idn:access-request-self:manage]\nkey_parameters: [requestedFor, requestedItems, requestType, type, id, comment]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

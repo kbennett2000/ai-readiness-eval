@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/triggers",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2889,
+  "cost_usd": 0.0724879,
+  "duration_ms": 46157,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Subscribing to ISC Event Triggers via API\n\nISC's **Trigger Service** lets you register an HTTP endpoint to receive webhook calls whenever specific lifecycle events fire. The flow is two steps: discover the trigger you want, then create a subscription.\n\n---\n\n### Step 1 \u2014 Find the trigger ID\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/triggers\nAuthorization: Bearer {access_token}\n```\n\nThis returns all available triggers. For lifecycle events, look for IDs like:\n\n| Trigger ID | Event |\n|---|---|\n| `idn:access-request-submitted` | New access request submitted |\n| `idn:access-request-pre-approval` | Before approval decision (supports veto) |\n| `idn:access-request-post-approval` | After approval decision |\n| `idn:provisioning-action-completed` | Provisioning finished (success or failure) |\n| `idn:identity-attributes-changed` | Identity attribute values changed |\n| `idn:account-attributes-changed` | Managed account attributes changed |\n\n---\n\n### Step 2 \u2014 Create the subscription\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/trigger-subscriptions\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"triggerId\": \"idn:access-request-post-approval\",\n  \"name\": \"My Service - Access Request Approved\",\n  \"description\": \"Notify my service when access is approved\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://my-service.example.com/isc/events\",\n    \"httpAuthenticationType\": \"BEARER_TOKEN\",\n    \"bearerTokenAuthConfig\": {\n      \"bearerToken\": \"your-shared-secret-token\"\n    }\n  },\n  \"enabled\": true,\n  \"filter\": \"$[?($.requestedFor[0].type == 'IDENTITY')]\"\n}\n```\n\n**Key fields:**\n\n- `triggerId` \u2014 the trigger you want to receive (from Step 1)\n- `type` \u2014 `HTTP` for a webhook; `EVENTBRIDGE` for AWS EventBridge\n- `httpConfig.url` \u2014 ISC will POST JSON payloads to this URL\n- `httpAuthenticationType` \u2014 `NO_AUTH`, `BASIC_AUTH`, or `BEARER_TOKEN`\n- `bearerTokenAuthConfig.bearerToken` \u2014 a shared secret ISC sends in the `Authorization` header on each delivery, so your service can verify the call is genuine\n- `filter` \u2014 optional JSONPath expression to narrow which events trigger delivery (omit it to receive all)\n\n---\n\n### What ISC delivers\n\nWhen the event fires, ISC sends a `POST` to your URL with a JSON body specific to that trigger type, e.g. for `idn:provisioning-action-completed`:\n\n```json\n{\n  \"trackingNumber\": \"4b4400fe-8867-4975-a....\",\n  \"sources\": \"Corp AD\",\n  \"action\": \"ADD_ACCESS\",\n  \"errors\": null,\n  \"warnings\": null,\n  \"recipient\": { \"type\": \"IDENTITY\", \"id\": \"...\", \"name\": \"John Doe\" },\n  \"requester\": { \"type\": \"IDENTITY\", \"id\": \"...\", \"name\": \"Jane Admin\" },\n  \"accountRequests\": [ ... ]\n}\n```\n\n---\n\n### Other subscription management endpoints\n\n| Method | Path | Purpose |\n|---|---|---|\n| `GET` | `/beta/trigger-subscriptions` | List all your subscriptions |\n| `GET` | `/beta/trigger-subscriptions/{id}` | Get one subscription |\n| `PATCH` | `/beta/trigger-subscriptions/{id}` | Update (enable/disable, change URL, etc.) |\n| `DELETE` | `/beta/trigger-subscriptions/{id}` | Remove subscription |\n\n---\n\n### Auth\n\nUse **OAuth2 client credentials** to get an access token:\n\n```http\nPOST https://{tenant}.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={client_id}\n&client_secret={client_secret}\n```\n\nThe client needs the **`sp:trigger-service-subscriptions:manage`** scope (assign it in ISC under **Admin \u2192 API Management \u2192 OAuth Clients**).\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: PATCH\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\n  - method: DELETE\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [sp:trigger-service-subscriptions:manage]\nkey_parameters: [triggerId, name, type, httpConfig, url, httpAuthenticationType, bearerTokenAuthConfig, enabled, filter]\n```"
+    }
+  ],
+  "raw_response": "## Subscribing to ISC Event Triggers via API\n\nISC's **Trigger Service** lets you register an HTTP endpoint to receive webhook calls whenever specific lifecycle events fire. The flow is two steps: discover the trigger you want, then create a subscription.\n\n---\n\n### Step 1 \u2014 Find the trigger ID\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/triggers\nAuthorization: Bearer {access_token}\n```\n\nThis returns all available triggers. For lifecycle events, look for IDs like:\n\n| Trigger ID | Event |\n|---|---|\n| `idn:access-request-submitted` | New access request submitted |\n| `idn:access-request-pre-approval` | Before approval decision (supports veto) |\n| `idn:access-request-post-approval` | After approval decision |\n| `idn:provisioning-action-completed` | Provisioning finished (success or failure) |\n| `idn:identity-attributes-changed` | Identity attribute values changed |\n| `idn:account-attributes-changed` | Managed account attributes changed |\n\n---\n\n### Step 2 \u2014 Create the subscription\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/trigger-subscriptions\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"triggerId\": \"idn:access-request-post-approval\",\n  \"name\": \"My Service - Access Request Approved\",\n  \"description\": \"Notify my service when access is approved\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://my-service.example.com/isc/events\",\n    \"httpAuthenticationType\": \"BEARER_TOKEN\",\n    \"bearerTokenAuthConfig\": {\n      \"bearerToken\": \"your-shared-secret-token\"\n    }\n  },\n  \"enabled\": true,\n  \"filter\": \"$[?($.requestedFor[0].type == 'IDENTITY')]\"\n}\n```\n\n**Key fields:**\n\n- `triggerId` \u2014 the trigger you want to receive (from Step 1)\n- `type` \u2014 `HTTP` for a webhook; `EVENTBRIDGE` for AWS EventBridge\n- `httpConfig.url` \u2014 ISC will POST JSON payloads to this URL\n- `httpAuthenticationType` \u2014 `NO_AUTH`, `BASIC_AUTH`, or `BEARER_TOKEN`\n- `bearerTokenAuthConfig.bearerToken` \u2014 a shared secret ISC sends in the `Authorization` header on each delivery, so your service can verify the call is genuine\n- `filter` \u2014 optional JSONPath expression to narrow which events trigger delivery (omit it to receive all)\n\n---\n\n### What ISC delivers\n\nWhen the event fires, ISC sends a `POST` to your URL with a JSON body specific to that trigger type, e.g. for `idn:provisioning-action-completed`:\n\n```json\n{\n  \"trackingNumber\": \"4b4400fe-8867-4975-a....\",\n  \"sources\": \"Corp AD\",\n  \"action\": \"ADD_ACCESS\",\n  \"errors\": null,\n  \"warnings\": null,\n  \"recipient\": { \"type\": \"IDENTITY\", \"id\": \"...\", \"name\": \"John Doe\" },\n  \"requester\": { \"type\": \"IDENTITY\", \"id\": \"...\", \"name\": \"Jane Admin\" },\n  \"accountRequests\": [ ... ]\n}\n```\n\n---\n\n### Other subscription management endpoints\n\n| Method | Path | Purpose |\n|---|---|---|\n| `GET` | `/beta/trigger-subscriptions` | List all your subscriptions |\n| `GET` | `/beta/trigger-subscriptions/{id}` | Get one subscription |\n| `PATCH` | `/beta/trigger-subscriptions/{id}` | Update (enable/disable, change URL, etc.) |\n| `DELETE` | `/beta/trigger-subscriptions/{id}` | Remove subscription |\n\n---\n\n### Auth\n\nUse **OAuth2 client credentials** to get an access token:\n\n```http\nPOST https://{tenant}.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={client_id}\n&client_secret={client_secret}\n```\n\nThe client needs the **`sp:trigger-service-subscriptions:manage`** scope (assign it in ISC under **Admin \u2192 API Management \u2192 OAuth Clients**).\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: PATCH\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\n  - method: DELETE\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [sp:trigger-service-subscriptions:manage]\nkey_parameters: [triggerId, name, type, httpConfig, url, httpAuthenticationType, bearerTokenAuthConfig, enabled, filter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

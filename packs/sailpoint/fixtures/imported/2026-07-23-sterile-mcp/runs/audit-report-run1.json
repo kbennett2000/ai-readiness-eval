@@ -1,0 +1,174 @@
+{
+  "task_id": "audit-report",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 13,
+  "output_tokens": 1692,
+  "cost_usd": 0.0925655,
+  "duration_ms": 32345,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "audit events activity log search",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "audit events activity log"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "search events"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "siem event type"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "query": "search"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search the SailPoint MCP tools for audit/activity event querying."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "The `POST /v3/search` endpoint is the right one. Let me get its full spec."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's everything you need to query audit/activity events from ISC.\n\n---\n\n## Querying Audit Events via `POST /v3/search`\n\nISC's Search API uses an Elasticsearch-style query body. Audit/activity events live in the **`events`** index.\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n### Body \u2014 all events of a given type in the last 24 hours\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": {\n    \"query\": \"type:{EVENT_TYPE}\"\n  },\n  \"filters\": {\n    \"created\": {\n      \"type\": \"RANGE\",\n      \"range\": {\n        \"lower\": {\n          \"value\": \"now-24h\",\n          \"inclusive\": true\n        }\n      }\n    }\n  },\n  \"sort\": [\"-created\"],\n  \"limit\": 250\n}\n```\n\nReplace `{EVENT_TYPE}` with the event type you want, e.g.:\n- `AUTHENTICATION` \u2014 login/logout events\n- `PROVISIONING` \u2014 provisioning actions\n- `CERTIFICATION` \u2014 certification decisions\n- `ACCESS_REQUEST` \u2014 access request actions\n- `PASSWORD_CHANGE` \u2014 password operations\n- `ROLE_UPDATE`, `ENTITLEMENT_UPDATE`, etc.\n\nTo search all event types, omit the `query` field (or use `\"query\": \"*\"`).\n\n---\n\n### Pagination (past 10,000 records use `searchAfter`)\n\nFor normal paging use `?limit=250&offset=0`. Once you exceed 10,000 results, switch to cursor-style paging:\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": { \"query\": \"type:AUTHENTICATION\" },\n  \"sort\": [\"-created\", \"id\"],\n  \"searchAfter\": [\"2026-07-22T10:00:00.000Z\", \"abc123-last-id\"]\n}\n```\n\nThe `searchAfter` values come from the last record's `created` and `id` fields in the previous response.\n\n---\n\n### Minimal Python example\n\n```python\nimport requests\nfrom datetime import datetime, timedelta, timezone\n\ntenant = \"your-org\"\ntoken  = \"YOUR_ACCESS_TOKEN\"\n\nbody = {\n    \"indices\": [\"events\"],\n    \"query\": {\"query\": \"type:AUTHENTICATION\"},\n    \"filters\": {\n        \"created\": {\n            \"type\": \"RANGE\",\n            \"range\": {\n                \"lower\": {\"value\": \"now-24h\", \"inclusive\": True}\n            }\n        }\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250\n}\n\nresp = requests.post(\n    f\"https://{tenant}.api.identitynow.com/v3/search\",\n    headers={\"Authorization\": f\"Bearer {token}\"},\n    json=body,\n    params={\"count\": \"true\"}\n)\nresp.raise_for_status()\n\nprint(f\"Total events: {resp.headers.get('X-Total-Count')}\")\nfor event in resp.json():\n    print(event[\"created\"], event[\"type\"], event.get(\"action\"))\n```\n\n---\n\n### Key notes\n\n| Point | Detail |\n|---|---|\n| **Auth** | OAuth2 client credentials \u2014 scope `sp:search:read` required |\n| **Index** | Must set `\"indices\": [\"events\"]` (default is identities) |\n| **Time filter** | Use `\"now-24h\"` (Elasticsearch relative) or an ISO-8601 string |\n| **Total count** | Pass `?count=true` to get `X-Total-Count` header |\n| **Hard limit** | Single page max is 10,000; use `searchAfter` beyond that |\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, limit, searchAfter]\n```"
+    }
+  ],
+  "raw_response": "Here's everything you need to query audit/activity events from ISC.\n\n---\n\n## Querying Audit Events via `POST /v3/search`\n\nISC's Search API uses an Elasticsearch-style query body. Audit/activity events live in the **`events`** index.\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n### Body \u2014 all events of a given type in the last 24 hours\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": {\n    \"query\": \"type:{EVENT_TYPE}\"\n  },\n  \"filters\": {\n    \"created\": {\n      \"type\": \"RANGE\",\n      \"range\": {\n        \"lower\": {\n          \"value\": \"now-24h\",\n          \"inclusive\": true\n        }\n      }\n    }\n  },\n  \"sort\": [\"-created\"],\n  \"limit\": 250\n}\n```\n\nReplace `{EVENT_TYPE}` with the event type you want, e.g.:\n- `AUTHENTICATION` \u2014 login/logout events\n- `PROVISIONING` \u2014 provisioning actions\n- `CERTIFICATION` \u2014 certification decisions\n- `ACCESS_REQUEST` \u2014 access request actions\n- `PASSWORD_CHANGE` \u2014 password operations\n- `ROLE_UPDATE`, `ENTITLEMENT_UPDATE`, etc.\n\nTo search all event types, omit the `query` field (or use `\"query\": \"*\"`).\n\n---\n\n### Pagination (past 10,000 records use `searchAfter`)\n\nFor normal paging use `?limit=250&offset=0`. Once you exceed 10,000 results, switch to cursor-style paging:\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": { \"query\": \"type:AUTHENTICATION\" },\n  \"sort\": [\"-created\", \"id\"],\n  \"searchAfter\": [\"2026-07-22T10:00:00.000Z\", \"abc123-last-id\"]\n}\n```\n\nThe `searchAfter` values come from the last record's `created` and `id` fields in the previous response.\n\n---\n\n### Minimal Python example\n\n```python\nimport requests\nfrom datetime import datetime, timedelta, timezone\n\ntenant = \"your-org\"\ntoken  = \"YOUR_ACCESS_TOKEN\"\n\nbody = {\n    \"indices\": [\"events\"],\n    \"query\": {\"query\": \"type:AUTHENTICATION\"},\n    \"filters\": {\n        \"created\": {\n            \"type\": \"RANGE\",\n            \"range\": {\n                \"lower\": {\"value\": \"now-24h\", \"inclusive\": True}\n            }\n        }\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250\n}\n\nresp = requests.post(\n    f\"https://{tenant}.api.identitynow.com/v3/search\",\n    headers={\"Authorization\": f\"Bearer {token}\"},\n    json=body,\n    params={\"count\": \"true\"}\n)\nresp.raise_for_status()\n\nprint(f\"Total events: {resp.headers.get('X-Total-Count')}\")\nfor event in resp.json():\n    print(event[\"created\"], event[\"type\"], event.get(\"action\"))\n```\n\n---\n\n### Key notes\n\n| Point | Detail |\n|---|---|\n| **Auth** | OAuth2 client credentials \u2014 scope `sp:search:read` required |\n| **Index** | Must set `\"indices\": [\"events\"]` (default is identities) |\n| **Time filter** | Use `\"now-24h\"` (Elasticsearch relative) or an ISO-8601 string |\n| **Total count** | Pass `?count=true` to get `X-Total-Count` header |\n| **Hard limit** | Single page max is 10,000; use `searchAfter` beyond that |\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, limit, searchAfter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (5 call(s))",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.75,
+    "method": 0.75,
+    "api_version": 0.75,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/campaigns/{}/reports",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1832,
+  "cost_usd": 0.0566079,
+  "duration_ms": 26694,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Access Review (Certification) Campaign in SailPoint ISC\n\nHere are the API calls to create, start, and retrieve results for a certification campaign.\n\n---\n\n### Step 1 \u2014 Authenticate (Client Credentials)\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\n```\n\nUse the returned `access_token` as `Authorization: Bearer <token>` on all subsequent calls.\n\n---\n\n### Step 2 \u2014 Create the Campaign\n\n```http\nPOST /v3/campaigns\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Access Review\",\n  \"description\": \"Quarterly access certification for all employees\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.000Z\",\n  \"certifiers\": [\n    { \"type\": \"IDENTITY\", \"id\": \"<certifier-identity-id>\" }\n  ],\n  \"mandatoryCommentRequirement\": \"NO_DECISIONS\"\n}\n```\n\nKey `type` values: `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`.  \nThe response body contains the campaign `id` \u2014 save it.\n\n---\n\n### Step 3 \u2014 Activate (Start) the Campaign\n\n```http\nPOST /v3/campaigns/{campaignId}/activate\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{}\n```\n\nThis moves the campaign from `STAGED` \u2192 `ACTIVE` and sends reviewer notifications. The response is `202 Accepted`.\n\n---\n\n### Step 4 \u2014 Poll Campaign Status\n\n```http\nGET /v3/campaigns/{campaignId}\nAuthorization: Bearer <token>\n```\n\nCheck `status` in the response: `STAGED`, `ACTIVE`, `COMPLETED`, `ERROR`.\n\n---\n\n### Step 5 \u2014 List Certifications (Reviewer Assignments)\n\n```http\nGET /v3/certifications?filters=campaign.id+eq+\"{campaignId}\"&limit=250&offset=0\nAuthorization: Bearer <token>\n```\n\nEach certification object represents one reviewer's workload. Capture individual `certificationId` values from the response.\n\n---\n\n### Step 6 \u2014 Get Certification Items (Individual Decisions)\n\n```http\nGET /v3/certifications/{certificationId}/items?limit=250&offset=0\nAuthorization: Bearer <token>\n```\n\nReturns each access item (entitlement/role/account) with its `decision` (`APPROVED`, `REVOKED`, `ABSTAINED`).\n\n---\n\n### Step 7 \u2014 Pull Campaign-Level Reports\n\n```http\nGET /v3/campaigns/{campaignId}/reports\nAuthorization: Bearer <token>\n```\n\nLists available reports (e.g., `CAMPAIGN_COMPOSITION`, `IDENTITIES_ACCESSED`, `ENTITLEMENT_RESULT`).  \nDownload a specific report:\n\n```http\nGET /v3/campaigns/{campaignId}/reports/{reportType}\nAuthorization: Bearer <token>\n```\n\n---\n\n### Required Scopes Summary\n\n| Scope | Purpose |\n|---|---|\n| `idn:campaign:read` | Read campaign status and reports |\n| `idn:campaign:write` | Create and activate campaigns |\n| `idn:certification:read` | Read certifications and items |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}\n    api_version: v3\n  - method: GET\n    path: /v3/certifications\n    api_version: v3\n  - method: GET\n    path: /v3/certifications/{certificationId}/items\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/reports\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/reports/{reportType}\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes:\n  - idn:campaign:read\n  - idn:campaign:write\n  - idn:certification:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - certifiers\n  - mandatoryCommentRequirement\n  - filters\n  - limit\n  - offset\n  - reportType\n```"
+    }
+  ],
+  "raw_response": "## Access Review (Certification) Campaign in SailPoint ISC\n\nHere are the API calls to create, start, and retrieve results for a certification campaign.\n\n---\n\n### Step 1 \u2014 Authenticate (Client Credentials)\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\n```\n\nUse the returned `access_token` as `Authorization: Bearer <token>` on all subsequent calls.\n\n---\n\n### Step 2 \u2014 Create the Campaign\n\n```http\nPOST /v3/campaigns\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Access Review\",\n  \"description\": \"Quarterly access certification for all employees\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.000Z\",\n  \"certifiers\": [\n    { \"type\": \"IDENTITY\", \"id\": \"<certifier-identity-id>\" }\n  ],\n  \"mandatoryCommentRequirement\": \"NO_DECISIONS\"\n}\n```\n\nKey `type` values: `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`.  \nThe response body contains the campaign `id` \u2014 save it.\n\n---\n\n### Step 3 \u2014 Activate (Start) the Campaign\n\n```http\nPOST /v3/campaigns/{campaignId}/activate\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{}\n```\n\nThis moves the campaign from `STAGED` \u2192 `ACTIVE` and sends reviewer notifications. The response is `202 Accepted`.\n\n---\n\n### Step 4 \u2014 Poll Campaign Status\n\n```http\nGET /v3/campaigns/{campaignId}\nAuthorization: Bearer <token>\n```\n\nCheck `status` in the response: `STAGED`, `ACTIVE`, `COMPLETED`, `ERROR`.\n\n---\n\n### Step 5 \u2014 List Certifications (Reviewer Assignments)\n\n```http\nGET /v3/certifications?filters=campaign.id+eq+\"{campaignId}\"&limit=250&offset=0\nAuthorization: Bearer <token>\n```\n\nEach certification object represents one reviewer's workload. Capture individual `certificationId` values from the response.\n\n---\n\n### Step 6 \u2014 Get Certification Items (Individual Decisions)\n\n```http\nGET /v3/certifications/{certificationId}/items?limit=250&offset=0\nAuthorization: Bearer <token>\n```\n\nReturns each access item (entitlement/role/account) with its `decision` (`APPROVED`, `REVOKED`, `ABSTAINED`).\n\n---\n\n### Step 7 \u2014 Pull Campaign-Level Reports\n\n```http\nGET /v3/campaigns/{campaignId}/reports\nAuthorization: Bearer <token>\n```\n\nLists available reports (e.g., `CAMPAIGN_COMPOSITION`, `IDENTITIES_ACCESSED`, `ENTITLEMENT_RESULT`).  \nDownload a specific report:\n\n```http\nGET /v3/campaigns/{campaignId}/reports/{reportType}\nAuthorization: Bearer <token>\n```\n\n---\n\n### Required Scopes Summary\n\n| Scope | Purpose |\n|---|---|\n| `idn:campaign:read` | Read campaign status and reports |\n| `idn:campaign:write` | Create and activate campaigns |\n| `idn:certification:read` | Read certifications and items |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}\n    api_version: v3\n  - method: GET\n    path: /v3/certifications\n    api_version: v3\n  - method: GET\n    path: /v3/certifications/{certificationId}/items\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/reports\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/reports/{reportType}\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes:\n  - idn:campaign:read\n  - idn:campaign:write\n  - idn:certification:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - certifiers\n  - mandatoryCommentRequirement\n  - filters\n  - limit\n  - offset\n  - reportType\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "task_id": "access-request",
+  "run_index": 3,
+  "format_failure": true,
+  "failure_reason": "answer-summary block is not valid YAML: while parsing a flow sequence\n  in \"<unicode string>\", line 7, column 17:\n    key_parameters: [requestedFor, requestedItems, r ... \n                    ^\nexpected ',' or ']', but got '['\n  in \"<unicode string>\", line 7, column 62:\n     ... , requestedItems, requestedItems[].type, requestedItems[].id, re ... \n                                         ^",
+  "dimensions": {
+    "endpoint": null,
+    "method": null,
+    "api_version": null,
+    "auth_flow": null,
+    "required_scopes": null,
+    "key_parameters": null
+  },
+  "endpoint_matches": [],
+  "input_tokens": 13,
+  "output_tokens": 1575,
+  "cost_usd": 0.09024399999999999,
+  "duration_ms": 32693,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "access request submit create",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "access request API endpoint",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "create access request submit access profile role entitlement",
+        "limit": 5
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createAccessRequest"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the SailPoint ISC access request API tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's how to submit an access request via the ISC API.\n\n## Endpoint\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\n```\n\n## Required OAuth Scopes\n\n- `idn:access-request:manage` \u2014 to request access on behalf of another user (admin)\n- `idn:access-request-self:manage` \u2014 for self-service requests only\n\n## Request Body\n\n```json\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"<access-profile-id>\",\n      \"comment\": \"Needed for project X onboarding\"\n    }\n  ],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"clientMetadata\": {\n    \"requestedAppName\": \"MyApp\",\n    \"requestedAppId\": \"2c91808f7892918f0178b78da4a305a1\"\n  }\n}\n```\n\n### Key fields\n\n| Field | Required | Notes |\n|---|---|---|\n| `requestedFor` | Yes | Array of identity IDs to grant access to |\n| `requestedItems` | Yes | Array of access items; each needs `type` and `id` |\n| `requestedItems[].type` | Yes | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | Yes | The ID of the access profile / role / entitlement |\n| `requestedItems[].comment` | No | Business justification comment |\n| `requestType` | No | `GRANT_ACCESS` (default) or `REVOKE_ACCESS` |\n| `clientMetadata` | No | Key/value pairs passed through to approval workflows |\n\n## Example (curl)\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"2c918084660f45d6016617daa9210584\"],\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n        \"comment\": \"Required for Q3 project access\"\n      }\n    ],\n    \"requestType\": \"GRANT_ACCESS\"\n  }'\n```\n\n**Tip:** The `requestedFor` and `requestedItems[].id` values must be ISC internal IDs (UUIDs), not names. Use `GET /v3/identities` and `GET /v3/access-profiles` (or `/v3/roles`, `/v3/entitlements`) to look up IDs first.\n\nThe request will enter any approval workflows configured in ISC before access is provisioned.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage, idn:access-request-self:manage]\nkey_parameters: [requestedFor, requestedItems, requestedItems[].type, requestedItems[].id, requestedItems[].comment, requestType, clientMetadata]\n```"
+    }
+  ],
+  "raw_response": "Here's how to submit an access request via the ISC API.\n\n## Endpoint\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\n```\n\n## Required OAuth Scopes\n\n- `idn:access-request:manage` \u2014 to request access on behalf of another user (admin)\n- `idn:access-request-self:manage` \u2014 for self-service requests only\n\n## Request Body\n\n```json\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"<access-profile-id>\",\n      \"comment\": \"Needed for project X onboarding\"\n    }\n  ],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"clientMetadata\": {\n    \"requestedAppName\": \"MyApp\",\n    \"requestedAppId\": \"2c91808f7892918f0178b78da4a305a1\"\n  }\n}\n```\n\n### Key fields\n\n| Field | Required | Notes |\n|---|---|---|\n| `requestedFor` | Yes | Array of identity IDs to grant access to |\n| `requestedItems` | Yes | Array of access items; each needs `type` and `id` |\n| `requestedItems[].type` | Yes | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | Yes | The ID of the access profile / role / entitlement |\n| `requestedItems[].comment` | No | Business justification comment |\n| `requestType` | No | `GRANT_ACCESS` (default) or `REVOKE_ACCESS` |\n| `clientMetadata` | No | Key/value pairs passed through to approval workflows |\n\n## Example (curl)\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"2c918084660f45d6016617daa9210584\"],\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n        \"comment\": \"Required for Q3 project access\"\n      }\n    ],\n    \"requestType\": \"GRANT_ACCESS\"\n  }'\n```\n\n**Tip:** The `requestedFor` and `requestedItems[].id` values must be ISC internal IDs (UUIDs), not names. Use `GET /v3/identities` and `GET /v3/access-profiles` (or `/v3/roles`, `/v3/entitlements`) to look up IDs first.\n\nThe request will enter any approval workflows configured in ISC before access is provisioned.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage, idn:access-request-self:manage]\nkey_parameters: [requestedFor, requestedItems, requestedItems[].type, requestedItems[].id, requestedItems[].comment, requestType, clientMetadata]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (2 call(s))",
+    "attempts": 1
+  }
+}

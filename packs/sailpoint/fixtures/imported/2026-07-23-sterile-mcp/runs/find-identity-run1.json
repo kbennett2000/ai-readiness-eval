@@ -1,0 +1,149 @@
+{
+  "task_id": "find-identity",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/public-identities",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1188,
+  "cost_usd": 0.08442649999999999,
+  "duration_ms": 22795,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "identity search filter attribute",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "search identity by attribute email filter"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation,mcp__sailpoint__get_scopes",
+        "max_results": 2
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "operation": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint identity lookup tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Use **`POST /v3/search`** \u2014 the ISC Search API. You target the `identities` index and filter on the attribute you care about.\n\n---\n\n## Find an identity by email\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  }\n}\n```\n\nThe `query.query` field is a Lucene expression. `attributes.email` is the standard identity attribute path; swap in whatever attribute name you need (e.g. `attributes.employeeNumber`, `name`, `displayName`).\n\n---\n\n### Tighter alternative \u2014 exact-match filter\n\nIf you want a precise, case-insensitive exact match (no tokenization side-effects), use `queryType: SAILPOINT` with a `term` filter instead of a free-text query:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"queryType\": \"SAILPOINT\",\n  \"filters\": {\n    \"attributes.email\": {\n      \"type\": \"TERM\",\n      \"value\": \"jane.doe@example.com\"\n    }\n  }\n}\n```\n\n---\n\n### curl one-liner\n\n```bash\ncurl -s -X POST \\\n  \"https://${TENANT}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer ${TOKEN}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"identities\"],\n    \"query\": { \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\" }\n  }'\n```\n\n---\n\n### Key points\n\n| Detail | Value |\n|---|---|\n| **Scope required** | `sp:search:read` |\n| **`indices`** | Must be `[\"identities\"]` to scope results to identities |\n| **Attribute path** | `attributes.<attributeName>` for custom/standard attributes; `name`/`displayName`/`email` also work at the top level in Lucene |\n| **Pagination** | Add `limit`/`offset` query params, or `searchAfter` for > 10 000 records |\n| **Count** | Add `?count=true` to get `X-Total-Count` in the response header |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, queryType, filters]\n```"
+    }
+  ],
+  "raw_response": "Use **`POST /v3/search`** \u2014 the ISC Search API. You target the `identities` index and filter on the attribute you care about.\n\n---\n\n## Find an identity by email\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  }\n}\n```\n\nThe `query.query` field is a Lucene expression. `attributes.email` is the standard identity attribute path; swap in whatever attribute name you need (e.g. `attributes.employeeNumber`, `name`, `displayName`).\n\n---\n\n### Tighter alternative \u2014 exact-match filter\n\nIf you want a precise, case-insensitive exact match (no tokenization side-effects), use `queryType: SAILPOINT` with a `term` filter instead of a free-text query:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"queryType\": \"SAILPOINT\",\n  \"filters\": {\n    \"attributes.email\": {\n      \"type\": \"TERM\",\n      \"value\": \"jane.doe@example.com\"\n    }\n  }\n}\n```\n\n---\n\n### curl one-liner\n\n```bash\ncurl -s -X POST \\\n  \"https://${TENANT}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer ${TOKEN}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"identities\"],\n    \"query\": { \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\" }\n  }'\n```\n\n---\n\n### Key points\n\n| Detail | Value |\n|---|---|\n| **Scope required** | `sp:search:read` |\n| **`indices`** | Must be `[\"identities\"]` to scope results to identities |\n| **Attribute path** | `attributes.<attributeName>` for custom/standard attributes; `name`/`displayName`/`email` also work at the top level in Lucene |\n| **Pagination** | Add `limit`/`offset` query params, or `searchAfter` for > 10 000 records |\n| **Count** | Add `?count=true` to get `X-Total-Count` in the response header |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, queryType, filters]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

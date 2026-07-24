@@ -1,0 +1,83 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1824,
+  "cost_usd": 0.056476900000000003,
+  "duration_ms": 28056,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## ISC Access Review (Certification) Campaign API Calls\n\nHere's the full flow using SailPoint IdentityNow's v3 REST API.\n\n---\n\n### Step 0 \u2014 Authenticate\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={{CLIENT_ID}}\n&client_secret={{CLIENT_SECRET}}\n```\n\nUse the returned `access_token` as a Bearer token on all subsequent calls.\n\n---\n\n### Step 1 \u2014 Create the Campaign\n\n```http\nPOST /v3/campaigns\nAuthorization: Bearer {{token}}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Access Review\",\n  \"description\": \"Quarterly manager certification\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.000Z\",\n  \"timeZone\": \"America/Chicago\",\n  \"emailNotificationEnabled\": true,\n  \"autoRevokeAllowed\": false,\n  \"recommendationsEnabled\": true,\n  \"mandatoryCommentRequirement\": \"NO_DECISIONS\"\n}\n```\n\n**`type`** options: `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`\n\nSave the `id` from the response \u2014 you'll need it for every subsequent call.\n\n---\n\n### Step 2 \u2014 Activate (Start) the Campaign\n\nCampaigns are created in `STAGED` status. This call moves them to `ACTIVE` and notifies reviewers.\n\n```http\nPOST /v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {{token}}\nContent-Type: application/json\n\n{\n  \"timeZone\": \"America/Chicago\"\n}\n```\n\nA `202 Accepted` response means the activation job was queued. Poll the campaign status if you need to confirm:\n\n```http\nGET /v3/campaigns/{campaignId}\nAuthorization: Bearer {{token}}\n```\n\nLook for `\"status\": \"ACTIVE\"` in the response.\n\n---\n\n### Step 3 \u2014 Pull Results\n\n#### 3a. List certifications (one per reviewer)\n\n```http\nGET /v3/campaigns/{campaignId}/certifications\nAuthorization: Bearer {{token}}\n```\n\nEach certification object includes the reviewer identity, `phase` (`ACTIVE`, `SIGNED`, etc.), and completion stats.\n\n#### 3b. Get line-item decisions for a specific reviewer's certification\n\n```http\nGET /v3/certifications/{certificationId}/access-review-items\nAuthorization: Bearer {{token}}\n```\n\nEach item shows the identity, access (entitlement/role/account), and the reviewer's `decision` (`APPROVE`, `REVOKE`, `ABSTAIN`) once decisions are made.\n\n#### 3c. (Optional) Get a summary/statistics for the campaign\n\n```http\nGET /v3/campaigns/{campaignId}/reports/CAMPAIGN_REPORTS_V2\nAuthorization: Bearer {{token}}\n```\n\n---\n\n### Required OAuth Scopes\n\n| Scope | Used For |\n|---|---|\n| `idn:campaign:create` | POST /v3/campaigns |\n| `idn:campaign:manage` | Activate, update |\n| `idn:campaign:read` | GET campaign, certifications |\n| `idn:certification:read` | GET access-review-items |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/certifications\n    api_version: v3\n  - method: GET\n    path: /v3/certifications/{certificationId}/access-review-items\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes:\n  - idn:campaign:create\n  - idn:campaign:manage\n  - idn:campaign:read\n  - idn:certification:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - timeZone\n  - emailNotificationEnabled\n  - autoRevokeAllowed\n  - recommendationsEnabled\n  - campaignId\n  - certificationId\n```"
+    }
+  ],
+  "raw_response": "## ISC Access Review (Certification) Campaign API Calls\n\nHere's the full flow using SailPoint IdentityNow's v3 REST API.\n\n---\n\n### Step 0 \u2014 Authenticate\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={{CLIENT_ID}}\n&client_secret={{CLIENT_SECRET}}\n```\n\nUse the returned `access_token` as a Bearer token on all subsequent calls.\n\n---\n\n### Step 1 \u2014 Create the Campaign\n\n```http\nPOST /v3/campaigns\nAuthorization: Bearer {{token}}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Access Review\",\n  \"description\": \"Quarterly manager certification\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.000Z\",\n  \"timeZone\": \"America/Chicago\",\n  \"emailNotificationEnabled\": true,\n  \"autoRevokeAllowed\": false,\n  \"recommendationsEnabled\": true,\n  \"mandatoryCommentRequirement\": \"NO_DECISIONS\"\n}\n```\n\n**`type`** options: `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`\n\nSave the `id` from the response \u2014 you'll need it for every subsequent call.\n\n---\n\n### Step 2 \u2014 Activate (Start) the Campaign\n\nCampaigns are created in `STAGED` status. This call moves them to `ACTIVE` and notifies reviewers.\n\n```http\nPOST /v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {{token}}\nContent-Type: application/json\n\n{\n  \"timeZone\": \"America/Chicago\"\n}\n```\n\nA `202 Accepted` response means the activation job was queued. Poll the campaign status if you need to confirm:\n\n```http\nGET /v3/campaigns/{campaignId}\nAuthorization: Bearer {{token}}\n```\n\nLook for `\"status\": \"ACTIVE\"` in the response.\n\n---\n\n### Step 3 \u2014 Pull Results\n\n#### 3a. List certifications (one per reviewer)\n\n```http\nGET /v3/campaigns/{campaignId}/certifications\nAuthorization: Bearer {{token}}\n```\n\nEach certification object includes the reviewer identity, `phase` (`ACTIVE`, `SIGNED`, etc.), and completion stats.\n\n#### 3b. Get line-item decisions for a specific reviewer's certification\n\n```http\nGET /v3/certifications/{certificationId}/access-review-items\nAuthorization: Bearer {{token}}\n```\n\nEach item shows the identity, access (entitlement/role/account), and the reviewer's `decision` (`APPROVE`, `REVOKE`, `ABSTAIN`) once decisions are made.\n\n#### 3c. (Optional) Get a summary/statistics for the campaign\n\n```http\nGET /v3/campaigns/{campaignId}/reports/CAMPAIGN_REPORTS_V2\nAuthorization: Bearer {{token}}\n```\n\n---\n\n### Required OAuth Scopes\n\n| Scope | Used For |\n|---|---|\n| `idn:campaign:create` | POST /v3/campaigns |\n| `idn:campaign:manage` | Activate, update |\n| `idn:campaign:read` | GET campaign, certifications |\n| `idn:certification:read` | GET access-review-items |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/certifications\n    api_version: v3\n  - method: GET\n    path: /v3/certifications/{certificationId}/access-review-items\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes:\n  - idn:campaign:create\n  - idn:campaign:manage\n  - idn:campaign:read\n  - idn:certification:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - timeZone\n  - emailNotificationEnabled\n  - autoRevokeAllowed\n  - recommendationsEnabled\n  - campaignId\n  - certificationId\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

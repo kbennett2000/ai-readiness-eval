@@ -1,0 +1,169 @@
+{
+  "task_id": "audit-report",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 13,
+  "output_tokens": 2400,
+  "cost_usd": 0.09939499999999998,
+  "duration_ms": 44571,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "audit activity events search",
+        "max_results": 8
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "audit activity events",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "search events",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "audit log",
+        "limit": 10
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search the SailPoint MCP tools for audit and activity event APIs."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me get the full details of the search endpoint, which handles event queries in ISC."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "ISC audit/activity data lives in the **Search API** (`POST /v3/search`) using the `events` index. Here's how to query it:\n\n## Core concept\n\nYou target the `events` index, filter by event type and a date range on the `created` field, and page through results with `searchAfter` if you expect >10 000 hits.\n\n## Python example\n\n```python\nimport requests\nfrom datetime import datetime, timedelta, timezone\n\nTENANT = \"https://{your-tenant}.api.identitynow.com\"\nTOKEN  = \"<your-bearer-token>\"   # obtained via /oauth/token\n\ndef get_events_last_24h(event_type: str) -> list[dict]:\n    \"\"\"Fetch all events of a given type from the past 24 hours.\"\"\"\n    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(\n        \"%Y-%m-%dT%H:%M:%S.000Z\"\n    )\n\n    url     = f\"{TENANT}/v3/search\"\n    headers = {\n        \"Authorization\": f\"Bearer {TOKEN}\",\n        \"Content-Type\":  \"application/json\",\n        \"Accept\":        \"application/json\",\n    }\n\n    payload = {\n        \"indices\": [\"events\"],           # target the audit/event index\n        \"queryType\": \"SAILPOINT\",\n        \"query\": {\n            \"query\": f'type:\"{event_type}\"',  # Lucene query on event type\n            \"fields\": [\"type\", \"created\", \"action\", \"target\", \"actor\", \"technicalName\"]\n        },\n        \"filters\": {\n            \"created\": {\n                \"type\": \"RANGE\",\n                \"range\": {\"gt\": since}   # events after 'since'\n            }\n        },\n        \"sort\": [\"created\"],             # ascending; use [\"-created\"] for newest-first\n    }\n\n    results    = []\n    search_after = None\n\n    while True:\n        if search_after:\n            payload[\"searchAfter\"] = search_after\n\n        resp = requests.post(url, headers=headers, json=payload,\n                             params={\"limit\": 250, \"count\": True})\n        resp.raise_for_status()\n\n        batch = resp.json()\n        if not batch:\n            break\n\n        results.extend(batch)\n\n        # searchAfter paging: use the sort value of the last item\n        last = batch[-1]\n        search_after = [last.get(\"created\")]\n\n        # stop if we got a partial page (no more data)\n        if len(batch) < 250:\n            break\n\n    return results\n\n\n# Example: all authentication events in the past 24 hours\nevents = get_events_last_24h(\"AUTHENTICATION\")\nfor e in events:\n    print(e.get(\"created\"), e.get(\"action\"), e.get(\"actor\", {}).get(\"name\"))\n```\n\n## Key fields to know\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"events\"]` to hit the audit log |\n| `query.query` | Lucene query string \u2014 filter by `type`, `action`, `actor.name`, `target.name`, etc. |\n| `filters.created.range.gt` | ISO-8601 timestamp lower bound |\n| `filters.created.range.lt` | ISO-8601 timestamp upper bound (omit for \"up to now\") |\n| `sort` | Use `[\"created\"]` for stable `searchAfter` paging |\n| `searchAfter` | Pass the sort value of the last returned doc to get the next page (required beyond offset 10 000) |\n\n## Common `type` values for events\n\n- `AUTHENTICATION` \u2014 logins, MFA, SSO\n- `ACCESS_REQUEST` \u2014 access request lifecycle\n- `PROVISIONING` \u2014 account create/update/delete on sources\n- `PASSWORD_CHANGE` \u2014 password resets and changes\n- `ROLE_MEMBERSHIP_CHANGED` \u2014 role assignments/removals\n\n## Auth\n\nGet a token first:\n\n```bash\ncurl -X POST \"https://{tenant}.identitynow.com/oauth/token\" \\\n  -d \"grant_type=client_credentials&client_id=...&client_secret=...\"\n```\n\nScope needed: `sp:search:read`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, searchAfter, limit]\n```"
+    }
+  ],
+  "raw_response": "ISC audit/activity data lives in the **Search API** (`POST /v3/search`) using the `events` index. Here's how to query it:\n\n## Core concept\n\nYou target the `events` index, filter by event type and a date range on the `created` field, and page through results with `searchAfter` if you expect >10 000 hits.\n\n## Python example\n\n```python\nimport requests\nfrom datetime import datetime, timedelta, timezone\n\nTENANT = \"https://{your-tenant}.api.identitynow.com\"\nTOKEN  = \"<your-bearer-token>\"   # obtained via /oauth/token\n\ndef get_events_last_24h(event_type: str) -> list[dict]:\n    \"\"\"Fetch all events of a given type from the past 24 hours.\"\"\"\n    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(\n        \"%Y-%m-%dT%H:%M:%S.000Z\"\n    )\n\n    url     = f\"{TENANT}/v3/search\"\n    headers = {\n        \"Authorization\": f\"Bearer {TOKEN}\",\n        \"Content-Type\":  \"application/json\",\n        \"Accept\":        \"application/json\",\n    }\n\n    payload = {\n        \"indices\": [\"events\"],           # target the audit/event index\n        \"queryType\": \"SAILPOINT\",\n        \"query\": {\n            \"query\": f'type:\"{event_type}\"',  # Lucene query on event type\n            \"fields\": [\"type\", \"created\", \"action\", \"target\", \"actor\", \"technicalName\"]\n        },\n        \"filters\": {\n            \"created\": {\n                \"type\": \"RANGE\",\n                \"range\": {\"gt\": since}   # events after 'since'\n            }\n        },\n        \"sort\": [\"created\"],             # ascending; use [\"-created\"] for newest-first\n    }\n\n    results    = []\n    search_after = None\n\n    while True:\n        if search_after:\n            payload[\"searchAfter\"] = search_after\n\n        resp = requests.post(url, headers=headers, json=payload,\n                             params={\"limit\": 250, \"count\": True})\n        resp.raise_for_status()\n\n        batch = resp.json()\n        if not batch:\n            break\n\n        results.extend(batch)\n\n        # searchAfter paging: use the sort value of the last item\n        last = batch[-1]\n        search_after = [last.get(\"created\")]\n\n        # stop if we got a partial page (no more data)\n        if len(batch) < 250:\n            break\n\n    return results\n\n\n# Example: all authentication events in the past 24 hours\nevents = get_events_last_24h(\"AUTHENTICATION\")\nfor e in events:\n    print(e.get(\"created\"), e.get(\"action\"), e.get(\"actor\", {}).get(\"name\"))\n```\n\n## Key fields to know\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"events\"]` to hit the audit log |\n| `query.query` | Lucene query string \u2014 filter by `type`, `action`, `actor.name`, `target.name`, etc. |\n| `filters.created.range.gt` | ISO-8601 timestamp lower bound |\n| `filters.created.range.lt` | ISO-8601 timestamp upper bound (omit for \"up to now\") |\n| `sort` | Use `[\"created\"]` for stable `searchAfter` paging |\n| `searchAfter` | Pass the sort value of the last returned doc to get the next page (required beyond offset 10 000) |\n\n## Common `type` values for events\n\n- `AUTHENTICATION` \u2014 logins, MFA, SSO\n- `ACCESS_REQUEST` \u2014 access request lifecycle\n- `PROVISIONING` \u2014 account create/update/delete on sources\n- `PASSWORD_CHANGE` \u2014 password resets and changes\n- `ROLE_MEMBERSHIP_CHANGED` \u2014 role assignments/removals\n\n## Auth\n\nGet a token first:\n\n```bash\ncurl -X POST \"https://{tenant}.identitynow.com/oauth/token\" \\\n  -d \"grant_type=client_credentials&client_id=...&client_secret=...\"\n```\n\nScope needed: `sp:search:read`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, searchAfter, limit]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (4 call(s))",
+    "attempts": 1
+  }
+}

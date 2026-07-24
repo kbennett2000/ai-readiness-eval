@@ -1,0 +1,83 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.75,
+    "method": 0.75,
+    "api_version": 0.75,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/campaigns/{}/reports",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1785,
+  "cost_usd": 0.1274639,
+  "duration_ms": 29558,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here are the API calls in sequence, using the Client Credentials grant flow (appropriate for scripts/automation):\n\n---\n\n## Step 1 \u2014 Authenticate\n\nExchange your PAT's Client ID and Secret for a JWT access token:\n\n```bash\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={clientId}\n&client_secret={clientSecret}\n```\n\nExtract `access_token` from the response. All subsequent calls use:\n```\nAuthorization: Bearer {access_token}\n```\n\n---\n\n## Step 2 \u2014 Create the Campaign\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 Access Review\",\n  \"description\": \"Quarterly manager certification\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T00:00:00Z\"\n}\n```\n\nFor a search-based campaign (e.g., certifying specific identities), use `type: \"SEARCH\"` and include a `filter` or search query in the body. The response includes the new campaign's `id`.\n\n---\n\n## Step 3 \u2014 Activate the Campaign\n\nThe campaign starts in a preview state. Once you're satisfied with it, activate it:\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{}\n```\n\nThis pushes the campaign to reviewers as active certifications.\n\n---\n\n## Step 4 \u2014 Check Campaign Status\n\nPoll the campaign to see its current state:\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}\nAuthorization: Bearer {access_token}\n```\n\n---\n\n## Step 5 \u2014 Pull Results / Reports\n\nList available reports for the campaign:\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports\nAuthorization: Bearer {access_token}\n```\n\nTrigger a specific report (e.g., certification results):\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports/{reportType}\nAuthorization: Bearer {access_token}\n```\n\nCommon `reportType` values include `CAMPAIGN_COMPOSITION_REPORT` and `CERTIFICATION_DECISION_REPORT`.\n\n---\n\n> **Note:** The documentation excerpts provided confirm operation names but not full versioned paths. The `/v3/campaigns` paths above follow SailPoint's standard ISC API conventions. Verify against the full API reference if your tenant uses a different version segment.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/reports\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/reports/{reportType}\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret, name, description, type, deadline, campaignId, reportType]\n```"
+    }
+  ],
+  "raw_response": "Here are the API calls in sequence, using the Client Credentials grant flow (appropriate for scripts/automation):\n\n---\n\n## Step 1 \u2014 Authenticate\n\nExchange your PAT's Client ID and Secret for a JWT access token:\n\n```bash\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={clientId}\n&client_secret={clientSecret}\n```\n\nExtract `access_token` from the response. All subsequent calls use:\n```\nAuthorization: Bearer {access_token}\n```\n\n---\n\n## Step 2 \u2014 Create the Campaign\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 Access Review\",\n  \"description\": \"Quarterly manager certification\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T00:00:00Z\"\n}\n```\n\nFor a search-based campaign (e.g., certifying specific identities), use `type: \"SEARCH\"` and include a `filter` or search query in the body. The response includes the new campaign's `id`.\n\n---\n\n## Step 3 \u2014 Activate the Campaign\n\nThe campaign starts in a preview state. Once you're satisfied with it, activate it:\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{}\n```\n\nThis pushes the campaign to reviewers as active certifications.\n\n---\n\n## Step 4 \u2014 Check Campaign Status\n\nPoll the campaign to see its current state:\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}\nAuthorization: Bearer {access_token}\n```\n\n---\n\n## Step 5 \u2014 Pull Results / Reports\n\nList available reports for the campaign:\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports\nAuthorization: Bearer {access_token}\n```\n\nTrigger a specific report (e.g., certification results):\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports/{reportType}\nAuthorization: Bearer {access_token}\n```\n\nCommon `reportType` values include `CAMPAIGN_COMPOSITION_REPORT` and `CERTIFICATION_DECISION_REPORT`.\n\n---\n\n> **Note:** The documentation excerpts provided confirm operation names but not full versioned paths. The `/v3/campaigns` paths above follow SailPoint's standard ISC API conventions. Verify against the full API reference if your tenant uses a different version segment.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{campaignId}/reports\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{campaignId}/reports/{reportType}\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret, name, description, type, deadline, campaignId, reportType]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "task_id": "auth-token",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": null,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/token",
+      "gt_api_version": "oauth",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/token",
+      "answer_api_version": "oauth"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/personal-access-tokens",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 677,
+  "cost_usd": 0.0393369,
+  "duration_ms": 10804,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "SailPoint ISC uses the OAuth 2.0 **client credentials** grant. Send a `POST` to your tenant's token endpoint:\n\n```\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n```\n\n**Request body (form-encoded):**\n```\ngrant_type=client_credentials&client_id={your_client_id}&client_secret={your_client_secret}\n```\n\n---\n\n**curl example:**\n```bash\ncurl -s -X POST \\\n  \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials\" \\\n  -d \"client_id=${CLIENT_ID}\" \\\n  -d \"client_secret=${CLIENT_SECRET}\"\n```\n\n**Python (requests) example:**\n```python\nimport requests\n\ntenant = \"your-org\"\nresp = requests.post(\n    f\"https://{tenant}.api.identitynow.com/oauth/token\",\n    data={\n        \"grant_type\": \"client_credentials\",\n        \"client_id\": CLIENT_ID,\n        \"client_secret\": CLIENT_SECRET,\n    },\n)\nresp.raise_for_status()\naccess_token = resp.json()[\"access_token\"]\n```\n\n**Successful response (200):**\n```json\n{\n  \"access_token\": \"eyJhbGciOi...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 750\n}\n```\n\nUse the token in subsequent API calls:\n```\nAuthorization: Bearer {access_token}\n```\n\nPersonal Access Tokens inherit the scopes granted when they were created in the ISC UI \u2014 no additional scope parameter is needed in this request.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 client credentials\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret]\n```"
+    }
+  ],
+  "raw_response": "SailPoint ISC uses the OAuth 2.0 **client credentials** grant. Send a `POST` to your tenant's token endpoint:\n\n```\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n```\n\n**Request body (form-encoded):**\n```\ngrant_type=client_credentials&client_id={your_client_id}&client_secret={your_client_secret}\n```\n\n---\n\n**curl example:**\n```bash\ncurl -s -X POST \\\n  \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials\" \\\n  -d \"client_id=${CLIENT_ID}\" \\\n  -d \"client_secret=${CLIENT_SECRET}\"\n```\n\n**Python (requests) example:**\n```python\nimport requests\n\ntenant = \"your-org\"\nresp = requests.post(\n    f\"https://{tenant}.api.identitynow.com/oauth/token\",\n    data={\n        \"grant_type\": \"client_credentials\",\n        \"client_id\": CLIENT_ID,\n        \"client_secret\": CLIENT_SECRET,\n    },\n)\nresp.raise_for_status()\naccess_token = resp.json()[\"access_token\"]\n```\n\n**Successful response (200):**\n```json\n{\n  \"access_token\": \"eyJhbGciOi...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 750\n}\n```\n\nUse the token in subsequent API calls:\n```\nAuthorization: Bearer {access_token}\n```\n\nPersonal Access Tokens inherit the scopes granted when they were created in the ISC UI \u2014 no additional scope parameter is needed in this request.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 client credentials\nrequired_scopes: []\nkey_parameters: [grant_type, client_id, client_secret]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

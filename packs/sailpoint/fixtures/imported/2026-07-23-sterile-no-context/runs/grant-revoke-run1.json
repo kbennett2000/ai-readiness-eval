@@ -1,0 +1,50 @@
+{
+  "task_id": "grant-revoke",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1994,
+  "cost_usd": 0.05904290000000001,
+  "duration_ms": 32489,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "In SailPoint ISC (Identity Security Cloud), both granting and revoking a role use the **same endpoint** \u2014 `POST /v3/access-requests` \u2014 differentiated by the `requestType` field. These requests may flow through approval workflows depending on your role configuration.\n\n## Authentication\n\nObtain a token via the client credentials OAuth2 flow:\n\n```\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id=<client_id>&client_secret=<client_secret>\n```\n\nUse the returned `access_token` as a Bearer token on all subsequent calls.\n\n---\n\n## Grant a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"<role-id>\",\n      \"comment\": \"Granting role via API\"\n    }\n  ]\n}\n```\n\n---\n\n## Revoke a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"<role-id>\",\n      \"comment\": \"Revoking role via API\"\n    }\n  ]\n}\n```\n\n---\n\n## Key Notes\n\n- `requestedFor` is an array of **identity IDs** (not usernames/emails). Retrieve them via `GET /v3/identities?filters=name eq \"<name>\"`.\n- `requestedItems[].id` is the **role ID**, retrievable via `GET /v3/roles`.\n- The request goes through any configured approval workflows. If you need to bypass approvals, use the admin-level `POST /beta/access-requests/approve` flow or configure auto-approval on the role.\n- A `requesterId` field is optional; if omitted, it defaults to the API client's identity.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes:\n  - idn:access-request:create\nkey_parameters:\n  - requestedFor\n  - requestType\n  - requestedItems\n  - type\n  - id\n  - comment\n```"
+    }
+  ],
+  "raw_response": "In SailPoint ISC (Identity Security Cloud), both granting and revoking a role use the **same endpoint** \u2014 `POST /v3/access-requests` \u2014 differentiated by the `requestType` field. These requests may flow through approval workflows depending on your role configuration.\n\n## Authentication\n\nObtain a token via the client credentials OAuth2 flow:\n\n```\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id=<client_id>&client_secret=<client_secret>\n```\n\nUse the returned `access_token` as a Bearer token on all subsequent calls.\n\n---\n\n## Grant a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"<role-id>\",\n      \"comment\": \"Granting role via API\"\n    }\n  ]\n}\n```\n\n---\n\n## Revoke a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"<role-id>\",\n      \"comment\": \"Revoking role via API\"\n    }\n  ]\n}\n```\n\n---\n\n## Key Notes\n\n- `requestedFor` is an array of **identity IDs** (not usernames/emails). Retrieve them via `GET /v3/identities?filters=name eq \"<name>\"`.\n- `requestedItems[].id` is the **role ID**, retrievable via `GET /v3/roles`.\n- The request goes through any configured approval workflows. If you need to bypass approvals, use the admin-level `POST /beta/access-requests/approve` flow or configure auto-approval on the role.\n- A `requesterId` field is optional; if omitted, it defaults to the API client's identity.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes:\n  - idn:access-request:create\nkey_parameters:\n  - requestedFor\n  - requestType\n  - requestedItems\n  - type\n  - id\n  - comment\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

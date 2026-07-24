@@ -1,0 +1,149 @@
+{
+  "task_id": "audit-report",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1403,
+  "cost_usd": 0.0895265,
+  "duration_ms": 32374,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "audit events activity search",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "audit events activity search"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation,mcp__sailpoint__get_scopes,mcp__sailpoint__get_auth_guide",
+        "max_results": 3
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "operation": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_auth_guide",
+      "input": {}
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search the SailPoint MCP tools for audit/search-related capabilities."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_auth_guide"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's how to query audit/activity events from ISC.\n\n## Endpoint\n\n**`POST /v3/search`** \u2014 ISC's unified search API. Audit/activity events live in the `events` index.\n\n## Auth\n\n1. Create a PAT (max 10 per user) in the ISC UI to get a `client_id`/`client_secret`.\n2. Exchange them for a bearer token \u2014 credentials go in the **POST body**, never a query string:\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id=YOUR_ID&client_secret=YOUR_SECRET\n```\n\n3. Use the returned `access_token` as `Authorization: Bearer <token>` on every request.\n\n**Required scope:** `sp:search:read`\n\n---\n\n## Querying audit events \u2014 last 24 hours, filtered by type\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search?limit=250&count=true\nAuthorization: Bearer <token>\nContent-Type: application/json\n```\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"filters\": {\n    \"type\": {\n      \"type\": \"TERMS\",\n      \"terms\": [\"USER_MANAGEMENT\"]\n    },\n    \"created\": {\n      \"type\": \"RANGE\",\n      \"range\": {\n        \"lower\": {\n          \"value\": \"now-24h\",\n          \"inclusive\": true\n        }\n      }\n    }\n  },\n  \"sort\": [\"-created\"]\n}\n```\n\n### Key fields to customize\n\n| Field | Purpose |\n|---|---|\n| `indices` | Always `[\"events\"]` for audit data |\n| `filters.type.terms` | Event type filter \u2014 e.g. `USER_MANAGEMENT`, `ACCESS_REQUEST`, `PROVISIONING`, `AUTH`, `CERTIFICATION`, `ROLE_MANAGEMENT` |\n| `filters.created.range` | Time window; use Elasticsearch date-math (`now-24h`, `now-7d`) or ISO-8601 timestamps |\n| `sort` | `-created` = newest first |\n| `limit` (query param) | Max 250 per page; use `searchAfter` to page past 10,000 results |\n| `count=true` (query param) | Adds `X-Total-Count` header to the response |\n\n### Pagination past 10,000 records\n\nUse `searchAfter` with the sort value of the last item in your previous response:\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": { \"query\": \"*\" },\n  \"filters\": { ... },\n  \"sort\": [\"-created\"],\n  \"searchAfter\": [\"2026-07-22T10:35:00.000Z\"]\n}\n```\n\n### Rate limits\n\n100 requests per token per 10 seconds. On a `429`, back off using the `Retry-After` response header.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 client credentials (PAT-based bearer token)\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, searchAfter, limit, count]\n```"
+    }
+  ],
+  "raw_response": "Here's how to query audit/activity events from ISC.\n\n## Endpoint\n\n**`POST /v3/search`** \u2014 ISC's unified search API. Audit/activity events live in the `events` index.\n\n## Auth\n\n1. Create a PAT (max 10 per user) in the ISC UI to get a `client_id`/`client_secret`.\n2. Exchange them for a bearer token \u2014 credentials go in the **POST body**, never a query string:\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id=YOUR_ID&client_secret=YOUR_SECRET\n```\n\n3. Use the returned `access_token` as `Authorization: Bearer <token>` on every request.\n\n**Required scope:** `sp:search:read`\n\n---\n\n## Querying audit events \u2014 last 24 hours, filtered by type\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search?limit=250&count=true\nAuthorization: Bearer <token>\nContent-Type: application/json\n```\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"filters\": {\n    \"type\": {\n      \"type\": \"TERMS\",\n      \"terms\": [\"USER_MANAGEMENT\"]\n    },\n    \"created\": {\n      \"type\": \"RANGE\",\n      \"range\": {\n        \"lower\": {\n          \"value\": \"now-24h\",\n          \"inclusive\": true\n        }\n      }\n    }\n  },\n  \"sort\": [\"-created\"]\n}\n```\n\n### Key fields to customize\n\n| Field | Purpose |\n|---|---|\n| `indices` | Always `[\"events\"]` for audit data |\n| `filters.type.terms` | Event type filter \u2014 e.g. `USER_MANAGEMENT`, `ACCESS_REQUEST`, `PROVISIONING`, `AUTH`, `CERTIFICATION`, `ROLE_MANAGEMENT` |\n| `filters.created.range` | Time window; use Elasticsearch date-math (`now-24h`, `now-7d`) or ISO-8601 timestamps |\n| `sort` | `-created` = newest first |\n| `limit` (query param) | Max 250 per page; use `searchAfter` to page past 10,000 results |\n| `count=true` (query param) | Adds `X-Total-Count` header to the response |\n\n### Pagination past 10,000 records\n\nUse `searchAfter` with the sort value of the last item in your previous response:\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": { \"query\": \"*\" },\n  \"filters\": { ... },\n  \"sort\": [\"-created\"],\n  \"searchAfter\": [\"2026-07-22T10:35:00.000Z\"]\n}\n```\n\n### Rate limits\n\n100 requests per token per 10 seconds. On a `429`, back off using the `Retry-After` response header.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 client credentials (PAT-based bearer token)\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, searchAfter, limit, count]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (4 call(s))",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,199 @@
+{
+  "task_id": "source-aggregation",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.75,
+    "method": 0.75,
+    "api_version": 0.75,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources/{}/load-accounts",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources/{}/load-accounts",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/account-aggregations/{}/status",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/account-aggregations/{}/status",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 9,
+  "output_tokens": 2015,
+  "cost_usd": 0.1197595,
+  "duration_ms": 35205,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "source create aggregation ISC SailPoint",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "create source"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "account aggregation load accounts"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_auth_guide",
+      "input": {}
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createSource"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "importAccounts"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "getAccountAggregationStatus"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me look up the specific operations for creating a source and triggering account aggregation in parallel."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_auth_guide"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Now let me get the full details on both key operations in parallel."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's the full walkthrough \u2014 four API calls total.\n\n---\n\n## Step 1 \u2014 Get a Bearer Token\n\nAll ISC API calls use OAuth2 client credentials. Exchange your PAT's `client_id`/`client_secret` for a token:\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id=YOUR_CLIENT_ID\n&client_secret=YOUR_CLIENT_SECRET\n```\n\n> Send credentials in the **body**, never in the query string. The response `access_token` goes into every subsequent request as `Authorization: Bearer <token>`.\n\n---\n\n## Step 2 \u2014 Create the Source\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/sources\nAuthorization: Bearer <access_token>\nContent-Type: application/json\n```\n\n```json\n{\n  \"name\": \"My LDAP Source\",\n  \"description\": \"Corporate LDAP directory\",\n  \"owner\": {\n    \"type\": \"IDENTITY\",\n    \"id\": \"<owner-identity-id>\",\n    \"name\": \"Jane Admin\"\n  },\n  \"connector\": \"active-directory\",\n  \"connectorName\": \"Active Directory\",\n  \"connectorAttributes\": {\n    \"host\": \"ldap.corp.example.com\",\n    \"port\": 389,\n    \"baseDN\": \"dc=corp,dc=example,dc=com\"\n  },\n  \"authoritative\": false,\n  \"deleteThreshold\": 10\n}\n```\n\n**Required fields:** `name`, `owner`, `connector`.\n\n**Key optional fields:**\n- `cluster` \u2014 tie the source to a specific VA cluster (required for on-prem connectors)\n- `deleteThreshold` \u2014 safety cap; aggregation will halt rather than delete more than this % of accounts\n- `authoritative` \u2014 marks this source as the system of record for identities\n\n**Response** `201 Created` includes the new source's `id` \u2014 save it for step 3.\n\n```json\n{\n  \"id\": \"2c9180835d191a86015d28455b4b232a\",\n  \"name\": \"My LDAP Source\",\n  ...\n}\n```\n\n---\n\n## Step 3 \u2014 Kick Off Account Aggregation\n\nThis is a **beta** endpoint, so you must include `X-SailPoint-Experimental: true`.\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/sources/{sourceId}/load-accounts\nAuthorization: Bearer <access_token>\nX-SailPoint-Experimental: true\nContent-Type: application/json\n\n{}\n```\n\nNo body is required for a standard (connector-driven) aggregation. Two optional body fields:\n\n| Field | Type | Purpose |\n|---|---|---|\n| `disableOptimization` | boolean | Force a full aggregation even if ISC would normally run an optimized/delta scan |\n| `file` | multipart file | Supply an account feed file instead of connecting live (for DelimitedFile/CSV sources) |\n\n**Response** `202 Accepted` \u2014 aggregation runs asynchronously:\n\n```json\n{\n  \"id\": \"2c91808474d2e4ae0174e70f9c700073\",\n  \"type\": \"TASK_RESULT\",\n  \"status\": \"PENDING\"\n}\n```\n\nSave the `id` for status polling.\n\n---\n\n## Step 4 \u2014 Poll Aggregation Status\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/account-aggregations/{id}/status\nAuthorization: Bearer <access_token>\nX-SailPoint-Experimental: true\n```\n\nReturns progress while the job is running:\n\n```json\n{\n  \"id\": \"2c91808474d2e4ae0174e70f9c700073\",\n  \"status\": \"IN_PROGRESS\",\n  \"totalAccounts\": 1500,\n  \"processedAccounts\": 843,\n  \"newAccounts\": 12,\n  \"changedAccounts\": 5,\n  \"deletedAccounts\": 1\n}\n```\n\n`status` will move through `PENDING` \u2192 `IN_PROGRESS` \u2192 `SUCCESS` (or `ERROR`). This endpoint only returns data while the job is active; once it completes it returns 404 \u2014 completion means done.\n\n---\n\n## Summary of the flow\n\n```\nPOST /oauth/token                              \u2192 bearer token\nPOST /v3/sources                              \u2192 source.id\nPOST /beta/sources/{sourceId}/load-accounts   \u2192 aggregation.id\nGET  /beta/account-aggregations/{id}/status   \u2192 poll until done\n```\n\n**Scope required:** `idn:sources:manage` (covers both the create and the aggregation trigger).\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{sourceId}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/account-aggregations/{id}/status\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: [idn:sources:manage]\nkey_parameters: [name, owner, connector, sourceId, disableOptimization, file, id]\n```"
+    }
+  ],
+  "raw_response": "Here's the full walkthrough \u2014 four API calls total.\n\n---\n\n## Step 1 \u2014 Get a Bearer Token\n\nAll ISC API calls use OAuth2 client credentials. Exchange your PAT's `client_id`/`client_secret` for a token:\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id=YOUR_CLIENT_ID\n&client_secret=YOUR_CLIENT_SECRET\n```\n\n> Send credentials in the **body**, never in the query string. The response `access_token` goes into every subsequent request as `Authorization: Bearer <token>`.\n\n---\n\n## Step 2 \u2014 Create the Source\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/sources\nAuthorization: Bearer <access_token>\nContent-Type: application/json\n```\n\n```json\n{\n  \"name\": \"My LDAP Source\",\n  \"description\": \"Corporate LDAP directory\",\n  \"owner\": {\n    \"type\": \"IDENTITY\",\n    \"id\": \"<owner-identity-id>\",\n    \"name\": \"Jane Admin\"\n  },\n  \"connector\": \"active-directory\",\n  \"connectorName\": \"Active Directory\",\n  \"connectorAttributes\": {\n    \"host\": \"ldap.corp.example.com\",\n    \"port\": 389,\n    \"baseDN\": \"dc=corp,dc=example,dc=com\"\n  },\n  \"authoritative\": false,\n  \"deleteThreshold\": 10\n}\n```\n\n**Required fields:** `name`, `owner`, `connector`.\n\n**Key optional fields:**\n- `cluster` \u2014 tie the source to a specific VA cluster (required for on-prem connectors)\n- `deleteThreshold` \u2014 safety cap; aggregation will halt rather than delete more than this % of accounts\n- `authoritative` \u2014 marks this source as the system of record for identities\n\n**Response** `201 Created` includes the new source's `id` \u2014 save it for step 3.\n\n```json\n{\n  \"id\": \"2c9180835d191a86015d28455b4b232a\",\n  \"name\": \"My LDAP Source\",\n  ...\n}\n```\n\n---\n\n## Step 3 \u2014 Kick Off Account Aggregation\n\nThis is a **beta** endpoint, so you must include `X-SailPoint-Experimental: true`.\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/sources/{sourceId}/load-accounts\nAuthorization: Bearer <access_token>\nX-SailPoint-Experimental: true\nContent-Type: application/json\n\n{}\n```\n\nNo body is required for a standard (connector-driven) aggregation. Two optional body fields:\n\n| Field | Type | Purpose |\n|---|---|---|\n| `disableOptimization` | boolean | Force a full aggregation even if ISC would normally run an optimized/delta scan |\n| `file` | multipart file | Supply an account feed file instead of connecting live (for DelimitedFile/CSV sources) |\n\n**Response** `202 Accepted` \u2014 aggregation runs asynchronously:\n\n```json\n{\n  \"id\": \"2c91808474d2e4ae0174e70f9c700073\",\n  \"type\": \"TASK_RESULT\",\n  \"status\": \"PENDING\"\n}\n```\n\nSave the `id` for status polling.\n\n---\n\n## Step 4 \u2014 Poll Aggregation Status\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/account-aggregations/{id}/status\nAuthorization: Bearer <access_token>\nX-SailPoint-Experimental: true\n```\n\nReturns progress while the job is running:\n\n```json\n{\n  \"id\": \"2c91808474d2e4ae0174e70f9c700073\",\n  \"status\": \"IN_PROGRESS\",\n  \"totalAccounts\": 1500,\n  \"processedAccounts\": 843,\n  \"newAccounts\": 12,\n  \"changedAccounts\": 5,\n  \"deletedAccounts\": 1\n}\n```\n\n`status` will move through `PENDING` \u2192 `IN_PROGRESS` \u2192 `SUCCESS` (or `ERROR`). This endpoint only returns data while the job is active; once it completes it returns 404 \u2014 completion means done.\n\n---\n\n## Summary of the flow\n\n```\nPOST /oauth/token                              \u2192 bearer token\nPOST /v3/sources                              \u2192 source.id\nPOST /beta/sources/{sourceId}/load-accounts   \u2192 aggregation.id\nGET  /beta/account-aggregations/{id}/status   \u2192 poll until done\n```\n\n**Scope required:** `idn:sources:manage` (covers both the create and the aggregation trigger).\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{sourceId}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/account-aggregations/{id}/status\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: [idn:sources:manage]\nkey_parameters: [name, owner, connector, sourceId, disableOptimization, file, id]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (6 call(s))",
+    "attempts": 1
+  }
+}

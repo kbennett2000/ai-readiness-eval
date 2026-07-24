@@ -1,0 +1,50 @@
+{
+  "task_id": "identity-accounts",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/accounts",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/accounts",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 921,
+  "cost_usd": 0.0428939,
+  "duration_ms": 15771,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## List Accounts by Identity ID in ISC\n\nUse the **Accounts API** with a filter on `identityId` to retrieve every account linked to a given identity across all connected sources.\n\n### Request\n\n```http\nGET /v3/accounts?filters=identityId eq \"{identityId}\"\nAuthorization: Bearer {access_token}\n```\n\n### Example (curl)\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Optional query parameters\n\n| Parameter | Purpose |\n|-----------|---------|\n| `limit` | Max results per page (default 250, max 250) |\n| `offset` | Pagination offset |\n| `count` | Set to `true` to return total count in `X-Total-Count` header |\n| `sorters` | e.g. `sourceId`, `name` |\n\n### Example paginated call\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22&limit=250&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n### Key response fields\n\nEach returned account object includes:\n\n- `id` \u2014 account ID\n- `name` \u2014 account name on the source\n- `sourceId` / `sourceName` \u2014 which connected source the account lives on\n- `attributes` \u2014 source-specific attributes (username, email, etc.)\n- `disabled`, `locked` \u2014 account state flags\n- `entitlementCount` \u2014 number of entitlements on that account\n\n### Notes\n\n- Results span **all connected sources** automatically \u2014 no need to query per-source.\n- If the identity has no accounts, the response is an empty array `[]` with HTTP 200.\n- Requires the OAuth client to have the `idn:account-list:read` scope (or admin authority).\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:account-list:read]\nkey_parameters: [filters, identityId]\n```"
+    }
+  ],
+  "raw_response": "## List Accounts by Identity ID in ISC\n\nUse the **Accounts API** with a filter on `identityId` to retrieve every account linked to a given identity across all connected sources.\n\n### Request\n\n```http\nGET /v3/accounts?filters=identityId eq \"{identityId}\"\nAuthorization: Bearer {access_token}\n```\n\n### Example (curl)\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Optional query parameters\n\n| Parameter | Purpose |\n|-----------|---------|\n| `limit` | Max results per page (default 250, max 250) |\n| `offset` | Pagination offset |\n| `count` | Set to `true` to return total count in `X-Total-Count` header |\n| `sorters` | e.g. `sourceId`, `name` |\n\n### Example paginated call\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22&limit=250&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n### Key response fields\n\nEach returned account object includes:\n\n- `id` \u2014 account ID\n- `name` \u2014 account name on the source\n- `sourceId` / `sourceName` \u2014 which connected source the account lives on\n- `attributes` \u2014 source-specific attributes (username, email, etc.)\n- `disabled`, `locked` \u2014 account state flags\n- `entitlementCount` \u2014 number of entitlements on that account\n\n### Notes\n\n- Results span **all connected sources** automatically \u2014 no need to query per-source.\n- If the identity has no accounts, the response is an empty array `[]` with HTTP 200.\n- Requires the OAuth client to have the `idn:account-list:read` scope (or admin authority).\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:account-list:read]\nkey_parameters: [filters, identityId]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

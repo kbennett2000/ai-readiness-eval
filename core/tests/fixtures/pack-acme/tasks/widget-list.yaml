@@ -1,0 +1,17 @@
+id: widget-list
+category: foundational
+prompt: How do I list widgets in Acme Widget Cloud?
+ground_truth:
+  endpoints:
+    - method: GET
+      path: /v3/widgets
+      api_version: v3
+      operation_id: listWidgets
+  auth_flow: OAuth2 bearer token
+  required_scopes:
+    - "widgets:read"
+  key_parameters:
+    - { name: filters, in: query, required: false }
+  success_shape: 200 OK with a JSON array of widgets.
+  common_failure_modes:
+    - Forgetting the bearer token.

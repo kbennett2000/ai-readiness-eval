@@ -1,0 +1,17 @@
+id: widget-create
+category: foundational
+prompt: How do I create a widget in Acme Widget Cloud?
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/widgets
+      api_version: v3
+      operation_id: createWidget
+  auth_flow: OAuth2 bearer token
+  required_scopes:
+    - "widgets:write"
+  key_parameters:
+    - { name: name, in: body, required: true }
+  success_shape: 201 Created with the new widget.
+  common_failure_modes:
+    - Missing the widgets:write scope.

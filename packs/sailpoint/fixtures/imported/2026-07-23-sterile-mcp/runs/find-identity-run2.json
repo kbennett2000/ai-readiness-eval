@@ -1,0 +1,154 @@
+{
+  "task_id": "find-identity",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/public-identities",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1381,
+  "cost_usd": 0.09432170000000001,
+  "duration_ms": 30403,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "identity search filter attribute",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "list identities filter by attribute email"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation,mcp__sailpoint__get_scopes",
+        "max_results": 2
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "operation": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint ISC identity lookup tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "The `/v3/search` endpoint looks like the right tool. Let me fetch its full spec alongside the scopes needed."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's how to find an identity by email (or any other attribute) using the ISC Search API.\n\n---\n\n## Look up an identity by attribute\n\nUse `POST /v3/search`. You target the `identities` index and write a query against the field you care about. For email, the field is `attributes.email` (or sometimes `emails` depending on how the attribute is mapped \u2014 use `attributes.email` for the standard identity attribute).\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  },\n  \"queryResultFilter\": {\n    \"includes\": [\"id\", \"name\", \"displayName\", \"attributes.email\"]\n  }\n}\n```\n\n### Key body fields\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"identities\"]` to scope the search to identities. |\n| `query.query` | Lucene-style query string. Use `field:\"value\"` for an exact match. |\n| `queryResultFilter.includes` | Whitelist only the fields you need in the response (optional but reduces payload). |\n\n### Exact-match vs. wildcard\n\n```jsonc\n// Exact match (preferred for unique attributes like email)\n\"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n\n// Wildcard / prefix search\n\"query\": \"attributes.email:jane.doe*\"\n\n// Other common identity attributes\n\"query\": \"attributes.employeeNumber:\\\"12345\\\"\"\n\"query\": \"attributes.department:\\\"Engineering\\\"\"\n```\n\n### Using `filters` instead of a query string (term filter)\n\nFor a strict, case-insensitive term match you can use the `filters` DSL instead of a free-text query \u2014 this avoids analyzer surprises:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"filters\": {\n    \"attributes.email\": {\n      \"type\": \"TERM\",\n      \"value\": \"jane.doe@example.com\"\n    }\n  }\n}\n```\n\n### Example response (abbreviated)\n\n```json\n[\n  {\n    \"id\": \"2c9180857e7c4d9e017e9f47fc5c06e5\",\n    \"name\": \"jane.doe\",\n    \"displayName\": \"Jane Doe\",\n    \"attributes\": {\n      \"email\": \"jane.doe@example.com\"\n    }\n  }\n]\n```\n\nThe response is an array \u2014 if the attribute is truly unique (like email) you'll get one item; otherwise paginate with `limit`/`offset` query params.\n\n---\n\n**Auth:** OAuth2 client credentials grant, scope `sp:search:read`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, queryResultFilter]\n```"
+    }
+  ],
+  "raw_response": "Here's how to find an identity by email (or any other attribute) using the ISC Search API.\n\n---\n\n## Look up an identity by attribute\n\nUse `POST /v3/search`. You target the `identities` index and write a query against the field you care about. For email, the field is `attributes.email` (or sometimes `emails` depending on how the attribute is mapped \u2014 use `attributes.email` for the standard identity attribute).\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  },\n  \"queryResultFilter\": {\n    \"includes\": [\"id\", \"name\", \"displayName\", \"attributes.email\"]\n  }\n}\n```\n\n### Key body fields\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"identities\"]` to scope the search to identities. |\n| `query.query` | Lucene-style query string. Use `field:\"value\"` for an exact match. |\n| `queryResultFilter.includes` | Whitelist only the fields you need in the response (optional but reduces payload). |\n\n### Exact-match vs. wildcard\n\n```jsonc\n// Exact match (preferred for unique attributes like email)\n\"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n\n// Wildcard / prefix search\n\"query\": \"attributes.email:jane.doe*\"\n\n// Other common identity attributes\n\"query\": \"attributes.employeeNumber:\\\"12345\\\"\"\n\"query\": \"attributes.department:\\\"Engineering\\\"\"\n```\n\n### Using `filters` instead of a query string (term filter)\n\nFor a strict, case-insensitive term match you can use the `filters` DSL instead of a free-text query \u2014 this avoids analyzer surprises:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"filters\": {\n    \"attributes.email\": {\n      \"type\": \"TERM\",\n      \"value\": \"jane.doe@example.com\"\n    }\n  }\n}\n```\n\n### Example response (abbreviated)\n\n```json\n[\n  {\n    \"id\": \"2c9180857e7c4d9e017e9f47fc5c06e5\",\n    \"name\": \"jane.doe\",\n    \"displayName\": \"Jane Doe\",\n    \"attributes\": {\n      \"email\": \"jane.doe@example.com\"\n    }\n  }\n]\n```\n\nThe response is an array \u2014 if the attribute is truly unique (like email) you'll get one item; otherwise paginate with `limit`/`offset` query params.\n\n---\n\n**Auth:** OAuth2 client credentials grant, scope `sp:search:read`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, queryResultFilter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

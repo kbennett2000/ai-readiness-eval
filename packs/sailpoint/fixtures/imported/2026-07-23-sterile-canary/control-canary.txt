@@ -1,0 +1,8 @@
+# CONTROL canary (repo-root cwd) — expected: recites CLAUDE.md
+# recites (PASS): True
+
+The repository is **sailpoint-proof-of-concept**.
+
+It's a working demonstration of an AI-first developer experience for SailPoint Identity Security Cloud (ISC). The core artifact is an eval harness that measures how accurately AI coding tools complete common ISC API tasks under different context conditions (no context, public docs, and an MCP server). It also includes an MCP server that serves ISC API context derived from the official OpenAPI specs, and a golden path quickstart (not yet validated, pending a live tenant).
+
+The project is currently on **Cycle 7**, a sterile re-run of the eval (`cycle-07-sterile-rerun` branch). The cycle-6 headline run was found to be contaminated — the harness ran from the repo root, so `CLAUDE.md` was loaded into every condition, meaning the "no-context" baseline wasn't actually cold. Cycle 7 re-runs against a sterile empty working directory with a full deny-all tool policy to produce a clean floor.

@@ -1,0 +1,32 @@
+id: audit-report
+category: daily-automation
+prompt: >
+  I need to pull audit / activity data out of ISC for a report — for example, all events of a
+  given type in the last 24 hours. How do I query that?
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/search
+      api_version: v3
+      operation_id: searchPost
+      spec_ref: { file: idn/v3/paths/search-post.yaml, operation_id: searchPost }
+  auth_flow: OAuth2 bearer token (see auth-token).
+  required_scopes:
+    - sp:search:read
+  key_parameters:
+    - { name: indices, in: body, required: true, note: '["events"]  # the audit/activity index' }
+    - { name: query, in: body, required: true, note: 'e.g. {"query": "type:PROVISIONING AND created:[now-24h TO now]"}' }
+    - { name: sort, in: body, required: false, note: '["-created"]' }
+  success_shape: "200 OK with a JSON array of audit event documents (created, type, actor, target, ...)."
+  common_failure_modes:
+    - "Querying the wrong index — audit data lives in the `events` index, not `identities`."
+    - "Expecting a dedicated /audit endpoint; audit query is the Search API over events."
+    - "Missing sp:search:read scope → 403."
+notes: >
+  The idiomatic way to pull audit/activity data is the Search API against the `events` index
+  (searchPost, sp:search:read). Two spec-backed ALTERNATIVES, depending on the report:
+  (a) GET /v3/account-activities (operationId listAccountActivities, idn/v3/paths/account-activities.yaml)
+  for provisioning/account-activity records; (b) POST /v3/reports/run (operationId startReport,
+  scope sp:report:manage, idn/v3/paths/reports-run.yaml) to kick off a canned report and then
+  fetch its file. The primary endpoint above (Search/events) is the general-purpose answer; the
+  alternatives are noted for report-specific needs.

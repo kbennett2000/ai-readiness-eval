@@ -1,0 +1,50 @@
+{
+  "task_id": "search-filter",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 952,
+  "cost_usd": 0.0433299,
+  "duration_ms": 18123,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## ISC Search API \u2014 Identities in Engineering Department\n\nUse the `POST /v3/search` endpoint with the `identities` index and a department filter.\n\n**Request**\n\n```http\nPOST /v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\nTo paginate through large result sets, add `limit` and `searchAfter`:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  },\n  \"limit\": 250,\n  \"sort\": [\"name\"]\n}\n```\n\n**Key fields:**\n- `indices` \u2014 must be `[\"identities\"]` to scope the search to identity objects\n- `query.query` \u2014 Elasticsearch query string; `attributes.department` is where ISC stores the department attribute on identity objects\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: []\nkey_parameters: [indices, query]\n```"
+    }
+  ],
+  "raw_response": "## ISC Search API \u2014 Identities in Engineering Department\n\nUse the `POST /v3/search` endpoint with the `identities` index and a department filter.\n\n**Request**\n\n```http\nPOST /v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\nTo paginate through large result sets, add `limit` and `searchAfter`:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  },\n  \"limit\": 250,\n  \"sort\": [\"name\"]\n}\n```\n\n**Key fields:**\n- `indices` \u2014 must be `[\"identities\"]` to scope the search to identity objects\n- `query.query` \u2014 Elasticsearch query string; `attributes.department` is where ISC stores the department attribute on identity objects\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: []\nkey_parameters: [indices, query]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

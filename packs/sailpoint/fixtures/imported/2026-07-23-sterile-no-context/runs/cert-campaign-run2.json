@@ -1,0 +1,83 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.75,
+    "method": 0.75,
+    "api_version": 0.75,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/campaigns/{}/reports",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2957,
+  "cost_usd": 0.07348890000000001,
+  "duration_ms": 44569,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Access Review Campaign in SailPoint ISC \u2014 Full API Flow\n\n### 1. Authenticate (Client Credentials)\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={{clientId}}\n&client_secret={{clientSecret}}\n```\n\nReturns `access_token`; include it as `Authorization: Bearer <token>` on all subsequent calls.\n\n---\n\n### 2. Create the Campaign\n\n```http\nPOST /v3/campaigns\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Manager Access Review\",\n  \"description\": \"Quarterly certification of manager-subordinate access\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.999Z\",\n  \"emailNotificationEnabled\": true,\n  \"autoRevokeAllowed\": false,\n  \"recommendationsEnabled\": true,\n  \"sunsetCommentsRequired\": \"ALL_DECISIONS\",\n  \"mandatoryCommentRequirement\": \"REVOCATION_REQUEST\"\n}\n```\n\n**`type` options:** `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`\n\nThe response body includes the campaign `id` and status `STAGING`.\n\n---\n\n### 3. Activate (Start) the Campaign\n\n```http\nPOST /v3/campaigns/{id}/activate\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{}\n```\n\nThis transitions the campaign from `STAGING` \u2192 `ACTIVATING` \u2192 `ACTIVE`. The response is `202 Accepted`; the activation is asynchronous. Poll the campaign to confirm it's `ACTIVE`.\n\n---\n\n### 4. Poll Campaign Status\n\n```http\nGET /v3/campaigns/{id}\nAuthorization: Bearer <token>\n```\n\nCheck `correlatedStatus` / `status` field. Once `ACTIVE`, individual certifications have been distributed to reviewers.\n\n---\n\n### 5. List Certifications (Reviewer Assignments)\n\nEach reviewer gets one **certification** record within the campaign.\n\n```http\nGET /v3/certifications?filters=campaign.id%20eq%20%22{campaignId}%22&limit=250\nAuthorization: Bearer <token>\n```\n\nUseful filter operators: `eq`, `and`. Add `?filters=phase eq \"OPEN\"` to narrow to incomplete reviews.\n\n---\n\n### 6. Pull Decision-Level Results (Items per Certification)\n\n```http\nGET /v3/certifications/{certificationId}/items\nAuthorization: Bearer <token>\n```\n\nEach item has:\n- `decision` \u2014 `APPROVED`, `REVOKED`, `ACKNOWLEDGED`\n- `completed` \u2014 boolean\n- `identitySummary`, `entitlement`, `role`, or `account` depending on what's being certified\n\nPaginate with `?limit=250&offset=N`.\n\n---\n\n### 7. (Optional) Generate a Campaign Report\n\nFor a summary export rather than line-by-line pagination:\n\n```http\nPOST /v3/campaigns/{id}/reports/{type}/run\nAuthorization: Bearer <token>\n```\n\nWhere `{type}` is e.g. `CAMPAIGN_COMPOSITION`, `CERTIFICATION_PROGRESS`, or `DECISION_SUMMARY`. Poll:\n\n```http\nGET /v3/campaigns/{id}/reports\nAuthorization: Bearer <token>\n```\n\n---\n\n### Scope Requirements\n\n| Action | Required Scope |\n|--------|---------------|\n| Create / activate campaign | `idn:campaign:manage` |\n| Read campaign & certifications | `idn:campaign:read`, `idn:certification:read` |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}\n    api_version: v3\n  - method: GET\n    path: /v3/certifications\n    api_version: v3\n  - method: GET\n    path: /v3/certifications/{certificationId}/items\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/reports/{type}/run\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes:\n  - idn:campaign:manage\n  - idn:campaign:read\n  - idn:certification:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - emailNotificationEnabled\n  - autoRevokeAllowed\n  - recommendationsEnabled\n  - sunsetCommentsRequired\n  - filters\n  - limit\n  - offset\n```"
+    }
+  ],
+  "raw_response": "## Access Review Campaign in SailPoint ISC \u2014 Full API Flow\n\n### 1. Authenticate (Client Credentials)\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={{clientId}}\n&client_secret={{clientSecret}}\n```\n\nReturns `access_token`; include it as `Authorization: Bearer <token>` on all subsequent calls.\n\n---\n\n### 2. Create the Campaign\n\n```http\nPOST /v3/campaigns\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 2026 Manager Access Review\",\n  \"description\": \"Quarterly certification of manager-subordinate access\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.999Z\",\n  \"emailNotificationEnabled\": true,\n  \"autoRevokeAllowed\": false,\n  \"recommendationsEnabled\": true,\n  \"sunsetCommentsRequired\": \"ALL_DECISIONS\",\n  \"mandatoryCommentRequirement\": \"REVOCATION_REQUEST\"\n}\n```\n\n**`type` options:** `MANAGER`, `SOURCE_OWNER`, `SEARCH`, `ROLE_COMPOSITION`\n\nThe response body includes the campaign `id` and status `STAGING`.\n\n---\n\n### 3. Activate (Start) the Campaign\n\n```http\nPOST /v3/campaigns/{id}/activate\nAuthorization: Bearer <token>\nContent-Type: application/json\n\n{}\n```\n\nThis transitions the campaign from `STAGING` \u2192 `ACTIVATING` \u2192 `ACTIVE`. The response is `202 Accepted`; the activation is asynchronous. Poll the campaign to confirm it's `ACTIVE`.\n\n---\n\n### 4. Poll Campaign Status\n\n```http\nGET /v3/campaigns/{id}\nAuthorization: Bearer <token>\n```\n\nCheck `correlatedStatus` / `status` field. Once `ACTIVE`, individual certifications have been distributed to reviewers.\n\n---\n\n### 5. List Certifications (Reviewer Assignments)\n\nEach reviewer gets one **certification** record within the campaign.\n\n```http\nGET /v3/certifications?filters=campaign.id%20eq%20%22{campaignId}%22&limit=250\nAuthorization: Bearer <token>\n```\n\nUseful filter operators: `eq`, `and`. Add `?filters=phase eq \"OPEN\"` to narrow to incomplete reviews.\n\n---\n\n### 6. Pull Decision-Level Results (Items per Certification)\n\n```http\nGET /v3/certifications/{certificationId}/items\nAuthorization: Bearer <token>\n```\n\nEach item has:\n- `decision` \u2014 `APPROVED`, `REVOKED`, `ACKNOWLEDGED`\n- `completed` \u2014 boolean\n- `identitySummary`, `entitlement`, `role`, or `account` depending on what's being certified\n\nPaginate with `?limit=250&offset=N`.\n\n---\n\n### 7. (Optional) Generate a Campaign Report\n\nFor a summary export rather than line-by-line pagination:\n\n```http\nPOST /v3/campaigns/{id}/reports/{type}/run\nAuthorization: Bearer <token>\n```\n\nWhere `{type}` is e.g. `CAMPAIGN_COMPOSITION`, `CERTIFICATION_PROGRESS`, or `DECISION_SUMMARY`. Poll:\n\n```http\nGET /v3/campaigns/{id}/reports\nAuthorization: Bearer <token>\n```\n\n---\n\n### Scope Requirements\n\n| Action | Required Scope |\n|--------|---------------|\n| Create / activate campaign | `idn:campaign:manage` |\n| Read campaign & certifications | `idn:campaign:read`, `idn:certification:read` |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}\n    api_version: v3\n  - method: GET\n    path: /v3/certifications\n    api_version: v3\n  - method: GET\n    path: /v3/certifications/{certificationId}/items\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/reports/{type}/run\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes:\n  - idn:campaign:manage\n  - idn:campaign:read\n  - idn:certification:read\nkey_parameters:\n  - name\n  - description\n  - type\n  - deadline\n  - emailNotificationEnabled\n  - autoRevokeAllowed\n  - recommendationsEnabled\n  - sunsetCommentsRequired\n  - filters\n  - limit\n  - offset\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

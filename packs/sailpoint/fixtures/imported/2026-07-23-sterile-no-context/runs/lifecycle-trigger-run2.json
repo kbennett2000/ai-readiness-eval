@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/triggers",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1984,
+  "cost_usd": 0.058920900000000005,
+  "duration_ms": 30761,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Subscribing to ISC Event Triggers via API\n\nISC's Event Triggers feature lets you register an HTTP endpoint that ISC will call whenever a lifecycle event fires. The flow is: discover available triggers \u2192 create a subscription pointing at your service.\n\n### Step 1 \u2014 Get an access token\n\nUse the client credentials grant:\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id=YOUR_CLIENT_ID\n&client_secret=YOUR_CLIENT_SECRET\n```\n\nYour PAT or OAuth app needs the `idn:trigger-service-subscriptions:write` scope (and `idn:trigger-service-subscriptions:read` to list/inspect).\n\n---\n\n### Step 2 \u2014 Find the trigger ID you want\n\n```http\nGET /beta/triggers\nAuthorization: Bearer {token}\n```\n\nResponse is a list of trigger definitions. Relevant examples for identity lifecycle:\n\n| `id` | Event |\n|---|---|\n| `idn:access-request-submitted` | Access requested |\n| `idn:access-request-approved` | Request approved |\n| `idn:access-request-rejected` | Request rejected |\n| `idn:provisioning-action-completed` | Provisioning finished |\n| `idn:identity-created` | Identity created |\n| `idn:identity-deleted` | Identity deleted |\n\n---\n\n### Step 3 \u2014 Create a subscription\n\n```http\nPOST /beta/trigger-subscriptions\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"name\": \"My Lifecycle Webhook\",\n  \"triggerId\": \"idn:access-request-submitted\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://my-service.example.com/isc-events\",\n    \"httpDispatchMode\": \"ASYNC\",\n    \"httpAuthenticationType\": \"BEARER_TOKEN\",\n    \"bearerTokenAuthConfig\": {\n      \"bearerToken\": \"secret-token-isc-will-send\"\n    }\n  },\n  \"enabled\": true,\n  \"filter\": \"$[?($.requesterName == 'john.doe')]\"\n}\n```\n\n**Key fields:**\n\n- `triggerId` \u2014 the event you want (from Step 2).\n- `type` \u2014 always `HTTP` for external webhooks.\n- `httpConfig.url` \u2014 your service's publicly reachable endpoint.\n- `httpConfig.httpDispatchMode` \u2014 `ASYNC` (fire and forget) or `SYNC` (ISC waits for your 200 response, useful for approval flows).\n- `httpConfig.httpAuthenticationType` \u2014 `BEARER_TOKEN`, `BASIC_AUTH`, or `NO_AUTH`.\n- `filter` \u2014 optional JSONPath expression to narrow which events fire the webhook.\n- `enabled` \u2014 set `false` to create it dormant.\n\n---\n\n### Step 4 \u2014 Verify\n\n```http\nGET /beta/trigger-subscriptions\nAuthorization: Bearer {token}\n```\n\nYour subscription appears in the list with a system-assigned `id`. ISC will now POST the event payload to your URL whenever the trigger fires.\n\n---\n\n### Receiving the event\n\nISC sends a `POST` to your URL with a JSON body shaped by the trigger's schema (defined in the trigger definition from Step 2). For `SYNC` dispatch, your service must respond `200 OK` within the timeout or ISC marks it failed.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [idn:trigger-service-subscriptions:read, idn:trigger-service-subscriptions:write]\nkey_parameters: [triggerId, type, httpConfig, url, httpDispatchMode, httpAuthenticationType, bearerTokenAuthConfig, filter, enabled]\n```"
+    }
+  ],
+  "raw_response": "## Subscribing to ISC Event Triggers via API\n\nISC's Event Triggers feature lets you register an HTTP endpoint that ISC will call whenever a lifecycle event fires. The flow is: discover available triggers \u2192 create a subscription pointing at your service.\n\n### Step 1 \u2014 Get an access token\n\nUse the client credentials grant:\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id=YOUR_CLIENT_ID\n&client_secret=YOUR_CLIENT_SECRET\n```\n\nYour PAT or OAuth app needs the `idn:trigger-service-subscriptions:write` scope (and `idn:trigger-service-subscriptions:read` to list/inspect).\n\n---\n\n### Step 2 \u2014 Find the trigger ID you want\n\n```http\nGET /beta/triggers\nAuthorization: Bearer {token}\n```\n\nResponse is a list of trigger definitions. Relevant examples for identity lifecycle:\n\n| `id` | Event |\n|---|---|\n| `idn:access-request-submitted` | Access requested |\n| `idn:access-request-approved` | Request approved |\n| `idn:access-request-rejected` | Request rejected |\n| `idn:provisioning-action-completed` | Provisioning finished |\n| `idn:identity-created` | Identity created |\n| `idn:identity-deleted` | Identity deleted |\n\n---\n\n### Step 3 \u2014 Create a subscription\n\n```http\nPOST /beta/trigger-subscriptions\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"name\": \"My Lifecycle Webhook\",\n  \"triggerId\": \"idn:access-request-submitted\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://my-service.example.com/isc-events\",\n    \"httpDispatchMode\": \"ASYNC\",\n    \"httpAuthenticationType\": \"BEARER_TOKEN\",\n    \"bearerTokenAuthConfig\": {\n      \"bearerToken\": \"secret-token-isc-will-send\"\n    }\n  },\n  \"enabled\": true,\n  \"filter\": \"$[?($.requesterName == 'john.doe')]\"\n}\n```\n\n**Key fields:**\n\n- `triggerId` \u2014 the event you want (from Step 2).\n- `type` \u2014 always `HTTP` for external webhooks.\n- `httpConfig.url` \u2014 your service's publicly reachable endpoint.\n- `httpConfig.httpDispatchMode` \u2014 `ASYNC` (fire and forget) or `SYNC` (ISC waits for your 200 response, useful for approval flows).\n- `httpConfig.httpAuthenticationType` \u2014 `BEARER_TOKEN`, `BASIC_AUTH`, or `NO_AUTH`.\n- `filter` \u2014 optional JSONPath expression to narrow which events fire the webhook.\n- `enabled` \u2014 set `false` to create it dormant.\n\n---\n\n### Step 4 \u2014 Verify\n\n```http\nGET /beta/trigger-subscriptions\nAuthorization: Bearer {token}\n```\n\nYour subscription appears in the list with a system-assigned `id`. ISC will now POST the event payload to your URL whenever the trigger fires.\n\n---\n\n### Receiving the event\n\nISC sends a `POST` to your URL with a JSON body shaped by the trigger's schema (defined in the trigger definition from Step 2). For `SYNC` dispatch, your service must respond `200 OK` within the timeout or ISC marks it failed.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [idn:trigger-service-subscriptions:read, idn:trigger-service-subscriptions:write]\nkey_parameters: [triggerId, type, httpConfig, url, httpDispatchMode, httpAuthenticationType, bearerTokenAuthConfig, filter, enabled]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

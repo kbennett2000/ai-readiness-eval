@@ -1,0 +1,50 @@
+{
+  "task_id": "search-filter",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 0.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": false,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "search/v1"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1014,
+  "cost_usd": 0.1307529,
+  "duration_ms": 17954,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "To search for all identities in the Engineering department, use the Search API with a POST request targeting the `identities` index.\n\n**1. Get an access token (Client Credentials flow):**\n\n```bash\ncurl -X POST 'https://{tenant}.api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\n**2. Perform the search:**\n\n```bash\ncurl -X POST 'https://{tenant}.api.identitynow.com/search/v1' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"indices\": [\"identities\"],\n    \"query\": {\n      \"query\": \"attributes.department:Engineering\"\n    }\n  }'\n```\n\n**Key points:**\n- `indices` must be set to `[\"identities\"]` to scope the search to identity objects.\n- The query uses Elasticsearch field syntax \u2014 `attributes.department` is the typical field path for department on an identity.\n- The default limit is 10,000 records per page. If you expect more than that, add `\"sort\": [\"id\"]` to the body and use `searchAfter` with the last ID from each page to paginate beyond 10,000.\n- Add `?count=true` as a query parameter to get the total result count in the `X-Total-Count` response header.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /search/v1\n    api_version: search/v1\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: []\nkey_parameters: [indices, query, sort, searchAfter]\n```"
+    }
+  ],
+  "raw_response": "To search for all identities in the Engineering department, use the Search API with a POST request targeting the `identities` index.\n\n**1. Get an access token (Client Credentials flow):**\n\n```bash\ncurl -X POST 'https://{tenant}.api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\n**2. Perform the search:**\n\n```bash\ncurl -X POST 'https://{tenant}.api.identitynow.com/search/v1' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"indices\": [\"identities\"],\n    \"query\": {\n      \"query\": \"attributes.department:Engineering\"\n    }\n  }'\n```\n\n**Key points:**\n- `indices` must be set to `[\"identities\"]` to scope the search to identity objects.\n- The query uses Elasticsearch field syntax \u2014 `attributes.department` is the typical field path for department on an identity.\n- The default limit is 10,000 records per page. If you expect more than that, add `\"sort\": [\"id\"]` to the body and use `searchAfter` with the last ID from each page to paginate beyond 10,000.\n- Add `?count=true` as a query parameter to get the total result count in the `X-Total-Count` response header.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /search/v1\n    api_version: search/v1\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: []\nkey_parameters: [indices, query, sort, searchAfter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

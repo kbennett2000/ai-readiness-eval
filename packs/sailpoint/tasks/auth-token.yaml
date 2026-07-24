@@ -1,0 +1,47 @@
+id: auth-token
+category: foundational
+prompt: >
+  I have a SailPoint ISC Personal Access Token (a client ID and secret). Write the request
+  that exchanges them for an access token I can use to call the ISC REST API.
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /oauth/token
+      api_version: oauth
+      operation_id: createToken
+      coverage: doc-only
+      doc_ref:
+        url: https://developer.sailpoint.com/docs/api/authentication
+        note: >
+          The token-grant endpoint is NOT in the OpenAPI spec. The versioned API servers are
+          rooted at https://{tenant}.api.identitynow.com/v3 (and /beta), while /oauth/token sits
+          at the tenant root and is documented only in the Authentication guide.
+    - method: POST
+      path: /v3/personal-access-tokens
+      api_version: v3
+      operation_id: createPersonalAccessToken
+      spec_ref: { file: idn/v3/paths/personal-access-tokens.yaml, operation_id: createPersonalAccessToken }
+  auth_flow: >
+    OAuth2 client-credentials grant. The PAT supplies client_id (Client ID) and client_secret
+    (Secret). POST them to https://{tenant}.api.identitynow.com/oauth/token with
+    grant_type=client_credentials. The response's access_token (a JWT bearer token) is then sent
+    as `Authorization: Bearer <token>` on subsequent API calls.
+  required_scopes: []   # the grant itself needs no scope; the returned token inherits the PAT owner's rights
+  key_parameters:
+    - { name: grant_type, in: body, required: true, note: "client_credentials" }
+    - { name: client_id, in: body, required: true, note: "PAT Client ID — send in the POST body, never the query string" }
+    - { name: client_secret, in: body, required: true, note: "PAT Secret — send in the POST body, never the query string" }
+  success_shape: >
+    200 OK with a JSON body containing access_token (JWT), token_type=bearer, expires_in
+    (seconds), and scope. Creating the PAT (createPersonalAccessToken) returns the id/secret once.
+  common_failure_modes:
+    - "Putting client_id/client_secret in the URL query string — SailPoint's docs show it works, but it leaks credentials in logs; always use the POST body."
+    - "401 invalid_client from a wrong/rotated secret or wrong tenant hostname."
+    - "Calling the versioned base (/v3/oauth/token) instead of the tenant-root /oauth/token."
+    - "PAT limit: each user may hold at most 10 Personal Access Tokens."
+notes: >
+  COVERAGE GAP (doc-only): /oauth/token is not part of the OpenAPI spec at the pinned SHA, so its
+  correct answer is anchored to the Authentication guide rather than an operationId. The spec DOES
+  cover PAT management (createPersonalAccessToken, scope sp:my-personal-access-tokens:manage) and
+  OAuth-client management (oauth-clients.yaml) — i.e. how you obtain the credentials, not how you
+  exchange them. Secrets discipline: credentials go in the POST body, never the query string.
