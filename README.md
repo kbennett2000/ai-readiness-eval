@@ -112,3 +112,8 @@ repo's committed artifacts, and wired the regression gate that reproduces 73/68/
 **Cycle 2:** added the job-category taxonomy ([adr-0003](docs/adr/adr-0003-job-taxonomy.md)) and the
 pack validator (`core/validate.py`), and confirmed packs load from any path (`--packs-dir`). Next: the
 first external vendor packs, which live outside this public repo and plug in by path.
+
+**Cycle 3:** added the category rollup + cross-vendor comparison renderer (`core/category.py`,
+[adr-0004](docs/adr/adr-0004-category-cross-vendor-comparison.md)) — vendor-agnostic, so the engine can
+render a `category × source` table from any set of packs' committed scores without naming any of them.
+The first external grids run against packs kept in a separate private repo.
