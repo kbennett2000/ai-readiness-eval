@@ -1,5 +1,6 @@
 id: transform
 category: multi-step
+job_category: policy-object-create-and-test
 prompt: >
   Create an attribute transform in ISC (say, an uppercase or concatenation transform) and then
   test that it produces the output I expect before I wire it into an identity profile.

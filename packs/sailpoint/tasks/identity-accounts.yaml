@@ -1,5 +1,6 @@
 id: identity-accounts
 category: foundational
+job_category: list-principal-accounts
 prompt: >
   Given an identity's ID, list all of the accounts tied to that identity across our connected
   sources in ISC.

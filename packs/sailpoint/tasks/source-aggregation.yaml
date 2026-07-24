@@ -1,5 +1,6 @@
 id: source-aggregation
 category: multi-step
+job_category: connect-source
 prompt: >
   Set up a source in ISC and then kick off an account aggregation on it so ISC pulls in the
   accounts. Walk me through the API calls.

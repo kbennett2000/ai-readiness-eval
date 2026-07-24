@@ -8,6 +8,8 @@ docs_manifest: docs-manifest.yaml
 specs: specs.yaml
 docs_cache_dir: docs-cache
 specs_scope: widgets/
+spec_ref_file_prefix: widgets/
+expected_task_ids: [gadget-fetch, widget-create, widget-list]
 public_docs:
   source_label: "Acme's official documentation"
   budget_tokens: 15000

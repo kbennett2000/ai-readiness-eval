@@ -91,6 +91,9 @@ verify with `git ls-files | grep -i private` (must return nothing).
 
 ## Status
 
-- **Cycle 1 (in progress).** Extract the harness into a vendor-agnostic `core/`; build the SailPoint
-  reference pack from the frozen repo's committed artifacts; prove the extraction broke nothing with a
-  regression gate that reproduces the frozen 73/68/93 tables exactly. See ADR-0001, ADR-0002.
+- **Cycle 1.** Extracted the harness into a vendor-agnostic `core/`; built the SailPoint reference pack
+  from the frozen repo's committed artifacts; wired a regression gate that reproduces the frozen
+  73/68/93 tables exactly. See ADR-0001, ADR-0002.
+- **Cycle 2.** Added the job-category taxonomy (ADR-0003) and the pack validator (`core/validate.py`),
+  retro-mapped the reference pack, and confirmed packs load from any path (external packs plug in by
+  `--pack`/`--packs-dir`). Next up: the first external vendor packs, which live outside this public repo.

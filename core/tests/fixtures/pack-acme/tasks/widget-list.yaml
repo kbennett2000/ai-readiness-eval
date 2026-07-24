@@ -1,5 +1,6 @@
 id: widget-list
 category: foundational
+job_category: search-filter
 prompt: How do I list widgets in Acme Widget Cloud?
 ground_truth:
   endpoints:
@@ -7,6 +8,7 @@ ground_truth:
       path: /v3/widgets
       api_version: v3
       operation_id: listWidgets
+      spec_ref: { file: widgets/v3/paths/widgets.yaml, operation_id: listWidgets }
   auth_flow: OAuth2 bearer token
   required_scopes:
     - "widgets:read"
