@@ -115,5 +115,7 @@ first external vendor packs, which live outside this public repo and plug in by 
 
 **Cycle 3:** added the category rollup + cross-vendor comparison renderer (`core/category.py`,
 [adr-0004](docs/adr/adr-0004-category-cross-vendor-comparison.md)) — vendor-agnostic, so the engine can
-render a `category × source` table from any set of packs' committed scores without naming any of them.
-The first external grids run against packs kept in a separate private repo.
+render a `category × source` table from any set of packs' committed scores without naming any of them —
+and made `public-docs` faithful to the machine reader ([adr-0005](docs/adr/adr-0005-public-docs-fetch-fidelity.md)):
+an un-fetchable page (dead portal, empty SPA) injects nothing instead of erroring, so a vendor with
+un-fetchable docs is still measured. The first external grids run against packs in a separate private repo.

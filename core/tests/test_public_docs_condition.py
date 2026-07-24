@@ -70,6 +70,30 @@ def test_missing_cache_raises(pack, cache):
         cond.build_context("t")  # nothing written to cache
 
 
+def test_unfetchable_page_injects_nothing_not_error(pack, cache):
+    # A page the manifest records as unfetchable (dead portal / empty SPA) has no cache file, but
+    # must NOT crash the condition — it injects nothing, modelling what a real fetch retrieves.
+    cond = PublicDocsCondition(pack, _manifest([
+        {"url": "https://d/dead-portal", "role": "api-reference",
+         "fetch_error": "urlopen error: No address associated with hostname", "byte_size": 0},
+    ]))
+    ctx = cond.build_context("t")  # does not raise
+    assert "dead-portal" not in ctx          # the unfetchable page contributes no text
+    assert pack.public_docs_source_label in ctx  # the wrapper/label is still present
+
+
+def test_mix_of_fetchable_and_unfetchable_pages(pack, cache):
+    # One real page + one unfetchable page: the real content is injected, the dead page is skipped.
+    cache("t", "https://d/api/authentication", "REAL AUTH SPEC")
+    cond = PublicDocsCondition(pack, _manifest([
+        {"url": "https://d/api/authentication", "role": "getting-started", "byte_size": 14},
+        {"url": "https://d/dead-portal", "role": "api-reference", "fetch_error": "dns fail", "byte_size": 0},
+    ]))
+    ctx = cond.build_context("t")
+    assert "REAL AUTH SPEC" in ctx
+    assert "dead-portal" not in ctx
+
+
 def test_budget_drops_lowest_priority_first(pack, cache):
     # api-reference (highest priority) must survive; getting-started dropped when over budget
     cache("t", "https://d/api/authentication", "G" * 4000)   # getting-started
