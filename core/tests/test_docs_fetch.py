@@ -146,7 +146,7 @@ def test_pack_reads_public_docs_user_agent(tmp_path):
 def test_empty_body_on_a_success_status_is_an_error_not_a_snapshot(monkeypatch):
     """A 2xx with a zero-length body is a throttle, not a document (ADR-0009).
 
-    One Identity's support portal answers HTTP 202 with 0 bytes when it throttles an
+    A measured vendor's support portal answers HTTP 202 with 0 bytes when it throttles an
     automated reader. Hashing that would record an empty page as a valid snapshot and
     silently gut the public-docs condition.
     """

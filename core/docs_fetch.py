@@ -38,7 +38,7 @@ class EmptyDocument(RuntimeError):
     """A 2xx response that carried no document.
 
     Some docs hosts throttle automated readers with a success status and a zero-length body
-    (One Identity's support portal answers HTTP 202 with 0 bytes). Left alone that is
+    (one measured vendor's support portal answers HTTP 202 with 0 bytes). Left alone that is
     indistinguishable from a real page: the text extracts to nothing, hashes cleanly, and is
     recorded as a valid snapshot. Raising here forces it down the same path as a 404.
     """

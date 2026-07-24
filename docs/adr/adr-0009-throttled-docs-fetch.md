@@ -10,9 +10,9 @@ and records `content_hash` + `byte_size` back into the manifest. The `public-doc
 built from those cached pages. If a page fetches as nothing, the condition is fed nothing — and the
 run reports a low or zero documentation lift *as a finding about the vendor*.
 
-Recon on a prospect whose reference pages live on a support portal (One Identity) surfaced a failure
-mode the fetcher could not see. The host serves the full page to a first request, but after a burst
-of automated requests it begins answering:
+Recon on a prospect whose reference pages live on a vendor support portal surfaced a failure mode
+the fetcher could not see. The host serves the full page to a first request, but after a burst of
+automated requests it begins answering:
 
 ```
 HTTP 202, Content-Length: 0
@@ -29,7 +29,7 @@ nothing, `html_to_text("")` returned a single character, and the page was record
 contained — would have asserted a clean fetch of an empty document.
 
 This is the same class of defect as ADR-0007 (a docs host 404ing our self-identifying agent) and the
-same class of error as the two dimensions that read 0.00 in the CyberArk grid: **our instrument
+same class of error as the two dimensions that read 0.00 in a recent grid: **our instrument
 producing a number that reads as a fact about the vendor.** The difference is that this one leaves no
 trace at all — a `fetch_error` is visible in review, an empty page that hashes cleanly is not.
 
@@ -73,8 +73,8 @@ trace at all — a `fetch_error` is visible in review, an empty page that hashes
   (~11 pages × 30s ≈ 6 minutes), paid once per snapshot. A page that exhausts its retries costs up
   to 6 minutes more, which is the price of not silently recording an empty page as a real one.
 - A pack can still legitimately record `fetch_error` on every page — that remains a real and
-  reportable finding about a vendor's documentation (Saviynt's dead portal). What it can no longer
+  reportable finding about a vendor's documentation (one prospect's portal is simply dead). What it can no longer
   do is record a *successful* fetch of an empty page.
-- The rule generalizes the working note the CyberArk cycle produced: a measurement that is uniformly
+- The rule generalizes a working note from a recent cycle: a measurement that is uniformly
   empty is a suspect instrument before it is a vendor finding. This ADR makes one instance of that
   class impossible to miss, by refusing to write the misleading artifact in the first place.

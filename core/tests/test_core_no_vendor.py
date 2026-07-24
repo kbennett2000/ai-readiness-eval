@@ -22,7 +22,14 @@ ACME_PACK_DIR = CORE_DIR / "tests" / "fixtures" / "pack-acme"
 VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn/", re.IGNORECASE)
 
 # Prospect names that must never appear anywhere tracked in the PUBLIC repo (privacy, cycle 2).
-PROSPECT_TOKENS = re.compile(r"saviynt|okta", re.IGNORECASE)
+# Every prospect the factory has carded belongs here — the list went stale between cycles 2 and 6,
+# which let a recon note naming two later prospects reach a commit before the guard objected.
+PROSPECT_TOKENS = re.compile(r"saviynt|okta|cyberark|oneidentity|pingone", re.IGNORECASE)
+
+# One prospect's name is also an ordinary phrase in this domain: the reference pack legitimately says
+# "exactly one identity" and "one identity's accounts". Matching it case-insensitively would fire on
+# those, so it is matched only as the capitalized proper noun.
+PROSPECT_TOKENS_CASED = re.compile(r"One Identity")
 
 
 def _engine_py_files():
@@ -60,7 +67,7 @@ def test_public_repo_names_no_prospect():
         except OSError:
             continue
         for i, line in enumerate(text.splitlines(), 1):
-            if PROSPECT_TOKENS.search(line):
+            if PROSPECT_TOKENS.search(line) or PROSPECT_TOKENS_CASED.search(line):
                 offenders.append(f"{rel}:{i}: {line.strip()[:80]}")
     assert not offenders, (
         "the public repo must name no measured prospect (they live in the private packs repo); found:\n"
