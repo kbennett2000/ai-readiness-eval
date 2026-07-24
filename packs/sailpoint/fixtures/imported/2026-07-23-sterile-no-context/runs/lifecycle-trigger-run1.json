@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/triggers",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1614,
+  "cost_usd": 0.05337190000000001,
+  "duration_ms": 24555,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "To subscribe to ISC lifecycle event triggers via the API, you use the **Event Triggers (Trigger Subscriptions)** endpoints under the `beta` API.\n\n## Step 1: Discover Available Triggers\n\nFirst, list the available trigger types to find the one you want:\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/triggers\nAuthorization: Bearer {access_token}\n```\n\nThis returns trigger IDs like:\n- `idn:access-request-submitted`\n- `idn:access-request-post-approval`\n- `idn:provisioning-action-completed`\n- `idn:identity-attributes-changed`\n\n## Step 2: Create a Subscription\n\nPost to the subscriptions endpoint with your webhook URL and the trigger you want:\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/trigger-subscriptions\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"My Provisioning Notification\",\n  \"triggerId\": \"idn:provisioning-action-completed\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://your-service.example.com/webhook\",\n    \"httpAuthenticationType\": \"BEARER_TOKEN\",\n    \"bearerTokenAuthConfig\": {\n      \"bearerToken\": \"your-shared-secret-token\"\n    }\n  },\n  \"enabled\": true,\n  \"filter\": \"$[?($.action == 'PROVISION')]\"\n}\n```\n\n### Key fields\n\n| Field | Description |\n|---|---|\n| `triggerId` | The event type you want to receive (from Step 1) |\n| `type` | `HTTP` (webhook) or `INLINE` (for Transform/Rule execution) |\n| `httpConfig.url` | Your service's receiving endpoint |\n| `httpAuthenticationType` | `NO_AUTH`, `BASIC_AUTH`, or `BEARER_TOKEN` |\n| `filter` | Optional JSONPath expression to filter which events fire the webhook |\n| `enabled` | Set `false` to create it in a paused state |\n\n### Auth options for `httpAuthenticationType`\n\nFor `BASIC_AUTH`, include:\n```json\n\"basicAuthConfig\": {\n  \"userName\": \"user\",\n  \"password\": \"pass\"\n}\n```\n\n## Step 3: Verify/Manage Subscriptions\n\n```http\nGET /beta/trigger-subscriptions          # list all subscriptions\nGET /beta/trigger-subscriptions/{id}     # get one\nPATCH /beta/trigger-subscriptions/{id}   # update (e.g., toggle enabled)\nDELETE /beta/trigger-subscriptions/{id}  # remove\n```\n\n## Auth\n\nUse a Personal Access Token or Client Credentials grant. The required OAuth scope for creating subscriptions is `idn:trigger-service-subscriptions:write`.\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: PATCH\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\n  - method: DELETE\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:trigger-service-subscriptions:write, idn:trigger-service-subscriptions:read]\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType, bearerTokenAuthConfig, basicAuthConfig, filter, enabled]\n```"
+    }
+  ],
+  "raw_response": "To subscribe to ISC lifecycle event triggers via the API, you use the **Event Triggers (Trigger Subscriptions)** endpoints under the `beta` API.\n\n## Step 1: Discover Available Triggers\n\nFirst, list the available trigger types to find the one you want:\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/triggers\nAuthorization: Bearer {access_token}\n```\n\nThis returns trigger IDs like:\n- `idn:access-request-submitted`\n- `idn:access-request-post-approval`\n- `idn:provisioning-action-completed`\n- `idn:identity-attributes-changed`\n\n## Step 2: Create a Subscription\n\nPost to the subscriptions endpoint with your webhook URL and the trigger you want:\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/trigger-subscriptions\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"My Provisioning Notification\",\n  \"triggerId\": \"idn:provisioning-action-completed\",\n  \"type\": \"HTTP\",\n  \"httpConfig\": {\n    \"url\": \"https://your-service.example.com/webhook\",\n    \"httpAuthenticationType\": \"BEARER_TOKEN\",\n    \"bearerTokenAuthConfig\": {\n      \"bearerToken\": \"your-shared-secret-token\"\n    }\n  },\n  \"enabled\": true,\n  \"filter\": \"$[?($.action == 'PROVISION')]\"\n}\n```\n\n### Key fields\n\n| Field | Description |\n|---|---|\n| `triggerId` | The event type you want to receive (from Step 1) |\n| `type` | `HTTP` (webhook) or `INLINE` (for Transform/Rule execution) |\n| `httpConfig.url` | Your service's receiving endpoint |\n| `httpAuthenticationType` | `NO_AUTH`, `BASIC_AUTH`, or `BEARER_TOKEN` |\n| `filter` | Optional JSONPath expression to filter which events fire the webhook |\n| `enabled` | Set `false` to create it in a paused state |\n\n### Auth options for `httpAuthenticationType`\n\nFor `BASIC_AUTH`, include:\n```json\n\"basicAuthConfig\": {\n  \"userName\": \"user\",\n  \"password\": \"pass\"\n}\n```\n\n## Step 3: Verify/Manage Subscriptions\n\n```http\nGET /beta/trigger-subscriptions          # list all subscriptions\nGET /beta/trigger-subscriptions/{id}     # get one\nPATCH /beta/trigger-subscriptions/{id}   # update (e.g., toggle enabled)\nDELETE /beta/trigger-subscriptions/{id}  # remove\n```\n\n## Auth\n\nUse a Personal Access Token or Client Credentials grant. The required OAuth scope for creating subscriptions is `idn:trigger-service-subscriptions:write`.\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /beta/triggers\n    api_version: beta\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: PATCH\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\n  - method: DELETE\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:trigger-service-subscriptions:write, idn:trigger-service-subscriptions:read]\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType, bearerTokenAuthConfig, basicAuthConfig, filter, enabled]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

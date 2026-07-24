@@ -1,0 +1,83 @@
+{
+  "task_id": "source-aggregation",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources/{}/load-accounts",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources/{}/load-accounts",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/account-aggregations/{}/status",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 3553,
+  "cost_usd": 0.0824089,
+  "duration_ms": 52721,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's the full API flow for creating a source in SailPoint Identity Security Cloud (ISC) and kicking off an account aggregation.\n\n---\n\n## Step 1 \u2014 Authenticate (OAuth2 Client Credentials)\n\nYour tenant base URL is `https://{tenant}.api.identitynow.com`.\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id=<CLIENT_ID>\n&client_secret=<CLIENT_SECRET>\n```\n\n**Response** \u2014 grab the `access_token`:\n```json\n{\n  \"access_token\": \"eyJhbGci...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 750\n}\n```\n\nUse `Authorization: Bearer <access_token>` on every subsequent call.\n\n---\n\n## Step 2 \u2014 (Optional) Look Up Prerequisites\n\nYou'll need an owner identity ID and, for VA-based connectors, a cluster ID.\n\n**Find your VA cluster:**\n```http\nGET /v3/clusters\n```\n\n**Find an owner identity:**\n```http\nGET /v3/identities?filters=alias eq \"admin\"\n```\n\nNote the `id` values from both responses.\n\n---\n\n## Step 3 \u2014 Create the Source\n\n```http\nPOST /v3/sources\nContent-Type: application/json\nAuthorization: Bearer <token>\n\n{\n  \"name\": \"My JDBC Source\",\n  \"description\": \"Pulls accounts from the HR database\",\n  \"owner\": {\n    \"type\": \"IDENTITY\",\n    \"id\": \"<owner-identity-id>\",\n    \"name\": \"Admin User\"\n  },\n  \"cluster\": {\n    \"type\": \"CLUSTER\",\n    \"id\": \"<cluster-id>\",\n    \"name\": \"My VA Cluster\"\n  },\n  \"connector\": \"jdbc\",\n  \"connectorAttributes\": {\n    \"jdbcDriverClassName\": \"com.mysql.jdbc.Driver\",\n    \"url\": \"jdbc:mysql://db.example.com:3306/hrdb\",\n    \"user\": \"svc_sailpoint\",\n    \"password\": \"<encrypted-or-vault-ref>\",\n    \"accountQuery\": \"SELECT id, username, email FROM users\"\n  },\n  \"deleteThreshold\": 10,\n  \"authoritative\": false,\n  \"managementWorkgroup\": null\n}\n```\n\n**Response** \u2014 save the top-level `id`:\n```json\n{\n  \"id\": \"2c91808880fe5e740180fe7e0a6805c6\",\n  \"name\": \"My JDBC Source\",\n  \"type\": \"JDBC\",\n  ...\n}\n```\n\n---\n\n## Step 4 \u2014 Trigger Account Aggregation\n\n```http\nPOST /beta/sources/{sourceId}/load-accounts\nContent-Type: application/json\nAuthorization: Bearer <token>\n\n{\n  \"disableOptimization\": false\n}\n```\n\n- `disableOptimization: true` forces a full aggregation (no delta); useful for the first run or debugging.\n- For file-based connectors (CSV, etc.), this endpoint accepts `multipart/form-data` with a `file` field instead.\n\n**Response** \u2014 a task object:\n```json\n{\n  \"type\": \"QUARTZ\",\n  \"id\": \"2c91808880fe5ee90180ff1e2e4505ac\",\n  \"status\": \"PENDING\",\n  \"description\": \"Account Aggregation\"\n}\n```\n\n---\n\n## Step 5 \u2014 Poll Task Status\n\n```http\nGET /beta/task-statuses/{taskId}\nAuthorization: Bearer <token>\n```\n\n**Response:**\n```json\n{\n  \"id\": \"2c91808880fe5ee90180ff1e2e4505ac\",\n  \"type\": \"ACCOUNTS_AGGREGATION\",\n  \"status\": \"SUCCESS\",\n  \"completionStatus\": \"SUCCESS\",\n  \"attributes\": {\n    \"total\": 1532,\n    \"processed\": 1532,\n    \"created\": 47,\n    \"updated\": 14,\n    \"deleted\": 2\n  }\n}\n```\n\nPoll until `status` is `SUCCESS`, `ERROR`, or `TERMINATED`. Typical poll interval: 5\u201315 seconds.\n\n---\n\n## Summary of the Full Flow\n\n| # | Method | Path | Purpose |\n|---|--------|------|---------|\n| 1 | POST | `/oauth/token` | Get bearer token |\n| 2 | GET | `/v3/clusters` | Find VA cluster ID |\n| 3 | GET | `/v3/identities` | Find owner identity ID |\n| 4 | POST | `/v3/sources` | Create the source |\n| 5 | POST | `/beta/sources/{id}/load-accounts` | Start aggregation |\n| 6 | GET | `/beta/task-statuses/{id}` | Poll aggregation status |\n\nSteps 2 and 3 are only needed if you don't already have those IDs.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: GET\n    path: /v3/clusters\n    api_version: v3\n  - method: GET\n    path: /v3/identities\n    api_version: v3\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{id}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/task-statuses/{id}\n    api_version: beta\nauth_flow: OAuth2 bearer token\nrequired_scopes:\n  - idn:sources:manage\n  - idn:task:read\nkey_parameters:\n  - grant_type\n  - client_id\n  - client_secret\n  - name\n  - owner\n  - cluster\n  - connector\n  - connectorAttributes\n  - disableOptimization\n```"
+    }
+  ],
+  "raw_response": "Here's the full API flow for creating a source in SailPoint Identity Security Cloud (ISC) and kicking off an account aggregation.\n\n---\n\n## Step 1 \u2014 Authenticate (OAuth2 Client Credentials)\n\nYour tenant base URL is `https://{tenant}.api.identitynow.com`.\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id=<CLIENT_ID>\n&client_secret=<CLIENT_SECRET>\n```\n\n**Response** \u2014 grab the `access_token`:\n```json\n{\n  \"access_token\": \"eyJhbGci...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 750\n}\n```\n\nUse `Authorization: Bearer <access_token>` on every subsequent call.\n\n---\n\n## Step 2 \u2014 (Optional) Look Up Prerequisites\n\nYou'll need an owner identity ID and, for VA-based connectors, a cluster ID.\n\n**Find your VA cluster:**\n```http\nGET /v3/clusters\n```\n\n**Find an owner identity:**\n```http\nGET /v3/identities?filters=alias eq \"admin\"\n```\n\nNote the `id` values from both responses.\n\n---\n\n## Step 3 \u2014 Create the Source\n\n```http\nPOST /v3/sources\nContent-Type: application/json\nAuthorization: Bearer <token>\n\n{\n  \"name\": \"My JDBC Source\",\n  \"description\": \"Pulls accounts from the HR database\",\n  \"owner\": {\n    \"type\": \"IDENTITY\",\n    \"id\": \"<owner-identity-id>\",\n    \"name\": \"Admin User\"\n  },\n  \"cluster\": {\n    \"type\": \"CLUSTER\",\n    \"id\": \"<cluster-id>\",\n    \"name\": \"My VA Cluster\"\n  },\n  \"connector\": \"jdbc\",\n  \"connectorAttributes\": {\n    \"jdbcDriverClassName\": \"com.mysql.jdbc.Driver\",\n    \"url\": \"jdbc:mysql://db.example.com:3306/hrdb\",\n    \"user\": \"svc_sailpoint\",\n    \"password\": \"<encrypted-or-vault-ref>\",\n    \"accountQuery\": \"SELECT id, username, email FROM users\"\n  },\n  \"deleteThreshold\": 10,\n  \"authoritative\": false,\n  \"managementWorkgroup\": null\n}\n```\n\n**Response** \u2014 save the top-level `id`:\n```json\n{\n  \"id\": \"2c91808880fe5e740180fe7e0a6805c6\",\n  \"name\": \"My JDBC Source\",\n  \"type\": \"JDBC\",\n  ...\n}\n```\n\n---\n\n## Step 4 \u2014 Trigger Account Aggregation\n\n```http\nPOST /beta/sources/{sourceId}/load-accounts\nContent-Type: application/json\nAuthorization: Bearer <token>\n\n{\n  \"disableOptimization\": false\n}\n```\n\n- `disableOptimization: true` forces a full aggregation (no delta); useful for the first run or debugging.\n- For file-based connectors (CSV, etc.), this endpoint accepts `multipart/form-data` with a `file` field instead.\n\n**Response** \u2014 a task object:\n```json\n{\n  \"type\": \"QUARTZ\",\n  \"id\": \"2c91808880fe5ee90180ff1e2e4505ac\",\n  \"status\": \"PENDING\",\n  \"description\": \"Account Aggregation\"\n}\n```\n\n---\n\n## Step 5 \u2014 Poll Task Status\n\n```http\nGET /beta/task-statuses/{taskId}\nAuthorization: Bearer <token>\n```\n\n**Response:**\n```json\n{\n  \"id\": \"2c91808880fe5ee90180ff1e2e4505ac\",\n  \"type\": \"ACCOUNTS_AGGREGATION\",\n  \"status\": \"SUCCESS\",\n  \"completionStatus\": \"SUCCESS\",\n  \"attributes\": {\n    \"total\": 1532,\n    \"processed\": 1532,\n    \"created\": 47,\n    \"updated\": 14,\n    \"deleted\": 2\n  }\n}\n```\n\nPoll until `status` is `SUCCESS`, `ERROR`, or `TERMINATED`. Typical poll interval: 5\u201315 seconds.\n\n---\n\n## Summary of the Full Flow\n\n| # | Method | Path | Purpose |\n|---|--------|------|---------|\n| 1 | POST | `/oauth/token` | Get bearer token |\n| 2 | GET | `/v3/clusters` | Find VA cluster ID |\n| 3 | GET | `/v3/identities` | Find owner identity ID |\n| 4 | POST | `/v3/sources` | Create the source |\n| 5 | POST | `/beta/sources/{id}/load-accounts` | Start aggregation |\n| 6 | GET | `/beta/task-statuses/{id}` | Poll aggregation status |\n\nSteps 2 and 3 are only needed if you don't already have those IDs.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: GET\n    path: /v3/clusters\n    api_version: v3\n  - method: GET\n    path: /v3/identities\n    api_version: v3\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{id}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/task-statuses/{id}\n    api_version: beta\nauth_flow: OAuth2 bearer token\nrequired_scopes:\n  - idn:sources:manage\n  - idn:task:read\nkey_parameters:\n  - grant_type\n  - client_id\n  - client_secret\n  - name\n  - owner\n  - cluster\n  - connector\n  - connectorAttributes\n  - disableOptimization\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

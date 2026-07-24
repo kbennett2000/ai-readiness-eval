@@ -1,0 +1,74 @@
+{
+  "access-request": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "audit-report": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "auth-token": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "cert-campaign": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "find-identity": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "grant-revoke": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "identity-accounts": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "lifecycle-trigger": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "search-filter": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "source-aggregation": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "transform": {
+    "runs": 5,
+    "consulted": 5,
+    "skipped": 0,
+    "skip_rate": 0.0
+  },
+  "_overall": {
+    "runs": 55,
+    "consulted": 55,
+    "skipped": 0,
+    "skip_rate": 0.0
+  }
+}

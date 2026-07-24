@@ -1,0 +1,51 @@
+id: cert-campaign
+category: multi-step
+prompt: >
+  Create an access-review (certification) campaign in ISC, start it, and then pull the results
+  once it's underway. What are the API calls?
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/campaigns
+      api_version: v3
+      operation_id: createCampaign
+      spec_ref: { file: idn/v3/paths/campaigns.yaml, operation_id: createCampaign }
+    - method: POST
+      path: /v3/campaigns/{id}/activate
+      api_version: v3
+      operation_id: startCampaign
+      spec_ref: { file: idn/v3/paths/campaign-activate.yaml, operation_id: startCampaign }
+    - method: POST
+      path: /v3/campaigns/{id}/run-report/{type}
+      api_version: v3
+      operation_id: startCampaignReport
+      spec_ref: { file: idn/v3/paths/campaign-run-report.yaml, operation_id: startCampaignReport }
+    - method: GET
+      path: /v3/campaigns/{id}/reports
+      api_version: v3
+      operation_id: getCampaignReports
+      spec_ref: { file: idn/v3/paths/campaign-reports.yaml, operation_id: getCampaignReports }
+  auth_flow: OAuth2 bearer token (see auth-token).
+  required_scopes:
+    - "idn:campaign:manage         # createCampaign, startCampaign"
+    - "idn:campaign-report:manage  # startCampaignReport"
+    - "idn:campaign-report:read    # getCampaignReports"
+  key_parameters:
+    - { name: name, in: body, required: true, note: "createCampaign: campaign name" }
+    - { name: type, in: body, required: true, note: "createCampaign: MANAGER | SOURCE_OWNER | SEARCH | ROLE_COMPOSITION" }
+    - { name: id, in: path, required: true, note: "campaign id for activate / run-report / reports" }
+    - { name: type, in: path, required: true, note: "run-report: the report type to generate" }
+  success_shape: >
+    createCampaign → 201 with the campaign (STAGED). startCampaign → 202 (activation is async).
+    startCampaignReport → 202 with a report task. getCampaignReports → 200 with report metadata
+    (download links).
+  common_failure_modes:
+    - "Trying to pull results before activating — a STAGED campaign has no live decisions."
+    - "Confusing report generation (run-report → reports) with live decision data (certifications endpoints)."
+    - "Activation is async — poll campaign status before assuming it's ACTIVE."
+notes: >
+  Multi-step: create (STAGED) → activate (startCampaign) → reviewers make decisions → generate a
+  report (startCampaignReport) → fetch report metadata/links (getCampaignReports). Note the
+  activate operationId is `startCampaign` (not "activateCampaign"). "Results" here means campaign
+  reports; live per-item decisions are served by the separate certifications endpoints
+  (identity-certifications*), out of scope for this task's happy path.

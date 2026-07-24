@@ -1,0 +1,50 @@
+{
+  "task_id": "access-request",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1423,
+  "cost_usd": 0.050516899999999997,
+  "duration_ms": 20076,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Submitting an Access Request via SailPoint ISC API\n\nUse `POST /v3/access-requests` to grant a user an access profile, role, or entitlement.\n\n### Authentication\n\nGet a bearer token first via the OAuth2 client credentials flow:\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\"\n```\n\n### Submit the Access Request\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"<access-profile-id>\",\n        \"comment\": \"Access needed for project X\"\n      }\n    ]\n  }'\n```\n\n### Key Fields\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of identity IDs to grant access to |\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | ID of the target access profile/role/entitlement |\n| `requestedItems[].comment` | Optional justification |\n| `requestedItems[].removeDate` | Optional ISO-8601 date for temporary access (e.g. `\"2026-08-01T00:00:00.000Z\"`) |\n\n### Check Request Status\n\nThe response returns an access request ID. Poll its status with:\n\n```bash\ncurl -X GET \"https://{tenant}.api.identitynow.com/v3/access-request-status?filters=id+eq+%22{requestId}%22\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n### Python Example\n\n```python\nimport requests\n\ntenant = \"your-org\"\ntoken = \"your_bearer_token\"\n\nresponse = requests.post(\n    f\"https://{tenant}.api.identitynow.com/v3/access-requests\",\n    headers={\n        \"Authorization\": f\"Bearer {token}\",\n        \"Content-Type\": \"application/json\",\n    },\n    json={\n        \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n        \"requestType\": \"GRANT_ACCESS\",\n        \"requestedItems\": [\n            {\n                \"type\": \"ACCESS_PROFILE\",\n                \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n                \"comment\": \"Requesting access for onboarding\",\n            }\n        ],\n    },\n)\nresponse.raise_for_status()\nprint(response.json())\n```\n\nTo find the identity ID, use `GET /v3/identities?filters=name+eq+\"username\"`. To find the access profile ID, use `GET /v3/access-profiles?filters=name+eq+\"Profile Name\"`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\n  - method: GET\n    path: /v3/access-request-status\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-requests:write]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment, removeDate]\n```"
+    }
+  ],
+  "raw_response": "## Submitting an Access Request via SailPoint ISC API\n\nUse `POST /v3/access-requests` to grant a user an access profile, role, or entitlement.\n\n### Authentication\n\nGet a bearer token first via the OAuth2 client credentials flow:\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\"\n```\n\n### Submit the Access Request\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"<access-profile-id>\",\n        \"comment\": \"Access needed for project X\"\n      }\n    ]\n  }'\n```\n\n### Key Fields\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of identity IDs to grant access to |\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | ID of the target access profile/role/entitlement |\n| `requestedItems[].comment` | Optional justification |\n| `requestedItems[].removeDate` | Optional ISO-8601 date for temporary access (e.g. `\"2026-08-01T00:00:00.000Z\"`) |\n\n### Check Request Status\n\nThe response returns an access request ID. Poll its status with:\n\n```bash\ncurl -X GET \"https://{tenant}.api.identitynow.com/v3/access-request-status?filters=id+eq+%22{requestId}%22\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n### Python Example\n\n```python\nimport requests\n\ntenant = \"your-org\"\ntoken = \"your_bearer_token\"\n\nresponse = requests.post(\n    f\"https://{tenant}.api.identitynow.com/v3/access-requests\",\n    headers={\n        \"Authorization\": f\"Bearer {token}\",\n        \"Content-Type\": \"application/json\",\n    },\n    json={\n        \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n        \"requestType\": \"GRANT_ACCESS\",\n        \"requestedItems\": [\n            {\n                \"type\": \"ACCESS_PROFILE\",\n                \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n                \"comment\": \"Requesting access for onboarding\",\n            }\n        ],\n    },\n)\nresponse.raise_for_status()\nprint(response.json())\n```\n\nTo find the identity ID, use `GET /v3/identities?filters=name+eq+\"username\"`. To find the access profile ID, use `GET /v3/access-profiles?filters=name+eq+\"Profile Name\"`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\n  - method: GET\n    path: /v3/access-request-status\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-requests:write]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment, removeDate]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

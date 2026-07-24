@@ -1,0 +1,41 @@
+id: lifecycle-trigger
+category: multi-step
+prompt: >
+  I want ISC to notify my service whenever a lifecycle event happens (e.g. an identity's access
+  is requested or provisioned). How do I subscribe to an event trigger via the API?
+ground_truth:
+  endpoints:
+    - method: GET
+      path: /beta/triggers
+      api_version: beta
+      operation_id: listTriggers
+      spec_ref: { file: idn/beta/paths/triggers.yaml, operation_id: listTriggers }
+    - method: POST
+      path: /beta/trigger-subscriptions
+      api_version: beta
+      operation_id: createSubscription
+      spec_ref: { file: idn/beta/paths/trigger-subscriptions.yaml, operation_id: createSubscription }
+  auth_flow: >
+    OAuth2 bearer token (see auth-token). Event Triggers are BETA — every call requires the
+    `X-SailPoint-Experimental: true` header.
+  required_scopes:
+    - sp:trigger-service-subscriptions:manage
+  key_parameters:
+    - { name: triggerId, in: body, required: true, note: 'the event trigger to subscribe to, e.g. "idn:access-request-post-approval"' }
+    - { name: type, in: body, required: true, note: "HTTP | EVENTBRIDGE | INLINE (delivery mechanism)" }
+    - { name: httpConfig, in: body, required: false, note: "for type HTTP: url, httpAuthenticationType, etc." }
+    - { name: responseDeadline, in: body, required: false, note: "for request-response (interactive) triggers" }
+  success_shape: >
+    listTriggers → 200 with available triggers (id, name, type: FIRE_AND_FORGET | REQUEST_RESPONSE).
+    createSubscription → 201 with the subscription (id, triggerId, type, config).
+  common_failure_modes:
+    - "Calling /v3/triggers — triggers do not exist in v3; they are beta-only."
+    - "Omitting X-SailPoint-Experimental: true → request rejected."
+    - "Subscribing a FIRE_AND_FORGET handler to a REQUEST_RESPONSE trigger (or vice-versa) without honoring the response contract."
+notes: >
+  VERSION DIVERGENCE: the Event Triggers API is BETA-only at the pinned SHA — there is no v3
+  equivalent (confirmed: no trigger* path files under idn/v3/paths). All calls require the
+  `X-SailPoint-Experimental: true` header. Flow: list available triggers (listTriggers) to find a
+  triggerId, then create a subscription (createSubscription) pointing at your HTTP/EventBridge
+  endpoint. Per SailPoint's versioning strategy, beta carries no stability guarantee and is
+  slated for eventual migration to per-service semantic versions.

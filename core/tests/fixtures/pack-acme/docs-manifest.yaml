@@ -1,0 +1,10 @@
+budget_tokens: 15000
+tasks:
+  widget-list:
+    pages:
+      - url: https://docs.example.invalid/auth
+        role: getting-started
+        note: auth guide
+      - url: https://docs.example.invalid/widgets
+        role: api-reference
+        note: widgets reference

@@ -1,0 +1,61 @@
+{
+  "task_id": "find-identity",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/public-identities",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1747,
+  "cost_usd": 0.05531090000000001,
+  "duration_ms": 28927,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "There are two good options. The **Search API** is the most flexible; the **List Identities** endpoint works well for a simple exact-match filter.\n\n---\n\n## Option 1 \u2014 Search API (recommended for attribute lookups)\n\n`POST /v3/search`\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  },\n  \"fields\": [\"id\", \"name\", \"email\", \"attributes\"]\n}\n```\n\nThe `attributes.*` prefix reaches identity attributes promoted from source accounts. If your org promotes email to the identity level under a different alias (e.g. `email` directly), use that name instead.\n\n```bash\ncurl -s -X POST \"https://{tenant}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"identities\"],\n    \"query\": {\n      \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n    }\n  }'\n```\n\n---\n\n## Option 2 \u2014 List Identities with a filter\n\n`GET /v3/identities?filters=...`\n\nThe `filters` parameter uses SCIM-style expressions:\n\n```bash\ncurl -s -G \"https://{tenant}.api.identitynow.com/v3/identities\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  --data-urlencode 'filters=attributes.email eq \"jane.doe@example.com\"'\n```\n\nThis is simpler but limited to exact matches on indexed attributes. The Search API is better when you need partial matches, OR conditions, or cross-object joins.\n\n---\n\n## Auth\n\nBoth endpoints use a standard client-credentials OAuth2 flow:\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -d \"grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET\"\n```\n\nUse the returned `access_token` as the Bearer token.\n\n---\n\n## Which attribute name to use?\n\nAttribute names vary by org configuration. To discover the correct name for your tenant:\n\n1. Pull a known identity: `GET /v3/identities/{id}`\n2. Inspect the `attributes` object in the response \u2014 the key there is what you use in the filter or query.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /v3/identities\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [idn:search:read, idn:identity-list:read]\nkey_parameters: [indices, query, filters, fields]\n```"
+    }
+  ],
+  "raw_response": "There are two good options. The **Search API** is the most flexible; the **List Identities** endpoint works well for a simple exact-match filter.\n\n---\n\n## Option 1 \u2014 Search API (recommended for attribute lookups)\n\n`POST /v3/search`\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  },\n  \"fields\": [\"id\", \"name\", \"email\", \"attributes\"]\n}\n```\n\nThe `attributes.*` prefix reaches identity attributes promoted from source accounts. If your org promotes email to the identity level under a different alias (e.g. `email` directly), use that name instead.\n\n```bash\ncurl -s -X POST \"https://{tenant}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"identities\"],\n    \"query\": {\n      \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n    }\n  }'\n```\n\n---\n\n## Option 2 \u2014 List Identities with a filter\n\n`GET /v3/identities?filters=...`\n\nThe `filters` parameter uses SCIM-style expressions:\n\n```bash\ncurl -s -G \"https://{tenant}.api.identitynow.com/v3/identities\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  --data-urlencode 'filters=attributes.email eq \"jane.doe@example.com\"'\n```\n\nThis is simpler but limited to exact matches on indexed attributes. The Search API is better when you need partial matches, OR conditions, or cross-object joins.\n\n---\n\n## Auth\n\nBoth endpoints use a standard client-credentials OAuth2 flow:\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -d \"grant_type=client_credentials&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET\"\n```\n\nUse the returned `access_token` as the Bearer token.\n\n---\n\n## Which attribute name to use?\n\nAttribute names vary by org configuration. To discover the correct name for your tenant:\n\n1. Pull a known identity: `GET /v3/identities/{id}`\n2. Inspect the `attributes` object in the response \u2014 the key there is what you use in the filter or query.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /v3/identities\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [idn:search:read, idn:identity-list:read]\nkey_parameters: [indices, query, filters, fields]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

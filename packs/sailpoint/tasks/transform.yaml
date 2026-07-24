@@ -1,0 +1,46 @@
+id: transform
+category: multi-step
+prompt: >
+  Create an attribute transform in ISC (say, an uppercase or concatenation transform) and then
+  test that it produces the output I expect before I wire it into an identity profile.
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/transforms
+      api_version: v3
+      operation_id: createTransform
+      spec_ref: { file: idn/v3/paths/transforms.yaml, operation_id: createTransform }
+    - method: GET
+      path: /v3/transforms
+      api_version: v3
+      operation_id: listTransforms
+      spec_ref: { file: idn/v3/paths/transforms.yaml, operation_id: listTransforms }
+    - method: POST
+      path: /beta/identity-profiles/identity-preview
+      api_version: beta
+      operation_id: showGenerateIdentityPreview
+      spec_ref: { file: idn/beta/paths/identity-profiles-identity-preview.yaml, operation_id: showGenerateIdentityPreview }
+  auth_flow: >
+    OAuth2 bearer token (see auth-token). The identity-preview call is beta and requires the
+    `X-SailPoint-Experimental: true` header.
+  required_scopes:
+    - "idn:transform:manage        # createTransform"
+    - "idn:transform:read          # listTransforms"
+    - "idn:identity-profile:manage # showGenerateIdentityPreview (indirect test path)"
+  key_parameters:
+    - { name: name, in: body, required: true, note: "transform name (unique)" }
+    - { name: type, in: body, required: true, note: "e.g. upper, concat, static" }
+    - { name: attributes, in: body, required: true, note: "type-specific config" }
+  success_shape: "createTransform → 201 with the transform (id, name, type, attributes)."
+  common_failure_modes:
+    - "Assuming a dedicated 'test transform' endpoint exists — it does not (see notes)."
+    - "Duplicate transform name → 400/409."
+    - "Testing via identity-preview without the X-SailPoint-Experimental header on the beta call."
+notes: >
+  COVERAGE GAP on 'test': the API fully supports transform CRUD (create/list/get/update/delete via
+  transforms.yaml), but there is NO dedicated 'test/preview a transform' endpoint at the pinned
+  SHA. A transform is validated indirectly — by attaching it to an identity-profile attribute and
+  running the identity preview (showGenerateIdentityPreview, BETA), or in the UI's transform
+  builder. Ground truth does not invent a transform-test endpoint; the identity-preview endpoint is
+  cited as the closest spec-backed way to observe a transform's output. Report this as an
+  API-coverage gap.

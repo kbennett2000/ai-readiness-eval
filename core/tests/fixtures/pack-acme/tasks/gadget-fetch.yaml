@@ -1,0 +1,16 @@
+id: gadget-fetch
+category: foundational
+prompt: How do I fetch a single gadget by id in Acme Widget Cloud?
+ground_truth:
+  endpoints:
+    - method: GET
+      path: /v3/gadgets/{id}
+      api_version: v3
+      operation_id: getGadget
+  auth_flow: OAuth2 bearer token
+  required_scopes: []
+  key_parameters:
+    - { name: id, in: path, required: true }
+  success_shape: 200 OK with the gadget.
+  common_failure_modes:
+    - Using a query filter instead of the path id.

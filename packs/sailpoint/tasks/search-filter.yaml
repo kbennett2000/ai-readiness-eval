@@ -1,0 +1,33 @@
+id: search-filter
+category: daily-automation
+prompt: >
+  Use the ISC search API to get all identities in the Engineering department. What's the request?
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/search
+      api_version: v3
+      operation_id: searchPost
+      spec_ref: { file: idn/v3/paths/search-post.yaml, operation_id: searchPost }
+  auth_flow: OAuth2 bearer token (see auth-token).
+  required_scopes:
+    - sp:search:read
+  key_parameters:
+    - { name: indices, in: body, required: true, note: '["identities"]' }
+    - { name: query, in: body, required: true, note: '{"query": "attributes.department:\"Engineering\""} (Lucene syntax)' }
+    - { name: sort, in: body, required: false, note: 'e.g. ["name"]' }
+    - { name: searchAfter, in: body, required: false, note: "deep pagination cursor" }
+  success_shape: >
+    200 OK with a JSON array of identity documents matching the filter; total available via the
+    X-Total-Count header when count=true.
+  common_failure_modes:
+    - "Filtering on a non-indexed field or wrong attribute path (use attributes.<name>)."
+    - "Missing sp:search:read scope → 403."
+    - "Using offset-based paging past 10,000 results instead of searchAfter."
+notes: >
+  SCOPES SIDE-QUEST (paired with find-identity): POST /v3/search requires `sp:search:read` and
+  supports full Lucene-style filtering across indexed identity attributes (department, lifecycle
+  state, manager, etc.). By contrast GET /v3/public-identities requires only `sp:scopes:default`
+  but cannot filter arbitrary attributes. For "identities in a department" the Search API is the
+  correct tool; public-identities cannot express this filter. This scope/capability contrast feeds
+  a later golden-path decision.

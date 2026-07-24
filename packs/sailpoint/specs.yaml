@@ -1,0 +1,30 @@
+# Pinned OpenAPI spec source for all SailPoint eval ground truth (ADR-0002).
+# Every `spec_ref.file` in tasks/*.yaml resolves against this repo at this exact SHA.
+# A skeptical reviewer can follow any ground-truth claim back to SailPoint's own spec via `base_url`.
+spec_repo: sailpoint-oss/api-specs
+spec_sha: 545c4ade45715883f345d4f1021d3f28ada9ba64
+spec_pinned_at: "2026-07-21"   # main HEAD when pinned; commit "Update dereferenced specifications"
+base_url: https://github.com/sailpoint-oss/api-specs/blob/545c4ade45715883f345d4f1021d3f28ada9ba64/
+
+# To view a cited file, append its `spec_ref.file` to base_url, e.g.:
+#   https://github.com/sailpoint-oss/api-specs/blob/545c4ade45715883f345d4f1021d3f28ada9ba64/idn/v3/paths/accounts.yaml
+
+# --- Spec-availability & license finding (a scored dimension; ADR-0001, ADR-0002) ---
+# Whether this vendor is even set up to be built against by AI: does a machine-readable spec exist,
+# where, under what license, and does that license permit the vendoring this method prefers?
+spec_finding:
+  machine_readable_spec_available: yes
+  format: OpenAPI 3 (YAML)
+  where: https://github.com/sailpoint-oss/api-specs
+  scope_of_pin: idn/    # the ISC API tree (versioned); the eval anchors to the v3 + beta catalogs
+  license: MIT
+  license_holder: SailPoint Technologies
+  license_year: 2022
+  license_evidence: https://github.com/sailpoint-oss/api-specs/blob/545c4ade45715883f345d4f1021d3f28ada9ba64/LICENSE
+  permits_vendoring: yes   # MIT permits byte-for-byte redistribution with the notice; met visibly
+  notes: >
+    SailPoint publishes api-specs under MIT (Copyright (c) 2022 SailPoint), which permits
+    redistribution provided the copyright + license notice travel with the copy. This pack does NOT
+    vendor spec content itself — its context-layer server is referenced as external (see pack.yaml).
+    The frozen sailpoint-proof-of-concept repo vendors the transitive $ref closure of the 11
+    eval-relevant path files (~270 files) under that grant; provenance there.

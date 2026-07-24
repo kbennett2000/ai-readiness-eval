@@ -1,0 +1,50 @@
+{
+  "task_id": "grant-revoke",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1642,
+  "cost_usd": 0.11686289999999999,
+  "duration_ms": 29383,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Both operations go through the same **Submit Access Request** endpoint \u2014 the `requestType` field differentiates grant from revoke.\n\n## Step 1: Authenticate\n\nGet a bearer token using the Client Credentials grant flow:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nExtract the `access_token` from the response.\n\n---\n\n## Step 2: Grant a Role\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/access-requests' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ROLE\",\n        \"id\": \"<role-id>\",\n        \"comment\": \"Granting role via API\"\n      }\n    ]\n  }'\n```\n\n---\n\n## Step 3: Revoke a Role\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/access-requests' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"REVOKE_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ROLE\",\n        \"id\": \"<role-id>\",\n        \"comment\": \"Revoking role via API\"\n      }\n    ]\n  }'\n```\n\n---\n\n**Key notes:**\n\n- These requests go through the normal access request workflow \u2014 if approvals are configured for the role, they will still be required.\n- `requestedFor` takes an array of identity IDs (not usernames).\n- `requestedItems[].id` is the role's internal ID, not its display name.\n- The PAT must belong to a user with sufficient privileges to submit requests on behalf of others (typically an admin).\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: []\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment]\n```"
+    }
+  ],
+  "raw_response": "Both operations go through the same **Submit Access Request** endpoint \u2014 the `requestType` field differentiates grant from revoke.\n\n## Step 1: Authenticate\n\nGet a bearer token using the Client Credentials grant flow:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{clientId}\"' \\\n  --form 'client_secret=\"{clientSecret}\"'\n```\n\nExtract the `access_token` from the response.\n\n---\n\n## Step 2: Grant a Role\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/access-requests' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ROLE\",\n        \"id\": \"<role-id>\",\n        \"comment\": \"Granting role via API\"\n      }\n    ]\n  }'\n```\n\n---\n\n## Step 3: Revoke a Role\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/access-requests' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"REVOKE_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ROLE\",\n        \"id\": \"<role-id>\",\n        \"comment\": \"Revoking role via API\"\n      }\n    ]\n  }'\n```\n\n---\n\n**Key notes:**\n\n- These requests go through the normal access request workflow \u2014 if approvals are configured for the role, they will still be required.\n- `requestedFor` takes an array of identity IDs (not usernames).\n- `requestedItems[].id` is the role's internal ID, not its display name.\n- The PAT must belong to a user with sufficient privileges to submit requests on behalf of others (typically an admin).\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: []\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

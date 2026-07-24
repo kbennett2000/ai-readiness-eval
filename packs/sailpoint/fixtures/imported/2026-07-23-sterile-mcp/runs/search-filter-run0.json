@@ -1,0 +1,125 @@
+{
+  "task_id": "search-filter",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 765,
+  "cost_usd": 0.0731558,
+  "duration_ms": 17158,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "search identities",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "search identities by department"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the SailPoint ISC search API tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's the request to search for all identities in the Engineering department using the ISC Search API:\n\n**`POST /v3/search`**\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\n### How it works\n\n| Field | Value | Purpose |\n|---|---|---|\n| `indices` | `[\"identities\"]` | Targets the identities search index |\n| `query.query` | `attributes.department:\"Engineering\"` | Filters to identities whose department attribute equals `\"Engineering\"` |\n\nYou can also use the structured `textQuery` or `filters` approach for more control, but the query string above is the most concise form.\n\n**Optional query params** to add for pagination:\n- `?limit=250` \u2014 max results per page (default 250, max 10,000 without `searchAfter`)\n- `?count=true` \u2014 returns total count in `X-Total-Count` response header\n\n**Required scope:** `sp:search:read`\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query]\n```"
+    }
+  ],
+  "raw_response": "Here's the request to search for all identities in the Engineering department using the ISC Search API:\n\n**`POST /v3/search`**\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\n### How it works\n\n| Field | Value | Purpose |\n|---|---|---|\n| `indices` | `[\"identities\"]` | Targets the identities search index |\n| `query.query` | `attributes.department:\"Engineering\"` | Filters to identities whose department attribute equals `\"Engineering\"` |\n\nYou can also use the structured `textQuery` or `filters` approach for more control, but the query string above is the most concise form.\n\n**Optional query params** to add for pagination:\n- `?limit=250` \u2014 max results per page (default 250, max 10,000 without `searchAfter`)\n- `?count=true` \u2014 returns total count in `X-Total-Count` response header\n\n**Required scope:** `sp:search:read`\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (2 call(s))",
+    "attempts": 1
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "task_id": "access-request",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1486,
+  "cost_usd": 0.11454289999999999,
+  "duration_ms": 25409,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Submitting an Access Request via the ISC API\n\nThere are two steps: get an access token, then call the submit access request endpoint.\n\n### Step 1 \u2014 Get an access token\n\nUsing a Personal Access Token (PAT) with the Client Credentials grant is the simplest approach for scripts:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{your-client-id}\"' \\\n  --form 'client_secret=\"{your-client-secret}\"'\n```\n\nExtract the `access_token` from the JSON response.\n\n### Step 2 \u2014 Submit the access request\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/access-requests' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"requestedFor\": [\"identity-id-of-the-user\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"access-profile-id\",\n        \"comment\": \"Requesting for project onboarding\"\n      }\n    ]\n  }'\n```\n\n**Key body fields:**\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of identity IDs who should receive access |\n| `requestType` | `GRANT_ACCESS` (default) or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The ID of the access profile/role/entitlement |\n| `requestedItems[].comment` | Optional justification comment |\n\nFor a Python example:\n\n```python\nimport requests\n\ntenant = \"your-tenant\"\nbase_url = f\"https://{tenant}.api.identitynow.com\"\n\n# Step 1: Get token\ntoken_resp = requests.post(\n    f\"{base_url}/oauth/token\",\n    data={\n        \"grant_type\": \"client_credentials\",\n        \"client_id\": \"your-client-id\",\n        \"client_secret\": \"your-client-secret\",\n    },\n)\naccess_token = token_resp.json()[\"access_token\"]\n\n# Step 2: Submit access request\nresp = requests.post(\n    f\"{base_url}/v3/access-requests\",\n    headers={\"Authorization\": f\"Bearer {access_token}\"},\n    json={\n        \"requestedFor\": [\"ff80818155fe8c080155fe8d925b0316\"],\n        \"requestType\": \"GRANT_ACCESS\",\n        \"requestedItems\": [\n            {\n                \"type\": \"ACCESS_PROFILE\",\n                \"id\": \"2c91808a7190d06801719938fcd20uce\",\n                \"comment\": \"Needed for Q3 project access\",\n            }\n        ],\n    },\n)\nprint(resp.status_code, resp.json())\n```\n\nA `202 Accepted` response means the request was submitted successfully and is pending approval (if approval is required by the access profile's policy).\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token (Client Credentials with PAT)\nrequired_scopes: []\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment]\n```"
+    }
+  ],
+  "raw_response": "## Submitting an Access Request via the ISC API\n\nThere are two steps: get an access token, then call the submit access request endpoint.\n\n### Step 1 \u2014 Get an access token\n\nUsing a Personal Access Token (PAT) with the Client Credentials grant is the simplest approach for scripts:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  --form 'grant_type=\"client_credentials\"' \\\n  --form 'client_id=\"{your-client-id}\"' \\\n  --form 'client_secret=\"{your-client-secret}\"'\n```\n\nExtract the `access_token` from the JSON response.\n\n### Step 2 \u2014 Submit the access request\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/v3/access-requests' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"requestedFor\": [\"identity-id-of-the-user\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"access-profile-id\",\n        \"comment\": \"Requesting for project onboarding\"\n      }\n    ]\n  }'\n```\n\n**Key body fields:**\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of identity IDs who should receive access |\n| `requestType` | `GRANT_ACCESS` (default) or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The ID of the access profile/role/entitlement |\n| `requestedItems[].comment` | Optional justification comment |\n\nFor a Python example:\n\n```python\nimport requests\n\ntenant = \"your-tenant\"\nbase_url = f\"https://{tenant}.api.identitynow.com\"\n\n# Step 1: Get token\ntoken_resp = requests.post(\n    f\"{base_url}/oauth/token\",\n    data={\n        \"grant_type\": \"client_credentials\",\n        \"client_id\": \"your-client-id\",\n        \"client_secret\": \"your-client-secret\",\n    },\n)\naccess_token = token_resp.json()[\"access_token\"]\n\n# Step 2: Submit access request\nresp = requests.post(\n    f\"{base_url}/v3/access-requests\",\n    headers={\"Authorization\": f\"Bearer {access_token}\"},\n    json={\n        \"requestedFor\": [\"ff80818155fe8c080155fe8d925b0316\"],\n        \"requestType\": \"GRANT_ACCESS\",\n        \"requestedItems\": [\n            {\n                \"type\": \"ACCESS_PROFILE\",\n                \"id\": \"2c91808a7190d06801719938fcd20uce\",\n                \"comment\": \"Needed for Q3 project access\",\n            }\n        ],\n    },\n)\nprint(resp.status_code, resp.json())\n```\n\nA `202 Accepted` response means the request was submitted successfully and is pending approval (if approval is required by the access profile's policy).\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token (Client Credentials with PAT)\nrequired_scopes: []\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

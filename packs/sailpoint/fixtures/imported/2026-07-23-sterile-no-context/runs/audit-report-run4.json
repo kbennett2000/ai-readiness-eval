@@ -1,0 +1,50 @@
+{
+  "task_id": "audit-report",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2211,
+  "cost_usd": 0.062365899999999995,
+  "duration_ms": 37420,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Querying ISC Audit/Activity Events\n\nISC exposes two paths for this. The **Search API** is the most flexible; there's also a dedicated **Audit Events** endpoint for simpler queries.\n\n---\n\n### Option 1 \u2014 Search API (recommended)\n\n`POST /v3/search` with `indices: [\"events\"]` supports full Elasticsearch-style queries and date math for time ranges.\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:\\\"AUTHENTICATION_02\\\"\"\n    },\n    \"filters\": {\n      \"created\": {\n        \"type\": \"RANGE\",\n        \"range\": {\n          \"lower\": {\n            \"value\": \"now-24h\",\n            \"inclusive\": true\n          }\n        }\n      }\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250,\n    \"count\": true\n  }'\n```\n\n**Pagination** \u2014 when `count` exceeds `limit`, pull the next page by passing `searchAfter` with the sort values from the last result:\n\n```json\n{\n  \"searchAfter\": [\"2026-07-22T10:31:00.000Z\"]\n}\n```\n\n**Common event type values** (the `type` field in query):\n\n| Type string | Meaning |\n|---|---|\n| `AUTHENTICATION_02` | Failed login |\n| `USER_MANAGEMENT_01` | Account created |\n| `ACCESS_REQUEST_01` | Access request submitted |\n| `PROVISIONING_ACTION_01` | Provisioning completed |\n\nYou can also combine filters in the query string: `type:\"AUTHENTICATION_02\" AND technicalName:\"AUTHENTICATION_FAILED\"`\n\n---\n\n### Option 2 \u2014 Audit Events endpoint (simpler, less flexible)\n\n```bash\ncurl -G \"https://{tenant}.api.identitynow.com/beta/audit-events\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  --data-urlencode \"filters=type eq \\\"AUTHENTICATION_02\\\"\" \\\n  --data-urlencode \"from=2026-07-22T00:00:00Z\" \\\n  --data-urlencode \"to=2026-07-23T00:00:00Z\" \\\n  -d \"limit=250\" \\\n  -d \"count=true\"\n```\n\nThis endpoint uses SailPoint's standard filter syntax (`eq`, `gt`, `lt`, `and`) rather than Lucene, which makes it easier for simple queries but less powerful for complex ones.\n\n---\n\n### Getting a Bearer Token\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={id}&client_secret={secret}\"\n```\n\nThe required OAuth scope for both calls is `idn:audit-events:read`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /beta/audit-events\n    api_version: beta\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [idn:audit-events:read]\nkey_parameters: [indices, query, filters, sort, limit, count, searchAfter, from, to]\n```"
+    }
+  ],
+  "raw_response": "## Querying ISC Audit/Activity Events\n\nISC exposes two paths for this. The **Search API** is the most flexible; there's also a dedicated **Audit Events** endpoint for simpler queries.\n\n---\n\n### Option 1 \u2014 Search API (recommended)\n\n`POST /v3/search` with `indices: [\"events\"]` supports full Elasticsearch-style queries and date math for time ranges.\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/search\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:\\\"AUTHENTICATION_02\\\"\"\n    },\n    \"filters\": {\n      \"created\": {\n        \"type\": \"RANGE\",\n        \"range\": {\n          \"lower\": {\n            \"value\": \"now-24h\",\n            \"inclusive\": true\n          }\n        }\n      }\n    },\n    \"sort\": [\"-created\"],\n    \"limit\": 250,\n    \"count\": true\n  }'\n```\n\n**Pagination** \u2014 when `count` exceeds `limit`, pull the next page by passing `searchAfter` with the sort values from the last result:\n\n```json\n{\n  \"searchAfter\": [\"2026-07-22T10:31:00.000Z\"]\n}\n```\n\n**Common event type values** (the `type` field in query):\n\n| Type string | Meaning |\n|---|---|\n| `AUTHENTICATION_02` | Failed login |\n| `USER_MANAGEMENT_01` | Account created |\n| `ACCESS_REQUEST_01` | Access request submitted |\n| `PROVISIONING_ACTION_01` | Provisioning completed |\n\nYou can also combine filters in the query string: `type:\"AUTHENTICATION_02\" AND technicalName:\"AUTHENTICATION_FAILED\"`\n\n---\n\n### Option 2 \u2014 Audit Events endpoint (simpler, less flexible)\n\n```bash\ncurl -G \"https://{tenant}.api.identitynow.com/beta/audit-events\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  --data-urlencode \"filters=type eq \\\"AUTHENTICATION_02\\\"\" \\\n  --data-urlencode \"from=2026-07-22T00:00:00Z\" \\\n  --data-urlencode \"to=2026-07-23T00:00:00Z\" \\\n  -d \"limit=250\" \\\n  -d \"count=true\"\n```\n\nThis endpoint uses SailPoint's standard filter syntax (`eq`, `gt`, `lt`, `and`) rather than Lucene, which makes it easier for simple queries but less powerful for complex ones.\n\n---\n\n### Getting a Bearer Token\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={id}&client_secret={secret}\"\n```\n\nThe required OAuth scope for both calls is `idn:audit-events:read`.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /beta/audit-events\n    api_version: beta\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [idn:audit-events:read]\nkey_parameters: [indices, query, filters, sort, limit, count, searchAfter, from, to]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

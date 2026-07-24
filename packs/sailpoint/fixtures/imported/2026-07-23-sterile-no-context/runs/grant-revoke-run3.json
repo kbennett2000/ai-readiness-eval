@@ -1,0 +1,50 @@
+{
+  "task_id": "grant-revoke",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1518,
+  "cost_usd": 0.051926900000000005,
+  "duration_ms": 25005,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Granting and Revoking Roles in ISC via API\n\nBoth operations use the same endpoint \u2014 the Access Requests API \u2014 with different `requestType` values.\n\n### Authentication\n\nFirst, get a bearer token via the OAuth2 client credentials flow:\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\n```\n\n### Grant a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"identity-id-here\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"role-id-here\",\n      \"comment\": \"Granting role programmatically\"\n    }\n  ]\n}\n```\n\n### Revoke a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"identity-id-here\"],\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"role-id-here\",\n      \"comment\": \"Revoking role programmatically\"\n    }\n  ]\n}\n```\n\n### Notes\n\n- `requestedFor` is an array \u2014 you can target multiple identities in one call.\n- `requestedItems` is also an array \u2014 you can grant/revoke multiple roles at once.\n- The identity ID and role ID are the ISC internal UUIDs, not display names. Use `GET /v3/identities` and `GET /v3/roles` to look them up if needed.\n- If the role requires approval, the request enters the approval workflow; a 202 response doesn't mean the role is immediately assigned.\n- You can optionally include `removeDate` (ISO 8601) in a grant request to set an expiry.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [idn:access-request:create]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment]\n```"
+    }
+  ],
+  "raw_response": "## Granting and Revoking Roles in ISC via API\n\nBoth operations use the same endpoint \u2014 the Access Requests API \u2014 with different `requestType` values.\n\n### Authentication\n\nFirst, get a bearer token via the OAuth2 client credentials flow:\n\n```http\nPOST /oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\n```\n\n### Grant a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"identity-id-here\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"role-id-here\",\n      \"comment\": \"Granting role programmatically\"\n    }\n  ]\n}\n```\n\n### Revoke a Role\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"identity-id-here\"],\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"role-id-here\",\n      \"comment\": \"Revoking role programmatically\"\n    }\n  ]\n}\n```\n\n### Notes\n\n- `requestedFor` is an array \u2014 you can target multiple identities in one call.\n- `requestedItems` is also an array \u2014 you can grant/revoke multiple roles at once.\n- The identity ID and role ID are the ISC internal UUIDs, not display names. Use `GET /v3/identities` and `GET /v3/roles` to look them up if needed.\n- If the role requires approval, the request enters the approval workflow; a 202 response doesn't mean the role is immediately assigned.\n- You can optionally include `removeDate` (ISO 8601) in a grant request to set an expiry.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 client credentials bearer token\nrequired_scopes: [idn:access-request:create]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

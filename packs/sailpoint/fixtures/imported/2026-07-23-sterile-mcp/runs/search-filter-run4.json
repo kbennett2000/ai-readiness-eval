@@ -1,0 +1,125 @@
+{
+  "task_id": "search-filter",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 818,
+  "cost_usd": 0.07135349999999999,
+  "duration_ms": 18252,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "search identities",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "search identities department"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the SailPoint ISC search API tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's the request to get all identities in the Engineering department using the ISC Search API:\n\n**`POST /v3/search`**\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\n### Key details\n\n| Field | Value |\n|---|---|\n| **Endpoint** | `POST /v3/search` |\n| **Scope** | `sp:search:read` |\n| **`indices`** | `[\"identities\"]` \u2014 tells the search engine to look in the identities index |\n| **`query.query`** | Lucene-style query string filtering by the `attributes.department` field |\n\n### Pagination\n\nFor large orgs, add `limit`/`offset` query parameters, or use `searchAfter` for result sets beyond 10,000 records:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  },\n  \"sort\": [\"id\"],\n  \"searchAfter\": [\"<last-seen-id>\"]\n}\n```\n\n### Optional: request total count\n\nAppend `?count=true` to the URL to get `X-Total-Count` in the response headers.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query]\n```"
+    }
+  ],
+  "raw_response": "Here's the request to get all identities in the Engineering department using the ISC Search API:\n\n**`POST /v3/search`**\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\n### Key details\n\n| Field | Value |\n|---|---|\n| **Endpoint** | `POST /v3/search` |\n| **Scope** | `sp:search:read` |\n| **`indices`** | `[\"identities\"]` \u2014 tells the search engine to look in the identities index |\n| **`query.query`** | Lucene-style query string filtering by the `attributes.department` field |\n\n### Pagination\n\nFor large orgs, add `limit`/`offset` query parameters, or use `searchAfter` for result sets beyond 10,000 records:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  },\n  \"sort\": [\"id\"],\n  \"searchAfter\": [\"<last-seen-id>\"]\n}\n```\n\n### Optional: request total count\n\nAppend `?count=true` to the URL to get `X-Total-Count` in the response headers.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (2 call(s))",
+    "attempts": 1
+  }
+}

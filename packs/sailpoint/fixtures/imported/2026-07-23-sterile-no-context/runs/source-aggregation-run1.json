@@ -1,0 +1,83 @@
+{
+  "task_id": "source-aggregation",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/sources",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/sources/{}/load-accounts",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/sources/{}/load-accounts",
+      "answer_api_version": "beta"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/account-aggregations/{}/status",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 2662,
+  "cost_usd": 0.06908589999999999,
+  "duration_ms": 41047,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's a walkthrough of the four API calls you need.\n\n---\n\n## Step 1: Get an OAuth2 Bearer Token\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={clientId}\n&client_secret={clientSecret}\n```\n\nSave the `access_token` from the response \u2014 every subsequent call uses it as `Authorization: Bearer {token}`.\n\n---\n\n## Step 2: Create the Source\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/sources\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"name\": \"My LDAP Source\",\n  \"description\": \"Corporate AD\",\n  \"owner\": {\n    \"type\": \"IDENTITY\",\n    \"id\": \"{ownerIdentityId}\",\n    \"name\": \"Admin User\"\n  },\n  \"cluster\": {\n    \"type\": \"CLUSTER\",\n    \"id\": \"{vaClusterId}\",\n    \"name\": \"Corp VA Cluster\"\n  },\n  \"connector\": \"active-directory\",\n  \"connectorClass\": \"sailpoint.connector.ADLDAPConnector\",\n  \"connectionType\": \"direct\",\n  \"connectorAttributes\": {\n    \"IQServiceHost\": \"iqservice.corp.local\",\n    \"IQServicePort\": \"5050\",\n    \"forestSettings\": [\n      {\n        \"forest\": \"corp.local\",\n        \"user\": \"svc-iq@corp.local\",\n        \"password\": \"s3cr3t\"\n      }\n    ]\n  }\n}\n```\n\nThe response body includes the new source's `id` \u2014 you need it for the next call.\n\n**Key fields:**\n- `connector` \u2014 short connector type identifier (e.g. `active-directory`, `delimited-file`, `jdbc`)\n- `connectorClass` \u2014 fully-qualified Java class for the connector\n- `cluster` \u2014 required for on-prem connectors; omit for cloud-native\n- `connectorAttributes` \u2014 connector-specific config; schema varies by connector type\n\n---\n\n## Step 3: Kick Off Account Aggregation\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/sources/{sourceId}/load-accounts\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"disableOptimization\": false\n}\n```\n\nSet `disableOptimization: true` to force a full aggregation (skip delta tracking). The response body contains a `task` object with an `id`.\n\n---\n\n## Step 4: Poll for Completion (optional but recommended)\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/task-status/{taskId}\nAuthorization: Bearer {token}\n```\n\nCheck `task.completionStatus` \u2014 values are `SUCCESS`, `ERROR`, or `PENDING`/`IN_PROGRESS` while running. Also look at `task.attributes.optimizedAggregation` and `task.attributes.accountsWithDeletedAssignments` in the result for a summary of what was processed.\n\n---\n\n**Scope requirements** \u2014 the client credentials app needs at minimum:\n- `idn:sources:manage` (create source + trigger aggregation)\n- `idn:task-management:read` (poll task status)\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{sourceId}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/task-status/{taskId}\n    api_version: beta\nauth_flow: OAuth2 bearer token (client_credentials grant)\nrequired_scopes: [idn:sources:manage, idn:task-management:read]\nkey_parameters: [grant_type, client_id, client_secret, name, owner, cluster, connector, connectorClass, connectorAttributes, disableOptimization, sourceId, taskId]\n```"
+    }
+  ],
+  "raw_response": "Here's a walkthrough of the four API calls you need.\n\n---\n\n## Step 1: Get an OAuth2 Bearer Token\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={clientId}\n&client_secret={clientSecret}\n```\n\nSave the `access_token` from the response \u2014 every subsequent call uses it as `Authorization: Bearer {token}`.\n\n---\n\n## Step 2: Create the Source\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/sources\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"name\": \"My LDAP Source\",\n  \"description\": \"Corporate AD\",\n  \"owner\": {\n    \"type\": \"IDENTITY\",\n    \"id\": \"{ownerIdentityId}\",\n    \"name\": \"Admin User\"\n  },\n  \"cluster\": {\n    \"type\": \"CLUSTER\",\n    \"id\": \"{vaClusterId}\",\n    \"name\": \"Corp VA Cluster\"\n  },\n  \"connector\": \"active-directory\",\n  \"connectorClass\": \"sailpoint.connector.ADLDAPConnector\",\n  \"connectionType\": \"direct\",\n  \"connectorAttributes\": {\n    \"IQServiceHost\": \"iqservice.corp.local\",\n    \"IQServicePort\": \"5050\",\n    \"forestSettings\": [\n      {\n        \"forest\": \"corp.local\",\n        \"user\": \"svc-iq@corp.local\",\n        \"password\": \"s3cr3t\"\n      }\n    ]\n  }\n}\n```\n\nThe response body includes the new source's `id` \u2014 you need it for the next call.\n\n**Key fields:**\n- `connector` \u2014 short connector type identifier (e.g. `active-directory`, `delimited-file`, `jdbc`)\n- `connectorClass` \u2014 fully-qualified Java class for the connector\n- `cluster` \u2014 required for on-prem connectors; omit for cloud-native\n- `connectorAttributes` \u2014 connector-specific config; schema varies by connector type\n\n---\n\n## Step 3: Kick Off Account Aggregation\n\n```http\nPOST https://{tenant}.api.identitynow.com/beta/sources/{sourceId}/load-accounts\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"disableOptimization\": false\n}\n```\n\nSet `disableOptimization: true` to force a full aggregation (skip delta tracking). The response body contains a `task` object with an `id`.\n\n---\n\n## Step 4: Poll for Completion (optional but recommended)\n\n```http\nGET https://{tenant}.api.identitynow.com/beta/task-status/{taskId}\nAuthorization: Bearer {token}\n```\n\nCheck `task.completionStatus` \u2014 values are `SUCCESS`, `ERROR`, or `PENDING`/`IN_PROGRESS` while running. Also look at `task.attributes.optimizedAggregation` and `task.attributes.accountsWithDeletedAssignments` in the result for a summary of what was processed.\n\n---\n\n**Scope requirements** \u2014 the client credentials app needs at minimum:\n- `idn:sources:manage` (create source + trigger aggregation)\n- `idn:task-management:read` (poll task status)\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/sources\n    api_version: v3\n  - method: POST\n    path: /beta/sources/{sourceId}/load-accounts\n    api_version: beta\n  - method: GET\n    path: /beta/task-status/{taskId}\n    api_version: beta\nauth_flow: OAuth2 bearer token (client_credentials grant)\nrequired_scopes: [idn:sources:manage, idn:task-management:read]\nkey_parameters: [grant_type, client_id, client_secret, name, owner, cluster, connector, connectorClass, connectorAttributes, disableOptimization, sourceId, taskId]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

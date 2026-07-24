@@ -1,0 +1,227 @@
+budget_tokens: 15000
+tasks:
+  auth-token:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: The authentication guide — the OAuth2 client-credentials token grant flow.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/auth-token/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/personal-access-tokens
+      role: api-reference
+      note: PAT management (how you obtain the client id/secret).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:9b9a9d3ba70b6a3c88179fec524ee9391fba7db27b53838a618f0b5bd05ce3e8
+      byte_size: 1162
+      cache_file: docs-cache/auth-token/developer-sailpoint-com-docs-api-personal-access-tokens.txt
+  find-identity:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide (every task needs a token).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/find-identity/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/search
+      role: api-reference
+      note: Search API reference (full attribute lookup).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:97b5e4ed0644fae6acf19686958abb3ecb3ecf424556be1f94e282edf0a5f94d
+      byte_size: 2191
+      cache_file: docs-cache/find-identity/developer-sailpoint-com-docs-api-search.txt
+    - url: https://developer.sailpoint.com/docs/api/public-identities
+      role: api-reference
+      note: Public Identities — the low-scope lookup alternative.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:9126cb7a79b80f58ddabfbf32a63182f67c2f96f66ff87759f58de62c98c8712
+      byte_size: 637
+      cache_file: docs-cache/find-identity/developer-sailpoint-com-docs-api-public-identities.txt
+    - url: https://developer.sailpoint.com/docs/api/standard-collection-parameters
+      role: topic-guide
+      note: Filtering/paging conventions used by collection endpoints.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:3016fe9ae53ff4329adfeec15d66285411b657f6064ecfa0592642a715fc9d1d
+      byte_size: 11725
+      cache_file: docs-cache/find-identity/developer-sailpoint-com-docs-api-standard-collection-parameters.txt
+  identity-accounts:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/identity-accounts/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/accounts
+      role: api-reference
+      note: Accounts API reference.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:98731731204a6324f2da447d6d9b485b85629ab6a3767adeda2635590945cd08
+      byte_size: 2764
+      cache_file: docs-cache/identity-accounts/developer-sailpoint-com-docs-api-accounts.txt
+    - url: https://developer.sailpoint.com/docs/api/standard-collection-parameters
+      role: topic-guide
+      note: The filters query parameter (identityId eq ...).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:3016fe9ae53ff4329adfeec15d66285411b657f6064ecfa0592642a715fc9d1d
+      byte_size: 11725
+      cache_file: docs-cache/identity-accounts/developer-sailpoint-com-docs-api-standard-collection-parameters.txt
+  access-request:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/access-request/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/access-requests
+      role: api-reference
+      note: Access Requests API reference.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:1893676562814250dd27deee2fc3d91983db50f0129fbc4bbfddfabd1da617b6
+      byte_size: 838
+      cache_file: docs-cache/access-request/developer-sailpoint-com-docs-api-access-requests.txt
+  grant-revoke:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/grant-revoke/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/access-requests
+      role: api-reference
+      note: Grant and revoke both go through the access-requests endpoint (requestType).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:1893676562814250dd27deee2fc3d91983db50f0129fbc4bbfddfabd1da617b6
+      byte_size: 838
+      cache_file: docs-cache/grant-revoke/developer-sailpoint-com-docs-api-access-requests.txt
+  search-filter:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/search-filter/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/search
+      role: api-reference
+      note: Search API reference (query + indices).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:97b5e4ed0644fae6acf19686958abb3ecb3ecf424556be1f94e282edf0a5f94d
+      byte_size: 2191
+      cache_file: docs-cache/search-filter/developer-sailpoint-com-docs-api-search.txt
+    - url: https://developer.sailpoint.com/docs/api/standard-collection-parameters
+      role: topic-guide
+      note: Filtering/paging conventions.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:3016fe9ae53ff4329adfeec15d66285411b657f6064ecfa0592642a715fc9d1d
+      byte_size: 11725
+      cache_file: docs-cache/search-filter/developer-sailpoint-com-docs-api-standard-collection-parameters.txt
+  audit-report:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/audit-report/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/search
+      role: api-reference
+      note: The events index is queried through the Search API.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:97b5e4ed0644fae6acf19686958abb3ecb3ecf424556be1f94e282edf0a5f94d
+      byte_size: 2191
+      cache_file: docs-cache/audit-report/developer-sailpoint-com-docs-api-search.txt
+    - url: https://developer.sailpoint.com/docs/api/reports-data-extraction
+      role: api-reference
+      note: Reporting / data-extraction endpoints.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:57f7f3ec5b411dd3d6e6a03373d5b225c1aff6a5ce9aa057f76b2cf0a966eaf2
+      byte_size: 406
+      cache_file: docs-cache/audit-report/developer-sailpoint-com-docs-api-reports-data-extraction.txt
+  source-aggregation:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/source-aggregation/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/sources
+      role: api-reference
+      note: Sources API reference (create source + load accounts).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:50acde40abd54b044e93592f3a3bfa9ccef75d52b4a62491c319642521431480
+      byte_size: 9972
+      cache_file: docs-cache/source-aggregation/developer-sailpoint-com-docs-api-sources.txt
+  transform:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/transform/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/extensibility/transforms/
+      role: topic-guide
+      note: The transforms concept guide (what a transform is, operations).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:45750d508a51b9ea12b33a997ded4fc2f2c9c3a425bbb4e6f4336965b10f5c69
+      byte_size: 14033
+      cache_file: docs-cache/transform/developer-sailpoint-com-docs-extensibility-transforms.txt
+    - url: https://developer.sailpoint.com/docs/api/transforms
+      role: api-reference
+      note: Transforms API reference (create transform).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:600e6d32af40e8189768bcd29b184c6b4c1d3721f7c87791e6a033658a560711
+      byte_size: 502
+      cache_file: docs-cache/transform/developer-sailpoint-com-docs-api-transforms.txt
+  cert-campaign:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/cert-campaign/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/api/certification-campaigns
+      role: api-reference
+      note: Certification Campaigns API reference (create + activate + reports).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:b501e175b1b6ef3b880d401a61c7d5d56d72422e3b0ea99813bd3dabeb70def9
+      byte_size: 7041
+      cache_file: docs-cache/cert-campaign/developer-sailpoint-com-docs-api-certification-campaigns.txt
+  lifecycle-trigger:
+    pages:
+    - url: https://developer.sailpoint.com/docs/api/authentication
+      role: getting-started
+      note: Auth guide.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:84680c6b8f35ab5e114fc35ee7f6cb6f26bd96dbc2f47a6f77c9928a57bd230e
+      byte_size: 28978
+      cache_file: docs-cache/lifecycle-trigger/developer-sailpoint-com-docs-api-authentication.txt
+    - url: https://developer.sailpoint.com/docs/extensibility/event-triggers/
+      role: topic-guide
+      note: Event Triggers concept guide (subscriptions, BETA + experimental header).
+      fetch_date: '2026-07-23'
+      content_hash: sha256:f7c6ba40ce3224d886b5ab470a51782f9e4d25240d8fc3f241acfe4abe1581db
+      byte_size: 2387
+      cache_file: docs-cache/lifecycle-trigger/developer-sailpoint-com-docs-extensibility-event-triggers.txt
+    - url: https://developer.sailpoint.com/docs/api/triggers
+      role: api-reference
+      note: Triggers / subscriptions API reference.
+      fetch_date: '2026-07-23'
+      content_hash: sha256:dfa39ade24cf713799438de27b34afa153aaa09f17d2ade2f91088d97e4f29af
+      byte_size: 3645
+      cache_file: docs-cache/lifecycle-trigger/developer-sailpoint-com-docs-api-triggers.txt

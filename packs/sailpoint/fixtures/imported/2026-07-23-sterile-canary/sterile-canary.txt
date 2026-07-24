@@ -1,0 +1,9 @@
+# STERILE canary (empty cwd) — expected: cannot name the project
+# available_tools at init: []
+# ignorant (PASS): True
+
+Let me check my memory for any relevant project context.
+
+The primary working directory is `/tmp/eval-sterile-sgc0yvmz`, which is a temporary evaluation directory with no git repository. I don't have information about a specific software project in this context.
+
+I do not have that information. The current working directory (`/tmp/eval-sterile-sgc0yvmz`) is not a git repository and does not correspond to a named project. There is no repository name, purpose, or development cycle available to me from the current context.

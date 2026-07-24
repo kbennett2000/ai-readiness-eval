@@ -1,0 +1,40 @@
+id: find-identity
+category: foundational
+prompt: >
+  How do I look up an identity in our ISC org by an attribute — say, find the identity whose
+  email is jane.doe@example.com?
+ground_truth:
+  endpoints:
+    - method: POST
+      path: /v3/search
+      api_version: v3
+      operation_id: searchPost
+      spec_ref: { file: idn/v3/paths/search-post.yaml, operation_id: searchPost }
+    - method: GET
+      path: /v3/public-identities
+      api_version: v3
+      operation_id: getPublicIdentities
+      spec_ref: { file: idn/v3/paths/public-identities.yaml, operation_id: getPublicIdentities }
+  auth_flow: OAuth2 bearer token (see auth-token).
+  required_scopes:
+    - "sp:search:read        # for POST /v3/search"
+    - "sp:scopes:default     # for GET /v3/public-identities"
+  key_parameters:
+    - { name: indices, in: body, required: true, note: 'Search: ["identities"]' }
+    - { name: query, in: body, required: true, note: 'Search: {"query": "email:\"jane.doe@example.com\""} (Lucene syntax over indexed attributes)' }
+    - { name: filters, in: query, required: false, note: 'public-identities: standard collection filter, e.g. firstname eq "Jane"' }
+  success_shape: >
+    Search: 200 OK with a JSON array of identity documents (id, name, attributes, etc.).
+    public-identities: 200 OK with a lighter array of public identity records.
+  common_failure_modes:
+    - "Using GET /v3/identities-style filtering when the ask needs full attribute search — reach for POST /v3/search."
+    - "Missing sp:search:read scope on the token → 403."
+    - "Expecting public-identities to filter arbitrary attributes — it exposes only a limited public field set."
+notes: >
+  SCOPES SIDE-QUEST (paired with search-filter): the Search API (POST /v3/search) requires
+  `sp:search:read` and returns full indexed identity documents with arbitrary Lucene-style
+  attribute filtering. The public-identities endpoint (GET /v3/public-identities) requires only
+  `sp:scopes:default` — a much lower bar — but exposes only a limited, public field set and
+  standard collection filtering. Choose public-identities for lightweight name/email lookups where
+  the caller has minimal scopes; choose Search when you need to query arbitrary identity
+  attributes. A later golden-path decision depends on this scope contrast.

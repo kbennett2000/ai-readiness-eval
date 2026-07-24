@@ -1,0 +1,72 @@
+{
+  "task_id": "transform",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.3333333333333333,
+    "method": 0.3333333333333333,
+    "api_version": 0.3333333333333333,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/transforms",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/transforms",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/transforms",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/identity-profiles/identity-preview",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 4906,
+  "cost_usd": 0.1027459,
+  "duration_ms": 74134,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here's a complete workflow: create an uppercase transform, then preview it against a real identity before touching any identity profile.\n\n---\n\n## Step 1 \u2014 Create the transform\n\nThis example uppercases the `department` account attribute pulled from Active Directory.\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/transforms\" \\\n  -H \"Authorization: Bearer {token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"name\": \"upper-department\",\n    \"type\": \"upper\",\n    \"attributes\": {\n      \"input\": {\n        \"type\": \"accountAttribute\",\n        \"attributes\": {\n          \"sourceName\": \"Active Directory\",\n          \"attributeName\": \"department\"\n        }\n      }\n    }\n  }'\n```\n\n**Save the `id` from the response** \u2014 you need it for the next step.\n\n---\n\n## Step 2 \u2014 Preview the transform against an identity\n\nPass any identity whose AD account already has a `department` value.\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/transforms/{transformId}/preview\" \\\n  -H \"Authorization: Bearer {token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"identityId\": \"2c9180857d8c1e59017d8d0a64671d27\"\n  }'\n```\n\n**Expected response** \u2014 if `department` on the account is `\"Engineering\"`:\n\n```json\n{\n  \"output\": \"ENGINEERING\"\n}\n```\n\nIf the output is blank, the identity either has no AD account correlated or `department` is empty on that account.\n\n---\n\n## Bonus \u2014 concatenation variant\n\nIf you want to build `Lastname, Firstname` instead, the `concat` transform wires together sub-transforms:\n\n```json\n{\n  \"name\": \"display-name-lastfirst\",\n  \"type\": \"concat\",\n  \"attributes\": {\n    \"values\": [\n      {\n        \"type\": \"accountAttribute\",\n        \"attributes\": {\n          \"sourceName\": \"Active Directory\",\n          \"attributeName\": \"sn\"\n        }\n      },\n      {\n        \"type\": \"static\",\n        \"attributes\": { \"value\": \", \" }\n      },\n      {\n        \"type\": \"accountAttribute\",\n        \"attributes\": {\n          \"sourceName\": \"Active Directory\",\n          \"attributeName\": \"givenName\"\n        }\n      }\n    ]\n  }\n}\n```\n\nPreview it the same way with `POST /v3/transforms/{id}/preview`. Once the output looks right, wire the transform name into the identity attribute mapping in the identity profile.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/transforms\n    api_version: v3\n  - method: POST\n    path: /v3/transforms/{transformId}/preview\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:transforms:manage, idn:transforms:read]\nkey_parameters: [name, type, attributes, identityId]\n```"
+    }
+  ],
+  "raw_response": "Here's a complete workflow: create an uppercase transform, then preview it against a real identity before touching any identity profile.\n\n---\n\n## Step 1 \u2014 Create the transform\n\nThis example uppercases the `department` account attribute pulled from Active Directory.\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/transforms\" \\\n  -H \"Authorization: Bearer {token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"name\": \"upper-department\",\n    \"type\": \"upper\",\n    \"attributes\": {\n      \"input\": {\n        \"type\": \"accountAttribute\",\n        \"attributes\": {\n          \"sourceName\": \"Active Directory\",\n          \"attributeName\": \"department\"\n        }\n      }\n    }\n  }'\n```\n\n**Save the `id` from the response** \u2014 you need it for the next step.\n\n---\n\n## Step 2 \u2014 Preview the transform against an identity\n\nPass any identity whose AD account already has a `department` value.\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/transforms/{transformId}/preview\" \\\n  -H \"Authorization: Bearer {token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"identityId\": \"2c9180857d8c1e59017d8d0a64671d27\"\n  }'\n```\n\n**Expected response** \u2014 if `department` on the account is `\"Engineering\"`:\n\n```json\n{\n  \"output\": \"ENGINEERING\"\n}\n```\n\nIf the output is blank, the identity either has no AD account correlated or `department` is empty on that account.\n\n---\n\n## Bonus \u2014 concatenation variant\n\nIf you want to build `Lastname, Firstname` instead, the `concat` transform wires together sub-transforms:\n\n```json\n{\n  \"name\": \"display-name-lastfirst\",\n  \"type\": \"concat\",\n  \"attributes\": {\n    \"values\": [\n      {\n        \"type\": \"accountAttribute\",\n        \"attributes\": {\n          \"sourceName\": \"Active Directory\",\n          \"attributeName\": \"sn\"\n        }\n      },\n      {\n        \"type\": \"static\",\n        \"attributes\": { \"value\": \", \" }\n      },\n      {\n        \"type\": \"accountAttribute\",\n        \"attributes\": {\n          \"sourceName\": \"Active Directory\",\n          \"attributeName\": \"givenName\"\n        }\n      }\n    ]\n  }\n}\n```\n\nPreview it the same way with `POST /v3/transforms/{id}/preview`. Once the output looks right, wire the transform name into the identity attribute mapping in the identity profile.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/transforms\n    api_version: v3\n  - method: POST\n    path: /v3/transforms/{transformId}/preview\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:transforms:manage, idn:transforms:read]\nkey_parameters: [name, type, attributes, identityId]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

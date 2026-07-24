@@ -1,0 +1,154 @@
+{
+  "task_id": "find-identity",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/public-identities",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1365,
+  "cost_usd": 0.0940925,
+  "duration_ms": 27651,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "identity search filter attribute",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "list identities filter by attribute email"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation,mcp__sailpoint__get_scopes",
+        "max_results": 2
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "operation": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint ISC tools for identity lookup."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "The `POST /v3/search` endpoint is the right tool here. Let me fetch its full spec."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Use `POST /v3/search`. The body targets the `identities` index and uses a `term` filter (for exact match) or a `query` string \u2014 both work for email lookups.\n\n---\n\n## Look up an identity by email\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  }\n}\n```\n\nThe `query.query` field is an Elasticsearch query string. Quoting the value enforces an exact match \u2014 without quotes it would do a full-text search.\n\n---\n\n### Alternatively: use a `term` filter for a strict exact match\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"filters\": {\n    \"attributes.email\": {\n      \"type\": \"TERM\",\n      \"terms\": [\"jane.doe@example.com\"]\n    }\n  }\n}\n```\n\nUse `filters` when you need guaranteed exact-match semantics (no tokenization) and want to combine multiple attribute conditions cleanly.\n\n---\n\n### Key body fields\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"identities\"]` to search the identity index |\n| `query.query` | Elasticsearch query string; field names follow `attributes.<attrName>` for identity attributes |\n| `filters` | Optional map of field \u2192 filter object for exact `TERM` or `RANGE` matches |\n| `queryResultFilter` | Optional \u2014 use `includes`/`excludes` to limit which fields come back |\n| `limit` / `offset` | Query-string params for pagination (max page 10 000; use `searchAfter` beyond that) |\n\n---\n\n### Common identity fields you can filter on\n\n| Attribute | Query string field |\n|---|---|\n| Email | `attributes.email` |\n| Display name | `displayName` |\n| Employee number | `attributes.employeeNumber` |\n| Manager | `managerRef.name` |\n| Any custom attribute | `attributes.<yourAttrName>` |\n\n---\n\n### Required scope\n\n`sp:search:read`\n\n---\n\n### Example: find by a custom attribute\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  },\n  \"queryResultFilter\": {\n    \"includes\": [\"id\", \"name\", \"displayName\", \"attributes.email\"]\n  }\n}\n```\n\nThe response is an array of identity objects matching your query; each has an `id` you can use in subsequent API calls.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, queryResultFilter, limit, offset]\n```"
+    }
+  ],
+  "raw_response": "Use `POST /v3/search`. The body targets the `identities` index and uses a `term` filter (for exact match) or a `query` string \u2014 both work for email lookups.\n\n---\n\n## Look up an identity by email\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.email:\\\"jane.doe@example.com\\\"\"\n  }\n}\n```\n\nThe `query.query` field is an Elasticsearch query string. Quoting the value enforces an exact match \u2014 without quotes it would do a full-text search.\n\n---\n\n### Alternatively: use a `term` filter for a strict exact match\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"*\"\n  },\n  \"filters\": {\n    \"attributes.email\": {\n      \"type\": \"TERM\",\n      \"terms\": [\"jane.doe@example.com\"]\n    }\n  }\n}\n```\n\nUse `filters` when you need guaranteed exact-match semantics (no tokenization) and want to combine multiple attribute conditions cleanly.\n\n---\n\n### Key body fields\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"identities\"]` to search the identity index |\n| `query.query` | Elasticsearch query string; field names follow `attributes.<attrName>` for identity attributes |\n| `filters` | Optional map of field \u2192 filter object for exact `TERM` or `RANGE` matches |\n| `queryResultFilter` | Optional \u2014 use `includes`/`excludes` to limit which fields come back |\n| `limit` / `offset` | Query-string params for pagination (max page 10 000; use `searchAfter` beyond that) |\n\n---\n\n### Common identity fields you can filter on\n\n| Attribute | Query string field |\n|---|---|\n| Email | `attributes.email` |\n| Display name | `displayName` |\n| Employee number | `attributes.employeeNumber` |\n| Manager | `managerRef.name` |\n| Any custom attribute | `attributes.<yourAttrName>` |\n\n---\n\n### Required scope\n\n`sp:search:read`\n\n---\n\n### Example: find by a custom attribute\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  },\n  \"queryResultFilter\": {\n    \"includes\": [\"id\", \"name\", \"displayName\", \"attributes.email\"]\n  }\n}\n```\n\nThe response is an array of identity objects matching your query; each has an `id` you can use in subsequent API calls.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, queryResultFilter, limit, offset]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

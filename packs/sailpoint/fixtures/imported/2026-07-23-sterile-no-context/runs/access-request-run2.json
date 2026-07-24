@@ -1,0 +1,50 @@
+{
+  "task_id": "access-request",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1350,
+  "cost_usd": 0.049392899999999997,
+  "duration_ms": 22666,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Submitting an Access Request via SailPoint ISC API\n\nUse the **POST /v3/access-requests** endpoint to grant a user access to a role, access profile, or entitlement.\n\n### 1. Get a Bearer Token\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\"\n```\n\n### 2. Submit the Access Request\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"<access-profile-id>\",\n        \"comment\": \"Requesting access for project onboarding\"\n      }\n    ]\n  }'\n```\n\n### Key Parameters\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of identity IDs to receive access |\n| `requestType` | `GRANT_ACCESS` (or `REVOKE_ACCESS` to remove) |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The ID of the access item to grant |\n| `requestedItems[].comment` | Optional justification comment |\n| `requestedItems[].removeDate` | Optional ISO-8601 date to auto-revoke access |\n\n### Python Example\n\n```python\nimport requests\n\ntenant = \"your-tenant\"\ntoken = \"your-bearer-token\"\n\npayload = {\n    \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n        {\n            \"type\": \"ACCESS_PROFILE\",\n            \"id\": \"2c91808568c529c60168cca6f90c1314\",\n            \"comment\": \"Needed for Q3 project access\"\n        }\n    ]\n}\n\nresponse = requests.post(\n    f\"https://{tenant}.api.identitynow.com/v3/access-requests\",\n    headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/json\"},\n    json=payload\n)\n\nprint(response.status_code)  # 202 Accepted on success\n```\n\nA `202 Accepted` response means the request was queued. You can then poll **GET /v3/access-request-status** to check its progress.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\n  - method: GET\n    path: /v3/access-request-status\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-requests:manage]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment, removeDate]\n```"
+    }
+  ],
+  "raw_response": "## Submitting an Access Request via SailPoint ISC API\n\nUse the **POST /v3/access-requests** endpoint to grant a user access to a role, access profile, or entitlement.\n\n### 1. Get a Bearer Token\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  -d \"grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\"\n```\n\n### 2. Submit the Access Request\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"<identity-id>\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"<access-profile-id>\",\n        \"comment\": \"Requesting access for project onboarding\"\n      }\n    ]\n  }'\n```\n\n### Key Parameters\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of identity IDs to receive access |\n| `requestType` | `GRANT_ACCESS` (or `REVOKE_ACCESS` to remove) |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The ID of the access item to grant |\n| `requestedItems[].comment` | Optional justification comment |\n| `requestedItems[].removeDate` | Optional ISO-8601 date to auto-revoke access |\n\n### Python Example\n\n```python\nimport requests\n\ntenant = \"your-tenant\"\ntoken = \"your-bearer-token\"\n\npayload = {\n    \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n        {\n            \"type\": \"ACCESS_PROFILE\",\n            \"id\": \"2c91808568c529c60168cca6f90c1314\",\n            \"comment\": \"Needed for Q3 project access\"\n        }\n    ]\n}\n\nresponse = requests.post(\n    f\"https://{tenant}.api.identitynow.com/v3/access-requests\",\n    headers={\"Authorization\": f\"Bearer {token}\", \"Content-Type\": \"application/json\"},\n    json=payload\n)\n\nprint(response.status_code)  # 202 Accepted on success\n```\n\nA `202 Accepted` response means the request was queued. You can then poll **GET /v3/access-request-status** to check its progress.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\n  - method: GET\n    path: /v3/access-request-status\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-requests:manage]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment, removeDate]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

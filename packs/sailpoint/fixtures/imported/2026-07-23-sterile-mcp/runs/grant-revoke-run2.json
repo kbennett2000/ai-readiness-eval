@@ -1,0 +1,131 @@
+{
+  "task_id": "grant-revoke",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 9,
+  "output_tokens": 1267,
+  "cost_usd": 0.0781171,
+  "duration_ms": 23107,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "role assignment grant revoke user",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "grant role to user",
+        "limit": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "revoke role from user",
+        "limit": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "createAccessRequest"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint ISC role assignment APIs."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "The access request endpoint looks promising for both grant and revoke. Let me get the full details."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "This single endpoint handles both grant and revoke via the `requestType` field. Here's how to use it:\n\n---\n\n## Grant a Role to a User\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n      \"comment\": \"Granting via API\"\n    }\n  ]\n}\n```\n\n---\n\n## Revoke a Role from a User\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n      \"comment\": \"Revoking via API\"\n    }\n  ]\n}\n```\n\n---\n\n### Key notes\n\n| Field | Details |\n|---|---|\n| `requestedFor` | Array of **identity IDs** (not usernames) \u2014 supports batch requests |\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ROLE`, `ACCESS_PROFILE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The role's ID (get it from `GET /v3/roles`) |\n| `requestedItems[].comment` | Optional, but useful for audit trails |\n\n**Both operations go through normal ISC approval workflows** \u2014 the request is submitted, not immediately applied. If the role requires approval, it will pend until approved. If you need to bypass approvals, you'd need to configure the role's approval policy in ISC first.\n\n**Required OAuth scope:** `idn:access-request:manage` (or `idn:access-request-self:manage` for self-service requests).\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage]\nkey_parameters: [requestedFor, requestType, requestedItems]\n```"
+    }
+  ],
+  "raw_response": "This single endpoint handles both grant and revoke via the `requestType` field. Here's how to use it:\n\n---\n\n## Grant a Role to a User\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n      \"comment\": \"Granting via API\"\n    }\n  ]\n}\n```\n\n---\n\n## Revoke a Role from a User\n\n```http\nPOST /v3/access-requests\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"requestedFor\": [\"2c91808568c529c60168cca6f90c1313\"],\n  \"requestType\": \"REVOKE_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ROLE\",\n      \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n      \"comment\": \"Revoking via API\"\n    }\n  ]\n}\n```\n\n---\n\n### Key notes\n\n| Field | Details |\n|---|---|\n| `requestedFor` | Array of **identity IDs** (not usernames) \u2014 supports batch requests |\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ROLE`, `ACCESS_PROFILE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The role's ID (get it from `GET /v3/roles`) |\n| `requestedItems[].comment` | Optional, but useful for audit trails |\n\n**Both operations go through normal ISC approval workflows** \u2014 the request is submitted, not immediately applied. If the role requires approval, it will pend until approved. If you need to bypass approvals, you'd need to configure the role's approval policy in ISC first.\n\n**Required OAuth scope:** `idn:access-request:manage` (or `idn:access-request-self:manage` for self-service requests).\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage]\nkey_parameters: [requestedFor, requestType, requestedItems]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (3 call(s))",
+    "attempts": 1
+  }
+}

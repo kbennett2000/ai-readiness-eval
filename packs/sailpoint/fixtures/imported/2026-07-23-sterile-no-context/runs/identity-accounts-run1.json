@@ -1,0 +1,50 @@
+{
+  "task_id": "identity-accounts",
+  "run_index": 1,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/accounts",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/accounts",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 995,
+  "cost_usd": 0.0439619,
+  "duration_ms": 16544,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## List All Accounts for an Identity in ISC\n\nUse the **GET /v3/accounts** endpoint with an `identityId` filter.\n\n### Request\n\n```http\nGET /v3/accounts?filters=identityId eq \"{identityId}\"\nAuthorization: Bearer {access_token}\n```\n\n### Example (curl)\n\n```bash\nIDENTITY_ID=\"2c9180837e1a7d3c017e1a85b6d60010\"\n\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22${IDENTITY_ID}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Example (Python)\n\n```python\nimport requests\n\ntenant = \"your-tenant\"\naccess_token = \"your-token\"\nidentity_id = \"2c9180837e1a7d3c017e1a85b6d60010\"\n\nresponse = requests.get(\n    f\"https://{tenant}.api.identitynow.com/v3/accounts\",\n    headers={\"Authorization\": f\"Bearer {access_token}\"},\n    params={\"filters\": f'identityId eq \"{identity_id}\"'},\n)\n\naccounts = response.json()\nfor account in accounts:\n    print(account[\"id\"], account[\"name\"], account[\"sourceName\"])\n```\n\n### Response (abbreviated)\n\n```json\n[\n  {\n    \"id\": \"2c9180857c28d87a017c3a2efea20019\",\n    \"name\": \"jsmith\",\n    \"sourceId\": \"2c9180877a2e6d55017a2e7d5e1e0002\",\n    \"sourceName\": \"Active Directory\",\n    \"identityId\": \"2c9180837e1a7d3c017e1a85b6d60010\",\n    \"nativeIdentity\": \"CN=John Smith,OU=Users,DC=example,DC=com\",\n    ...\n  },\n  {\n    \"id\": \"2c9180857c28d87a017c3a2efea20020\",\n    \"name\": \"john.smith@example.com\",\n    \"sourceId\": \"2c91808370b40b22017117ff8c95100c\",\n    \"sourceName\": \"Workday\",\n    \"identityId\": \"2c9180837e1a7d3c017e1a85b6d60010\",\n    ...\n  }\n]\n```\n\n### Notes\n\n- Each object in the response represents one account on one source \u2014 the `sourceName` field tells you which source it belongs to.\n- You can paginate with `limit` and `offset` query parameters if the identity has many accounts.\n- The `nativeIdentity` field is the account's identifier on the native source system.\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:account-list:read]\nkey_parameters: [filters, identityId]\n```"
+    }
+  ],
+  "raw_response": "## List All Accounts for an Identity in ISC\n\nUse the **GET /v3/accounts** endpoint with an `identityId` filter.\n\n### Request\n\n```http\nGET /v3/accounts?filters=identityId eq \"{identityId}\"\nAuthorization: Bearer {access_token}\n```\n\n### Example (curl)\n\n```bash\nIDENTITY_ID=\"2c9180837e1a7d3c017e1a85b6d60010\"\n\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22${IDENTITY_ID}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Example (Python)\n\n```python\nimport requests\n\ntenant = \"your-tenant\"\naccess_token = \"your-token\"\nidentity_id = \"2c9180837e1a7d3c017e1a85b6d60010\"\n\nresponse = requests.get(\n    f\"https://{tenant}.api.identitynow.com/v3/accounts\",\n    headers={\"Authorization\": f\"Bearer {access_token}\"},\n    params={\"filters\": f'identityId eq \"{identity_id}\"'},\n)\n\naccounts = response.json()\nfor account in accounts:\n    print(account[\"id\"], account[\"name\"], account[\"sourceName\"])\n```\n\n### Response (abbreviated)\n\n```json\n[\n  {\n    \"id\": \"2c9180857c28d87a017c3a2efea20019\",\n    \"name\": \"jsmith\",\n    \"sourceId\": \"2c9180877a2e6d55017a2e7d5e1e0002\",\n    \"sourceName\": \"Active Directory\",\n    \"identityId\": \"2c9180837e1a7d3c017e1a85b6d60010\",\n    \"nativeIdentity\": \"CN=John Smith,OU=Users,DC=example,DC=com\",\n    ...\n  },\n  {\n    \"id\": \"2c9180857c28d87a017c3a2efea20020\",\n    \"name\": \"john.smith@example.com\",\n    \"sourceId\": \"2c91808370b40b22017117ff8c95100c\",\n    \"sourceName\": \"Workday\",\n    \"identityId\": \"2c9180837e1a7d3c017e1a85b6d60010\",\n    ...\n  }\n]\n```\n\n### Notes\n\n- Each object in the response represents one account on one source \u2014 the `sourceName` field tells you which source it belongs to.\n- You can paginate with `limit` and `offset` query parameters if the identity has many accounts.\n- The `nativeIdentity` field is the account's identifier on the native source system.\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:account-list:read]\nkey_parameters: [filters, identityId]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

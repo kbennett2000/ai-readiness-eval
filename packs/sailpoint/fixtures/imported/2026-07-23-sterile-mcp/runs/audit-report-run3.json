@@ -1,0 +1,180 @@
+{
+  "task_id": "audit-report",
+  "run_index": 3,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 13,
+  "output_tokens": 2546,
+  "cost_usd": 0.1080626,
+  "duration_ms": 42799,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "audit activity events search",
+        "max_results": 8
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "audit activity events",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "search events",
+        "limit": 10
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "audit log",
+        "limit": 10
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation",
+        "max_results": 1
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_auth_guide",
+      "input": {}
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint tools for audit and activity data."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "The ISC Search API (`POST /v3/search`) is the right tool. Let me pull the full operation spec."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_auth_guide"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Querying Audit/Activity Events from ISC\n\nUse `POST /v3/search` with `indices: [\"events\"]`. All audit/activity events live in that index. Here's how to pull all events of a specific type in the last 24 hours.\n\n### Authentication\n\nFirst, exchange your PAT for a bearer token:\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  --data-urlencode \"grant_type=client_credentials\" \\\n  --data-urlencode \"client_id=YOUR_CLIENT_ID\" \\\n  --data-urlencode \"client_secret=YOUR_CLIENT_SECRET\"\n```\n\n### Query Events\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/search?limit=250&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:PROVISIONING\",\n      \"fields\": [\"type\"]\n    },\n    \"filters\": {\n      \"created\": {\n        \"type\": \"RANGE\",\n        \"range\": {\n          \"lower\": {\n            \"value\": \"now-24h\",\n            \"inclusive\": true\n          },\n          \"upper\": {\n            \"value\": \"now\",\n            \"inclusive\": true\n          }\n        }\n      }\n    },\n    \"sort\": [\"-created\"]\n  }'\n```\n\n### Key Parameters\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"events\"]` to hit the audit log |\n| `query.query` | Lucene query string \u2014 e.g. `type:PROVISIONING`, `type:USER_MANAGEMENT`, `action:REQUEST_APPROVED` |\n| `filters.created.range` | Date range; supports `now`, `now-24h`, `now-7d`, or ISO 8601 timestamps |\n| `sort` | `-created` = newest first |\n| `limit` / `offset` | Pagination; max 250 per page; use `searchAfter` to page past 10,000 records |\n\n### Common Event Types\n\n| `type` value | Covers |\n|---|---|\n| `PROVISIONING` | Account provisioning/deprovisioning |\n| `USER_MANAGEMENT` | Identity lifecycle changes |\n| `ACCESS_REQUEST` | Access request submit/approve/deny |\n| `CERTIFICATION` | Certification campaigns |\n| `ROLE_MANAGEMENT` | Role create/update/delete |\n| `SOURCE_MANAGEMENT` | Source config changes |\n\n### Paging Past 10,000 Records\n\nIf your query could exceed 10k results, use `searchAfter` instead of `offset`. Take the sort value of the last item from the previous response and pass it as the next `searchAfter`:\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": { \"query\": \"type:PROVISIONING\" },\n  \"filters\": { \"created\": { \"type\": \"RANGE\", \"range\": { \"lower\": { \"value\": \"now-24h\", \"inclusive\": true } } } },\n  \"sort\": [\"-created\"],\n  \"searchAfter\": [\"2026-07-22T10:00:00.000Z\"]\n}\n```\n\nThe `X-Total-Count` response header (enabled by `?count=true`) gives you the total result count upfront.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, limit, offset, count, searchAfter]\n```"
+    }
+  ],
+  "raw_response": "## Querying Audit/Activity Events from ISC\n\nUse `POST /v3/search` with `indices: [\"events\"]`. All audit/activity events live in that index. Here's how to pull all events of a specific type in the last 24 hours.\n\n### Authentication\n\nFirst, exchange your PAT for a bearer token:\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/oauth/token\" \\\n  -H \"Content-Type: application/x-www-form-urlencoded\" \\\n  --data-urlencode \"grant_type=client_credentials\" \\\n  --data-urlencode \"client_id=YOUR_CLIENT_ID\" \\\n  --data-urlencode \"client_secret=YOUR_CLIENT_SECRET\"\n```\n\n### Query Events\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/search?limit=250&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"indices\": [\"events\"],\n    \"query\": {\n      \"query\": \"type:PROVISIONING\",\n      \"fields\": [\"type\"]\n    },\n    \"filters\": {\n      \"created\": {\n        \"type\": \"RANGE\",\n        \"range\": {\n          \"lower\": {\n            \"value\": \"now-24h\",\n            \"inclusive\": true\n          },\n          \"upper\": {\n            \"value\": \"now\",\n            \"inclusive\": true\n          }\n        }\n      }\n    },\n    \"sort\": [\"-created\"]\n  }'\n```\n\n### Key Parameters\n\n| Field | Purpose |\n|---|---|\n| `indices` | Must be `[\"events\"]` to hit the audit log |\n| `query.query` | Lucene query string \u2014 e.g. `type:PROVISIONING`, `type:USER_MANAGEMENT`, `action:REQUEST_APPROVED` |\n| `filters.created.range` | Date range; supports `now`, `now-24h`, `now-7d`, or ISO 8601 timestamps |\n| `sort` | `-created` = newest first |\n| `limit` / `offset` | Pagination; max 250 per page; use `searchAfter` to page past 10,000 records |\n\n### Common Event Types\n\n| `type` value | Covers |\n|---|---|\n| `PROVISIONING` | Account provisioning/deprovisioning |\n| `USER_MANAGEMENT` | Identity lifecycle changes |\n| `ACCESS_REQUEST` | Access request submit/approve/deny |\n| `CERTIFICATION` | Certification campaigns |\n| `ROLE_MANAGEMENT` | Role create/update/delete |\n| `SOURCE_MANAGEMENT` | Source config changes |\n\n### Paging Past 10,000 Records\n\nIf your query could exceed 10k results, use `searchAfter` instead of `offset`. Take the sort value of the last item from the previous response and pass it as the next `searchAfter`:\n\n```json\n{\n  \"indices\": [\"events\"],\n  \"query\": { \"query\": \"type:PROVISIONING\" },\n  \"filters\": { \"created\": { \"type\": \"RANGE\", \"range\": { \"lower\": { \"value\": \"now-24h\", \"inclusive\": true } } } },\n  \"sort\": [\"-created\"],\n  \"searchAfter\": [\"2026-07-22T10:00:00.000Z\"]\n}\n```\n\nThe `X-Total-Count` response header (enabled by `?count=true`) gives you the total result count upfront.\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/search\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: [sp:search:read]\nkey_parameters: [indices, query, filters, sort, limit, offset, count, searchAfter]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (5 call(s))",
+    "attempts": 1
+  }
+}

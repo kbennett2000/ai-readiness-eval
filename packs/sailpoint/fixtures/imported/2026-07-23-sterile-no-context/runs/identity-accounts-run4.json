@@ -1,0 +1,50 @@
+{
+  "task_id": "identity-accounts",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/accounts",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/accounts",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 771,
+  "cost_usd": 0.0406199,
+  "duration_ms": 13345,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## List All Accounts for an Identity in ISC\n\nUse the **List Accounts** endpoint with a filter on `identityId`:\n\n```http\nGET /v3/accounts?filters=identityId eq \"{id}\"\n```\n\n### Example (curl)\n\n```bash\nIDENTITY_ID=\"2c9180835d2e5168015d32f890ca1581\"\n\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22${IDENTITY_ID}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Key Response Fields\n\nEach account object returned includes:\n\n| Field | Description |\n|---|---|\n| `id` | Account ID |\n| `name` | Account name on the source |\n| `sourceId` | ID of the connected source |\n| `sourceName` | Human-readable source name |\n| `identityId` | The identity this account is linked to |\n| `attributes` | Source-specific account attributes |\n| `disabled` | Whether the account is disabled |\n| `locked` | Whether the account is locked |\n\n### Optional Query Parameters\n\n- **`limit`** / **`offset`** \u2014 pagination (default limit is 250, max 250)\n- **`count=true`** \u2014 include total count in `X-Total-Count` response header\n- **`sorters`** \u2014 e.g. `sorters=sourceName` to sort results\n\n### Paginated Example\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts\\\n?filters=identityId%20eq%20%22${IDENTITY_ID}%22\\\n&limit=250&offset=0&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n---\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:accounts:read]\nkey_parameters: [filters, limit, offset, count]\n```"
+    }
+  ],
+  "raw_response": "## List All Accounts for an Identity in ISC\n\nUse the **List Accounts** endpoint with a filter on `identityId`:\n\n```http\nGET /v3/accounts?filters=identityId eq \"{id}\"\n```\n\n### Example (curl)\n\n```bash\nIDENTITY_ID=\"2c9180835d2e5168015d32f890ca1581\"\n\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22${IDENTITY_ID}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Key Response Fields\n\nEach account object returned includes:\n\n| Field | Description |\n|---|---|\n| `id` | Account ID |\n| `name` | Account name on the source |\n| `sourceId` | ID of the connected source |\n| `sourceName` | Human-readable source name |\n| `identityId` | The identity this account is linked to |\n| `attributes` | Source-specific account attributes |\n| `disabled` | Whether the account is disabled |\n| `locked` | Whether the account is locked |\n\n### Optional Query Parameters\n\n- **`limit`** / **`offset`** \u2014 pagination (default limit is 250, max 250)\n- **`count=true`** \u2014 include total count in `X-Total-Count` response header\n- **`sorters`** \u2014 e.g. `sorters=sourceName` to sort results\n\n### Paginated Example\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts\\\n?filters=identityId%20eq%20%22${IDENTITY_ID}%22\\\n&limit=250&offset=0&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n---\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:accounts:read]\nkey_parameters: [filters, limit, offset, count]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

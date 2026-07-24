@@ -1,0 +1,83 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.75,
+    "method": 0.75,
+    "api_version": 0.75,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/campaigns/{}/reports",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1531,
+  "cost_usd": 0.12367689999999999,
+  "duration_ms": 26820,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here is the full sequence of API calls, including authentication.\n\n---\n\n## 1. Authenticate \u2014 Get an Access Token\n\nFor a script or automation, use the **Client Credentials** grant with a Personal Access Token (PAT).\n\n```bash\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={clientId}\n&client_secret={clientSecret}\n```\n\nStore the returned `access_token` and pass it as `Authorization: Bearer {access_token}` on every subsequent call.\n\n---\n\n## 2. Create the Campaign\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 Access Review\",\n  \"description\": \"Quarterly manager certification of user access\",\n  \"type\": \"MANAGER\",\n  \"deadlineDuration\": \"P14D\"\n}\n```\n\n- For a **Manager Campaign**, `type` = `MANAGER` and no search query is required.\n- For an **Identity** or **Access Items** campaign, you'd also supply a `filter` / search query body.\n- The response returns the campaign object including its `id`.\n\n---\n\n## 3. (Optional) Get Campaign to Review It Before Activating\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}\nAuthorization: Bearer {access_token}\n```\n\nLets you confirm the generated campaign looks correct before activating it.\n\n---\n\n## 4. Activate the Campaign\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{}\n```\n\nThis moves the campaign from preview/draft into active status, making it visible to reviewers.\n\n---\n\n## 5. Pull Results / Reports\n\nOnce the campaign is active and reviewers are working through it, retrieve reports:\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports\nAuthorization: Bearer {access_token}\n```\n\nIf you want to trigger a fresh report generation first:\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports/{reportType}\nAuthorization: Bearer {access_token}\n```\n\nWhere `{reportType}` is something like `CAMPAIGN_COMPOSITION` or `DECISIONS_SUMMARY`.\n\n---\n\n### Summary of the flow\n\n| Step | Method | Path |\n|------|--------|------|\n| Auth | POST | `/oauth/token` |\n| Create campaign | POST | `/v3/campaigns` |\n| Inspect campaign | GET | `/v3/campaigns/{id}` |\n| Activate campaign | POST | `/v3/campaigns/{id}/activate` |\n| Get reports | GET | `/v3/campaigns/{id}/reports` |\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: []\nkey_parameters: [name, description, type, deadlineDuration, campaignId, reportType]\n```"
+    }
+  ],
+  "raw_response": "Here is the full sequence of API calls, including authentication.\n\n---\n\n## 1. Authenticate \u2014 Get an Access Token\n\nFor a script or automation, use the **Client Credentials** grant with a Personal Access Token (PAT).\n\n```bash\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&client_id={clientId}\n&client_secret={clientSecret}\n```\n\nStore the returned `access_token` and pass it as `Authorization: Bearer {access_token}` on every subsequent call.\n\n---\n\n## 2. Create the Campaign\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 Access Review\",\n  \"description\": \"Quarterly manager certification of user access\",\n  \"type\": \"MANAGER\",\n  \"deadlineDuration\": \"P14D\"\n}\n```\n\n- For a **Manager Campaign**, `type` = `MANAGER` and no search query is required.\n- For an **Identity** or **Access Items** campaign, you'd also supply a `filter` / search query body.\n- The response returns the campaign object including its `id`.\n\n---\n\n## 3. (Optional) Get Campaign to Review It Before Activating\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}\nAuthorization: Bearer {access_token}\n```\n\nLets you confirm the generated campaign looks correct before activating it.\n\n---\n\n## 4. Activate the Campaign\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{}\n```\n\nThis moves the campaign from preview/draft into active status, making it visible to reviewers.\n\n---\n\n## 5. Pull Results / Reports\n\nOnce the campaign is active and reviewers are working through it, retrieve reports:\n\n```bash\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports\nAuthorization: Bearer {access_token}\n```\n\nIf you want to trigger a fresh report generation first:\n\n```bash\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports/{reportType}\nAuthorization: Bearer {access_token}\n```\n\nWhere `{reportType}` is something like `CAMPAIGN_COMPOSITION` or `DECISIONS_SUMMARY`.\n\n---\n\n### Summary of the flow\n\n| Step | Method | Path |\n|------|--------|------|\n| Auth | POST | `/oauth/token` |\n| Create campaign | POST | `/v3/campaigns` |\n| Inspect campaign | GET | `/v3/campaigns/{id}` |\n| Activate campaign | POST | `/v3/campaigns/{id}/activate` |\n| Get reports | GET | `/v3/campaigns/{id}/reports` |\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials via PAT)\nrequired_scopes: []\nkey_parameters: [name, description, type, deadlineDuration, campaignId, reportType]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

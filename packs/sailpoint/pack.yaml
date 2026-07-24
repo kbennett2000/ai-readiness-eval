@@ -1,0 +1,49 @@
+# SailPoint reference pack — vendor config consumed by the vendor-agnostic core (ADR-0001, ADR-0002).
+# Built from the frozen sailpoint-proof-of-concept repo's committed artifacts. See fixtures/imported/
+# PROVENANCE.md for source + SHA.
+
+vendor:
+  id: sailpoint
+  display_name: SailPoint Identity Security Cloud (ISC)
+
+tasks_dir: tasks
+docs_manifest: docs-manifest.yaml
+specs: specs.yaml
+docs_cache_dir: docs-cache      # gitignored; the manifest is the committed reproducibility record
+specs_scope: idn/               # spec-size scope: the ISC API tree (excludes sibling collections)
+
+public_docs:
+  source_label: "SailPoint's official documentation"
+  budget_tokens: 15000
+
+# The optional third condition. This pack HAS a context layer, but the server itself is NOT vendored
+# here — it lives in the frozen repo. The regression gate re-scores archived transcripts offline and
+# never starts it; live `mcp`-condition runs require the frozen repo checked out and this path made
+# absolute (a sterile run launches from an empty cwd, so a relative --directory would fail).
+context_layer:
+  external: true
+  external_note: >
+    Server lives in sailpoint-proof-of-concept/mcp-server (isc_spec_context). Not vendored in this
+    repo. For a live mcp run, check out that repo as a sibling and set the --directory arg below to
+    its absolute path.
+  mcp_server_key: sailpoint
+  mcp_tool_prefix: "mcp__sailpoint__"
+  discovery_tool: ToolSearch
+  expected_tools: [search_operations, get_operation, get_scopes, get_auth_guide]
+  spawn_command:
+    - uv
+    - run
+    - --with
+    - mcp
+    - --with
+    - PyYAML
+    - --directory
+    - ../sailpoint-proof-of-concept/mcp-server   # make absolute for a live run (see external_note)
+    - python
+    - -m
+    - isc_spec_context.server
+
+# Documents the marker the imported sterile-canary fixture keyed off (the frozen repo's own name).
+# A live canary in THIS repo would use this repo's own project marker instead.
+canary:
+  project_marker: sailpoint-proof-of-concept

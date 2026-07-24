@@ -1,0 +1,50 @@
+{
+  "task_id": "identity-accounts",
+  "run_index": 0,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/accounts",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/accounts",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 914,
+  "cost_usd": 0.0427539,
+  "duration_ms": 20761,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## List All Accounts for an Identity in ISC\n\nUse the **Accounts API** with a filter on `identityId`. This returns every account correlated to that identity across all connected sources.\n\n### Request\n\n```http\nGET /v3/accounts?filters=identityId eq \"{identityId}\"\n```\n\n**Replace `{identityId}`** with the identity's ID (e.g., `2c9180857182305e0171993737eb29e8`).\n\n### Example (cURL)\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Pagination (for identities with many accounts)\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22&limit=250&offset=0&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n### Key Response Fields\n\n| Field | Description |\n|---|---|\n| `id` | Account ID |\n| `name` | Account name on the source |\n| `sourceId` | ID of the connected source |\n| `sourceName` | Display name of the source |\n| `identityId` | Confirms the owning identity |\n| `disabled` | Whether the account is disabled |\n| `locked` | Whether the account is locked |\n| `attributes` | Source-specific account attributes |\n\n### Notes\n\n- Results include accounts across **all connected sources** (AD, LDAP, ServiceNow, etc.) correlated to that identity.\n- Use `count=true` as a query param to get a total count in the `X-Total-Count` response header.\n- Max `limit` per page is 250; paginate with `offset` for identities with large numbers of accounts.\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:account-list:read]\nkey_parameters: [filters, identityId, limit, offset, count]\n```"
+    }
+  ],
+  "raw_response": "## List All Accounts for an Identity in ISC\n\nUse the **Accounts API** with a filter on `identityId`. This returns every account correlated to that identity across all connected sources.\n\n### Request\n\n```http\nGET /v3/accounts?filters=identityId eq \"{identityId}\"\n```\n\n**Replace `{identityId}`** with the identity's ID (e.g., `2c9180857182305e0171993737eb29e8`).\n\n### Example (cURL)\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Accept: application/json\"\n```\n\n### Pagination (for identities with many accounts)\n\n```bash\ncurl -X GET \\\n  \"https://{tenant}.api.identitynow.com/v3/accounts?filters=identityId%20eq%20%22{identityId}%22&limit=250&offset=0&count=true\" \\\n  -H \"Authorization: Bearer {access_token}\"\n```\n\n### Key Response Fields\n\n| Field | Description |\n|---|---|\n| `id` | Account ID |\n| `name` | Account name on the source |\n| `sourceId` | ID of the connected source |\n| `sourceName` | Display name of the source |\n| `identityId` | Confirms the owning identity |\n| `disabled` | Whether the account is disabled |\n| `locked` | Whether the account is locked |\n| `attributes` | Source-specific account attributes |\n\n### Notes\n\n- Results include accounts across **all connected sources** (AD, LDAP, ServiceNow, etc.) correlated to that identity.\n- Use `count=true` as a query param to get a total count in the `X-Total-Count` response header.\n- Max `limit` per page is 250; paginate with `offset` for identities with large numbers of accounts.\n\n```answer-summary\nendpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:account-list:read]\nkey_parameters: [filters, identityId, limit, offset, count]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

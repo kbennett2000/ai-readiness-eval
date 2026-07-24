@@ -1,0 +1,61 @@
+{
+  "task_id": "lifecycle-trigger",
+  "run_index": 2,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.5,
+    "method": 0.5,
+    "api_version": 0.5,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "GET",
+      "gt_path": "/triggers",
+      "gt_api_version": "beta",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/trigger-subscriptions",
+      "gt_api_version": "beta",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/trigger-subscriptions",
+      "answer_api_version": "beta"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1863,
+  "cost_usd": 0.1296529,
+  "duration_ms": 32255,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Subscribing to ISC Event Triggers via the API\n\n### Step 1: Authenticate\n\nFirst, obtain a JWT access token using the Client Credentials grant (ideal for scripts/services):\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  -H 'Content-Type: application/x-www-form-urlencoded' \\\n  -d 'grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}'\n```\n\nStore the returned `access_token` for subsequent calls.\n\n---\n\n### Step 2: Identify the Relevant Trigger(s)\n\nBased on your use case (access requests and provisioning), these triggers are relevant:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted (pre-approval) | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved (post-approval) | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning action completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Identity attributes changed | `idn:identity-attributes-changed` | FIRE_AND_FORGET |\n\n**Important distinction:**\n- `FIRE_AND_FORGET` triggers send a payload and expect no response. Limit: 50 subscriptions per trigger.\n- `REQUEST_RESPONSE` triggers expect your service to respond (e.g., with an approval decision). Limit: **1 subscription per trigger**.\n\n---\n\n### Step 3: Create a Subscription\n\nCall the **Create a subscription** endpoint, providing the trigger ID, your HTTP endpoint, and the subscription type:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/isc-webhook\",\n      \"httpAuthenticationType\": \"BEARER_TOKEN\",\n      \"bearerTokenAuthConfig\": {\n        \"bearerToken\": \"your-service-secret-token\"\n      }\n    }\n  }'\n```\n\nFor a `REQUEST_RESPONSE` trigger like `idn:access-request-pre-approval`, your endpoint at `url` must return a valid response payload within the expected timeout.\n\n**Key body fields:**\n- `triggerId` \u2014 the trigger ID from the table above\n- `type` \u2014 always `HTTP` for webhook-style subscriptions\n- `httpConfig.url` \u2014 your publicly accessible HTTPS endpoint (must be reachable from the internet)\n- `httpAuthenticationType` \u2014 how ISC authenticates to your service (`BEARER_TOKEN`, `BASIC_AUTH`, or `NO_AUTH`)\n\n---\n\n### Step 4: Manage Subscriptions\n\nYou can list, update, patch, or delete subscriptions as needed:\n\n```bash\n# List all subscriptions\ncurl 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}'\n\n# Delete a subscription\ncurl -X DELETE \\\n  'https://[tenant].api.identitynow.com/beta/trigger-subscriptions/{id}' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\n---\n\n### Key Requirement\n\nYour webhook endpoint **must be accessible from the public internet**. ISC pushes events to it; your service cannot be behind a private firewall without a tunnel or proxy.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: DELETE\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType]\n```"
+    }
+  ],
+  "raw_response": "## Subscribing to ISC Event Triggers via the API\n\n### Step 1: Authenticate\n\nFirst, obtain a JWT access token using the Client Credentials grant (ideal for scripts/services):\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/oauth/token' \\\n  -H 'Content-Type: application/x-www-form-urlencoded' \\\n  -d 'grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}'\n```\n\nStore the returned `access_token` for subsequent calls.\n\n---\n\n### Step 2: Identify the Relevant Trigger(s)\n\nBased on your use case (access requests and provisioning), these triggers are relevant:\n\n| Event | Trigger ID | Type |\n|---|---|---|\n| Access request submitted (pre-approval) | `idn:access-request-pre-approval` | REQUEST_RESPONSE |\n| Access request approved (post-approval) | `idn:access-request-post-approval` | FIRE_AND_FORGET |\n| Provisioning action completed | `idn:post-provisioning` | FIRE_AND_FORGET |\n| Identity attributes changed | `idn:identity-attributes-changed` | FIRE_AND_FORGET |\n\n**Important distinction:**\n- `FIRE_AND_FORGET` triggers send a payload and expect no response. Limit: 50 subscriptions per trigger.\n- `REQUEST_RESPONSE` triggers expect your service to respond (e.g., with an approval decision). Limit: **1 subscription per trigger**.\n\n---\n\n### Step 3: Create a Subscription\n\nCall the **Create a subscription** endpoint, providing the trigger ID, your HTTP endpoint, and the subscription type:\n\n```bash\ncurl -X POST \\\n  'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"triggerId\": \"idn:post-provisioning\",\n    \"type\": \"HTTP\",\n    \"httpConfig\": {\n      \"url\": \"https://your-service.example.com/isc-webhook\",\n      \"httpAuthenticationType\": \"BEARER_TOKEN\",\n      \"bearerTokenAuthConfig\": {\n        \"bearerToken\": \"your-service-secret-token\"\n      }\n    }\n  }'\n```\n\nFor a `REQUEST_RESPONSE` trigger like `idn:access-request-pre-approval`, your endpoint at `url` must return a valid response payload within the expected timeout.\n\n**Key body fields:**\n- `triggerId` \u2014 the trigger ID from the table above\n- `type` \u2014 always `HTTP` for webhook-style subscriptions\n- `httpConfig.url` \u2014 your publicly accessible HTTPS endpoint (must be reachable from the internet)\n- `httpAuthenticationType` \u2014 how ISC authenticates to your service (`BEARER_TOKEN`, `BASIC_AUTH`, or `NO_AUTH`)\n\n---\n\n### Step 4: Manage Subscriptions\n\nYou can list, update, patch, or delete subscriptions as needed:\n\n```bash\n# List all subscriptions\ncurl 'https://[tenant].api.identitynow.com/beta/trigger-subscriptions' \\\n  -H 'Authorization: Bearer {access_token}'\n\n# Delete a subscription\ncurl -X DELETE \\\n  'https://[tenant].api.identitynow.com/beta/trigger-subscriptions/{id}' \\\n  -H 'Authorization: Bearer {access_token}'\n```\n\n---\n\n### Key Requirement\n\nYour webhook endpoint **must be accessible from the public internet**. ISC pushes events to it; your service cannot be behind a private firewall without a tunnel or proxy.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: GET\n    path: /beta/trigger-subscriptions\n    api_version: beta\n  - method: DELETE\n    path: /beta/trigger-subscriptions/{id}\n    api_version: beta\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters: [triggerId, type, httpConfig, url, httpAuthenticationType]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

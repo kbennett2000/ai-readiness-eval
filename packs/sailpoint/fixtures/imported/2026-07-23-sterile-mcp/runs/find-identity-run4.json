@@ -1,0 +1,172 @@
+{
+  "task_id": "find-identity",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 1.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/search",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/search",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/public-identities",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/public-identities",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 12,
+  "output_tokens": 1903,
+  "cost_usd": 0.11030119999999999,
+  "duration_ms": 33608,
+  "tool_uses": [
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "identity search filter attribute",
+        "max_results": 5
+      }
+    },
+    {
+      "name": "mcp__sailpoint__search_operations",
+      "input": {
+        "query": "list identities filter by attribute email"
+      }
+    },
+    {
+      "name": "ToolSearch",
+      "input": {
+        "query": "select:mcp__sailpoint__get_operation,mcp__sailpoint__get_scopes",
+        "max_results": 2
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "searchPost"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_operation",
+      "input": {
+        "operation_id": "getPublicIdentities"
+      }
+    },
+    {
+      "name": "mcp__sailpoint__get_scopes",
+      "input": {
+        "operation": "searchPost"
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me search for the relevant SailPoint identity lookup tools."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__search_operations"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Let me get the full spec for both the search endpoint and the public-identities endpoint."
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "ToolSearch"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_operation"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [
+        "mcp__sailpoint__get_scopes"
+      ],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "There are two good approaches depending on how much access you need.\n\n---\n\n## Option A: `POST /v3/search` (recommended \u2014 full identity object, any attribute)\n\nThis uses the Search API against the `identities` index and supports any attribute, including custom ones.\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"email:\\\"jane.doe@example.com\\\"\"\n  }\n}\n```\n\nTo target a **custom / extended attribute** instead of a top-level field, prefix it with `attributes.`:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\nYou can also narrow which fields are returned:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"email:\\\"jane.doe@example.com\\\"\"\n  },\n  \"queryResultFilter\": {\n    \"includes\": [\"id\", \"name\", \"email\", \"displayName\", \"attributes\"]\n  }\n}\n```\n\n**Required scope:** `sp:search:read`  \n**Minimum user level:** `ORG_ADMIN` (or `SOURCE_ADMIN`, `REPORT_ADMIN`, etc.)\n\n---\n\n## Option B: `GET /v3/public-identities` (simpler, but public fields only)\n\nUses standard V3 filter syntax. Any authenticated user can call this.\n\n```http\nGET https://{tenant}.api.identitynow.com/v3/public-identities\n    ?filters=email%20eq%20%22jane.doe@example.com%22\n    &add-core-filters=true\nAuthorization: Bearer {token}\n```\n\nDecoded filter: `filters=email eq \"jane.doe@example.com\"`\n\n**Required scope:** `sp:scopes:default`  \n**Minimum user level:** `USER`\n\nThis only returns fields configured as \"public\" in your org's identity profile, so it's best for user-facing lookups (e.g., an access-request UI's people-picker), not admin lookups.\n\n---\n\n## Which to use?\n\n| Need | Use |\n|---|---|\n| Full identity data, any attribute, admin context | `POST /v3/search` |\n| Simple lookup, public fields only, any user | `GET /v3/public-identities` |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /v3/public-identities\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read, sp:scopes:default]\nkey_parameters: [indices, query, queryResultFilter, filters, add-core-filters]\n```"
+    }
+  ],
+  "raw_response": "There are two good approaches depending on how much access you need.\n\n---\n\n## Option A: `POST /v3/search` (recommended \u2014 full identity object, any attribute)\n\nThis uses the Search API against the `identities` index and supports any attribute, including custom ones.\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/search\nAuthorization: Bearer {token}\nContent-Type: application/json\n\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"email:\\\"jane.doe@example.com\\\"\"\n  }\n}\n```\n\nTo target a **custom / extended attribute** instead of a top-level field, prefix it with `attributes.`:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"attributes.department:\\\"Engineering\\\"\"\n  }\n}\n```\n\nYou can also narrow which fields are returned:\n\n```json\n{\n  \"indices\": [\"identities\"],\n  \"query\": {\n    \"query\": \"email:\\\"jane.doe@example.com\\\"\"\n  },\n  \"queryResultFilter\": {\n    \"includes\": [\"id\", \"name\", \"email\", \"displayName\", \"attributes\"]\n  }\n}\n```\n\n**Required scope:** `sp:search:read`  \n**Minimum user level:** `ORG_ADMIN` (or `SOURCE_ADMIN`, `REPORT_ADMIN`, etc.)\n\n---\n\n## Option B: `GET /v3/public-identities` (simpler, but public fields only)\n\nUses standard V3 filter syntax. Any authenticated user can call this.\n\n```http\nGET https://{tenant}.api.identitynow.com/v3/public-identities\n    ?filters=email%20eq%20%22jane.doe@example.com%22\n    &add-core-filters=true\nAuthorization: Bearer {token}\n```\n\nDecoded filter: `filters=email eq \"jane.doe@example.com\"`\n\n**Required scope:** `sp:scopes:default`  \n**Minimum user level:** `USER`\n\nThis only returns fields configured as \"public\" in your org's identity profile, so it's best for user-facing lookups (e.g., an access-request UI's people-picker), not admin lookups.\n\n---\n\n## Which to use?\n\n| Need | Use |\n|---|---|\n| Full identity data, any attribute, admin context | `POST /v3/search` |\n| Simple lookup, public fields only, any user | `GET /v3/public-identities` |\n\n---\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/search\n    api_version: v3\n  - method: GET\n    path: /v3/public-identities\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [sp:search:read, sp:scopes:default]\nkey_parameters: [indices, query, queryResultFilter, filters, add-core-filters]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "only sailpoint tools (4 call(s))",
+    "attempts": 1
+  }
+}

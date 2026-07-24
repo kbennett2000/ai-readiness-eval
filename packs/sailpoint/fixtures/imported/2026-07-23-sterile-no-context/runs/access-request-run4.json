@@ -1,0 +1,50 @@
+{
+  "task_id": "access-request",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 1.0,
+    "method": 1.0,
+    "api_version": 1.0,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 1.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/access-requests",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/access-requests",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1391,
+  "cost_usd": 0.0499949,
+  "duration_ms": 20194,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "## Submitting an Access Request via the ISC API\n\nUse the **POST /v3/access-requests** endpoint to request that a user be granted an access profile, role, or entitlement.\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"requestedFor\": [\"2c9180858082150f0180893dbaf44201\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"2c9180858082150f0180893dbaf99999\",\n      \"comment\": \"Needed for Q3 project access\"\n    }\n  ]\n}\n```\n\n### Key fields\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of **identity IDs** (not usernames) to grant access to |\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The ID of the specific access item |\n| `requestedItems[].comment` | Optional justification/reason |\n| `requestedItems[].removeDate` | Optional ISO-8601 date for time-limited access (e.g. `\"2026-12-31T00:00:00Z\"`) |\n\n### Auth\n\nYou need a client credentials OAuth2 token with the `idn:access-request:create` scope:\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={client_id}&client_secret={client_secret}\n```\n\n### Example with curl\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"2c9180858082150f0180893dbaf44201\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"2c9180858082150f0180893dbaf99999\",\n        \"comment\": \"Project access request\"\n      }\n    ]\n  }'\n```\n\n### Finding IDs\n\nIf you don't know the identity or access item IDs, look them up first:\n\n```bash\n# Find identity ID by name/attribute\nGET /v3/identities?filters=name eq \"John Smith\"\n\n# Find access profile ID by name\nGET /v3/access-profiles?filters=name eq \"My Access Profile\"\n\n# Find role ID\nGET /v3/roles?filters=name eq \"My Role\"\n```\n\nA successful submission returns `202 Accepted` with no body \u2014 the request enters the approval workflow if one is configured.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\n  - method: GET\n    path: /v3/identities\n    api_version: v3\n  - method: GET\n    path: /v3/access-profiles\n    api_version: v3\n  - method: GET\n    path: /v3/roles\n    api_version: v3\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [idn:access-request:create]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment, removeDate]\n```"
+    }
+  ],
+  "raw_response": "## Submitting an Access Request via the ISC API\n\nUse the **POST /v3/access-requests** endpoint to request that a user be granted an access profile, role, or entitlement.\n\n### Request\n\n```http\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n```\n\n```json\n{\n  \"requestedFor\": [\"2c9180858082150f0180893dbaf44201\"],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"2c9180858082150f0180893dbaf99999\",\n      \"comment\": \"Needed for Q3 project access\"\n    }\n  ]\n}\n```\n\n### Key fields\n\n| Field | Description |\n|---|---|\n| `requestedFor` | Array of **identity IDs** (not usernames) to grant access to |\n| `requestType` | `GRANT_ACCESS` or `REVOKE_ACCESS` |\n| `requestedItems[].type` | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | The ID of the specific access item |\n| `requestedItems[].comment` | Optional justification/reason |\n| `requestedItems[].removeDate` | Optional ISO-8601 date for time-limited access (e.g. `\"2026-12-31T00:00:00Z\"`) |\n\n### Auth\n\nYou need a client credentials OAuth2 token with the `idn:access-request:create` scope:\n\n```http\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={client_id}&client_secret={client_secret}\n```\n\n### Example with curl\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer $TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"2c9180858082150f0180893dbaf44201\"],\n    \"requestType\": \"GRANT_ACCESS\",\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"2c9180858082150f0180893dbaf99999\",\n        \"comment\": \"Project access request\"\n      }\n    ]\n  }'\n```\n\n### Finding IDs\n\nIf you don't know the identity or access item IDs, look them up first:\n\n```bash\n# Find identity ID by name/attribute\nGET /v3/identities?filters=name eq \"John Smith\"\n\n# Find access profile ID by name\nGET /v3/access-profiles?filters=name eq \"My Access Profile\"\n\n# Find role ID\nGET /v3/roles?filters=name eq \"My Role\"\n```\n\nA successful submission returns `202 Accepted` with no body \u2014 the request enters the approval workflow if one is configured.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\n  - method: GET\n    path: /v3/identities\n    api_version: v3\n  - method: GET\n    path: /v3/access-profiles\n    api_version: v3\n  - method: GET\n    path: /v3/roles\n    api_version: v3\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\nauth_flow: OAuth2 bearer token (client credentials)\nrequired_scopes: [idn:access-request:create]\nkey_parameters: [requestedFor, requestType, requestedItems, type, id, comment, removeDate]\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}

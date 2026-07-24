@@ -1,0 +1,83 @@
+{
+  "task_id": "cert-campaign",
+  "run_index": 4,
+  "format_failure": false,
+  "failure_reason": null,
+  "dimensions": {
+    "endpoint": 0.75,
+    "method": 0.75,
+    "api_version": 0.75,
+    "auth_flow": 1.0,
+    "required_scopes": 0.0,
+    "key_parameters": 0.0
+  },
+  "endpoint_matches": [
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/activate",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "POST",
+      "answer_path": "/campaigns/{}/activate",
+      "answer_api_version": "v3"
+    },
+    {
+      "gt_method": "POST",
+      "gt_path": "/campaigns/{}/run-report/{}",
+      "gt_api_version": "v3",
+      "matched": false,
+      "method_ok": false,
+      "version_ok": false,
+      "answer_method": null,
+      "answer_path": null,
+      "answer_api_version": null
+    },
+    {
+      "gt_method": "GET",
+      "gt_path": "/campaigns/{}/reports",
+      "gt_api_version": "v3",
+      "matched": true,
+      "method_ok": true,
+      "version_ok": true,
+      "answer_method": "GET",
+      "answer_path": "/campaigns/{}/reports",
+      "answer_api_version": "v3"
+    }
+  ],
+  "input_tokens": 2,
+  "output_tokens": 1895,
+  "cost_usd": 0.1291309,
+  "duration_ms": 30803,
+  "tool_uses": [],
+  "transcript": [
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": ""
+    },
+    {
+      "role": "assistant",
+      "tool_uses": [],
+      "text": "Here is the full sequence of API calls to create, activate, and query results for a certification campaign in ISC.\n\n---\n\n## Step 0: Authenticate (get an access token)\n\n```\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\n```\n\nStore the returned `access_token` and pass it as `Authorization: Bearer {access_token}` on every subsequent call.\n\n---\n\n## Step 1: Create the campaign\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 Manager Access Review\",\n  \"description\": \"Quarterly review of all manager-certified access\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.999Z\"\n}\n```\n\nFor a search-based campaign (e.g. Identities type), add a `filter` object describing your query. For a Source Owner campaign, add `sourceOwnerCampaignInfo` with the relevant source IDs.\n\nThe response body contains the new campaign's `id`. Save it.\n\n---\n\n## Step 2: Activate the campaign\n\nOnce you've previewed and confirmed the campaign, activate it:\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{}\n```\n\nThis moves the campaign from `STAGED` to `ACTIVE` and notifies reviewers.\n\n---\n\n## Step 3: Pull results while the campaign is underway\n\n**Option A \u2014 get available report types for the campaign:**\n\n```\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports\nAuthorization: Bearer {access_token}\n```\n\n**Option B \u2014 run a specific report (e.g. certification results):**\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports/{reportType}/run\nAuthorization: Bearer {access_token}\n```\n\nCommon `reportType` values include `CAMPAIGN_COMPOSITION_REPORT` and `CERTIFICATION_DECISION_REPORT`.\n\n**Option C \u2014 list the individual certifications (reviewer-level decisions):**\n\n```\nGET https://{tenant}.api.identitynow.com/v3/certifications?campaignId={campaignId}\nAuthorization: Bearer {access_token}\n```\n\nThis returns each reviewer's certification, including their decisions (approve/revoke) per access item, and whether they have signed off.\n\n---\n\n## Summary of call order\n\n| # | Method | Path | Purpose |\n|---|--------|------|---------|\n| 1 | POST | `/oauth/token` | Get bearer token |\n| 2 | POST | `/v3/campaigns` | Create campaign |\n| 3 | POST | `/v3/campaigns/{id}/activate` | Activate campaign |\n| 4 | GET | `/v3/campaigns/{id}/reports` | List available reports |\n| 5 | GET | `/v3/certifications` | Query reviewer decisions |\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\n  - method: GET\n    path: /v3/certifications\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters:\n  - grant_type\n  - client_id\n  - client_secret\n  - name\n  - description\n  - type\n  - deadline\n  - campaignId\n  - reportType\n```"
+    }
+  ],
+  "raw_response": "Here is the full sequence of API calls to create, activate, and query results for a certification campaign in ISC.\n\n---\n\n## Step 0: Authenticate (get an access token)\n\n```\nPOST https://{tenant}.api.identitynow.com/oauth/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}\n```\n\nStore the returned `access_token` and pass it as `Authorization: Bearer {access_token}` on every subsequent call.\n\n---\n\n## Step 1: Create the campaign\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/campaigns\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{\n  \"name\": \"Q3 Manager Access Review\",\n  \"description\": \"Quarterly review of all manager-certified access\",\n  \"type\": \"MANAGER\",\n  \"deadline\": \"2026-08-31T23:59:59.999Z\"\n}\n```\n\nFor a search-based campaign (e.g. Identities type), add a `filter` object describing your query. For a Source Owner campaign, add `sourceOwnerCampaignInfo` with the relevant source IDs.\n\nThe response body contains the new campaign's `id`. Save it.\n\n---\n\n## Step 2: Activate the campaign\n\nOnce you've previewed and confirmed the campaign, activate it:\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/activate\nAuthorization: Bearer {access_token}\nContent-Type: application/json\n\n{}\n```\n\nThis moves the campaign from `STAGED` to `ACTIVE` and notifies reviewers.\n\n---\n\n## Step 3: Pull results while the campaign is underway\n\n**Option A \u2014 get available report types for the campaign:**\n\n```\nGET https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports\nAuthorization: Bearer {access_token}\n```\n\n**Option B \u2014 run a specific report (e.g. certification results):**\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/campaigns/{campaignId}/reports/{reportType}/run\nAuthorization: Bearer {access_token}\n```\n\nCommon `reportType` values include `CAMPAIGN_COMPOSITION_REPORT` and `CERTIFICATION_DECISION_REPORT`.\n\n**Option C \u2014 list the individual certifications (reviewer-level decisions):**\n\n```\nGET https://{tenant}.api.identitynow.com/v3/certifications?campaignId={campaignId}\nAuthorization: Bearer {access_token}\n```\n\nThis returns each reviewer's certification, including their decisions (approve/revoke) per access item, and whether they have signed off.\n\n---\n\n## Summary of call order\n\n| # | Method | Path | Purpose |\n|---|--------|------|---------|\n| 1 | POST | `/oauth/token` | Get bearer token |\n| 2 | POST | `/v3/campaigns` | Create campaign |\n| 3 | POST | `/v3/campaigns/{id}/activate` | Activate campaign |\n| 4 | GET | `/v3/campaigns/{id}/reports` | List available reports |\n| 5 | GET | `/v3/certifications` | Query reviewer decisions |\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /oauth/token\n    api_version: oauth\n  - method: POST\n    path: /v3/campaigns\n    api_version: v3\n  - method: POST\n    path: /v3/campaigns/{id}/activate\n    api_version: v3\n  - method: GET\n    path: /v3/campaigns/{id}/reports\n    api_version: v3\n  - method: GET\n    path: /v3/certifications\n    api_version: v3\nauth_flow: OAuth2 bearer token (client credentials grant)\nrequired_scopes: []\nkey_parameters:\n  - grant_type\n  - client_id\n  - client_secret\n  - name\n  - description\n  - type\n  - deadline\n  - campaignId\n  - reportType\n```",
+  "tool_discipline": {
+    "ok": true,
+    "detail": "no tools used (as required)",
+    "attempts": 1
+  }
+}
