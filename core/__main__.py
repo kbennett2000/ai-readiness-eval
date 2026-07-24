@@ -455,6 +455,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     val = sub.add_parser("validate", help="validate a pack's task files against the shared schema")
     val.set_defaults(func=cmd_validate)
+
+    fac = sub.add_parser("factory",
+                         help="dispatcher: work a ranked queue through recon→…→card (next|run|status)")
+    fac.add_argument("mode", choices=["next", "run", "status"],
+                     help="next: drive the next non-blocked target once; run: loop until all "
+                          "carded/blocked; status: print the queue")
+    fac.add_argument("--queue", help="path to the ranked queue.yaml (or set AIRE_QUEUE)")
+    fac.add_argument("--model", help="pinned model for the grids (required for cli runs)")
+    fac.add_argument("--n", type=int, default=5, help="runs per (task, condition) in the grid (default 5)")
+    fac.add_argument("--provider", choices=["cli", "mock"], default="cli",
+                     help="cli = real grid via the Claude subscription (default); mock = offline dry-run "
+                          "of the whole spine, no model burn")
+    fac.set_defaults(func=cmd_factory)
     return parser
 
 
@@ -585,6 +598,86 @@ def cmd_ping(args: argparse.Namespace) -> int:
     print(f"pong: {resp.text.strip()!r}  (model: {resp.model_reported}, "
           f"cost: ${resp.cost_usd:.4f}, {resp.duration_ms} ms)")
     return EXIT_OK
+
+
+def _queue_header(path: str) -> str | None:
+    """Preserve the queue file's leading comment block across a save."""
+    head: list[str] = []
+    for line in Path(path).read_text().splitlines():
+        if line.startswith("#") or not line.strip():
+            head.append(line)
+        else:
+            break
+    text = "\n".join(head).strip()
+    return text or None
+
+
+def cmd_factory(args: argparse.Namespace) -> int:
+    """The dispatcher: work the ranked queue through the per-target pipeline (ADR-0006).
+
+    Three operator modes: `status` (print the queue), `next` (drive the next non-blocked target once),
+    `run` (loop until every target is carded or blocked). Producing is unattended; every card it writes
+    is a DRAFT and every gate blocks-with-reason rather than guessing past.
+    """
+    from . import factory
+
+    queue_path = args.queue or os.environ.get("AIRE_QUEUE")
+    if not queue_path:
+        print("ERROR: no queue — pass --queue <path> or set AIRE_QUEUE.", file=sys.stderr)
+        return EXIT_ERROR
+    entries = factory.load_queue(queue_path)
+
+    if args.mode == "status":
+        print(factory.render_status(entries))
+        return EXIT_OK
+
+    packs_dir = args.packs_dir or os.environ.get("AIRE_PACKS_DIR")
+    if not packs_dir:
+        print("ERROR: factory next/run needs --packs-dir <dir> (where each target's pack lives).",
+              file=sys.stderr)
+        return EXIT_ERROR
+    explicit_model = args.model or load_env().get("EVAL_MODEL")
+    if args.provider == "cli" and not explicit_model:
+        print("BLOCKED: a cli factory run needs a pinned --model so the grids stay comparable across "
+              "vendors; pass --model <id>.", file=sys.stderr)
+        return EXIT_BLOCKED
+
+    header = _queue_header(queue_path)
+
+    def _drive(entry) -> str:
+        pack_dir = Path(packs_dir) / entry.id
+        if not (pack_dir / "pack.yaml").is_file():
+            entry.status = "blocked"
+            entry.blocked_reason = (f"[recon] no pack authored at {pack_dir} — author + anchor the "
+                                    "pack before the factory can card it")
+            print(f"  BLOCKED: no pack authored at {pack_dir}")
+            return "blocked"
+        pack = Pack.load(pack_dir)
+        report = factory.run_pipeline(entry, pack, today=_today(), model=explicit_model,
+                                      n=args.n, provider=args.provider, packs_dir=packs_dir)
+        return report["outcome"]
+
+    outcome = None
+    if args.mode == "next":
+        entry = factory.next_target(entries)
+        if entry is None:
+            print("queue: nothing to do (all targets carded or blocked).")
+        else:
+            print(f"→ {entry.display_name or entry.id} (tier {entry.tier}, spec {entry.spec_state})")
+            outcome = _drive(entry)
+            factory.save_queue(queue_path, entries, header=header)
+    else:  # run
+        while True:
+            entry = factory.next_target(entries)
+            if entry is None:
+                break
+            print(f"→ {entry.display_name or entry.id} (tier {entry.tier}, spec {entry.spec_state})")
+            _drive(entry)
+            factory.save_queue(queue_path, entries, header=header)  # persist after each target
+
+    print()
+    print(factory.render_status(entries))
+    return EXIT_BLOCKED if outcome == "blocked" else EXIT_OK
 
 
 def main(argv: list[str] | None = None) -> int:

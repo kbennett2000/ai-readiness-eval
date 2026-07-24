@@ -1,0 +1,3 @@
+Acme Widget Cloud — Widgets
+GET /v3/widgets — list widgets. Optional query: filters. Requires widgets:read.
+POST /v3/widgets — create a widget. Body: name. Requires widgets:write. Returns 201.

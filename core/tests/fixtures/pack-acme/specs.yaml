@@ -2,3 +2,12 @@ spec_repo: acme-oss/api-specs
 spec_sha: "0000000000000000000000000000000000000000"
 spec_pinned_at: "2026-07-24"
 base_url: https://example.invalid/acme-oss/api-specs/blob/0000000000000000000000000000000000000000/
+vendored: vendored-spec/openapi.yaml
+spec_finding:
+  machine_readable_spec_available: yes
+  mode: spec
+  format: OpenAPI 3.0
+  license: Apache-2.0
+  license_holder: Acme OSS
+  permits_vendoring: yes
+  finding: Synthetic fixture — a clean, complete spec under a permissive license.

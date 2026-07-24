@@ -1,0 +1,2 @@
+Acme Widget Cloud — Authentication
+Use an OAuth2 bearer token in the Authorization header. Scopes: widgets:read to list, widgets:write to modify.
