@@ -43,9 +43,16 @@ trace at all — a `fetch_error` is visible in review, an empty page that hashes
    misclassification for another.
 
 2. **Throttles are retried; facts about a page are not.** `_fetch_with_retry` retries only
-   `EmptyDocument`, `DEFAULT_RETRIES = 3` attempts with linear backoff (`MIN_BACKOFF_SECONDS = 15`
-   floor). A 404 or a connection error describes the page or the network and is recorded on the
-   first attempt.
+   `EmptyDocument` — `DEFAULT_RETRIES = 4` attempts with linear backoff off a
+   `MIN_BACKOFF_SECONDS = 60` floor, so the gaps are 60s, 120s, 180s. A 404 or a connection error
+   describes the page or the network and is recorded on the first attempt.
+
+   The floor was **calibrated against the live host, not guessed**. A first pass used 15s
+   (gaps of 15/30/45, 90s cumulative) and still exhausted its retries on a page that had fetched
+   cleanly minutes earlier. The evidence points at a penalty window longer than 90s in which every
+   further request appears to restart the clock — so the effective remedy is *fewer, longer* waits,
+   not more attempts. Retrying hard against a throttle is not merely wasteful; it is what keeps the
+   throttle closed.
 
 3. **Packs may declare pacing: `public_docs.fetch_delay_seconds`.** It defaults to `0`, so every
    existing pack fetches exactly as it did before and no committed snapshot moves. The delay
@@ -63,7 +70,8 @@ trace at all — a `fetch_error` is visible in review, an empty page that hashes
   where the old code would have written a bogus hash. The full suite (172 tests), including the
   frozen SailPoint 73/68/93 regression gate, passes unchanged.
 - A vendor whose docs host throttles now costs wall-clock time proportional to its declared delay
-  (~11 pages × 10s ≈ 2 minutes), paid once per snapshot.
+  (~11 pages × 30s ≈ 6 minutes), paid once per snapshot. A page that exhausts its retries costs up
+  to 6 minutes more, which is the price of not silently recording an empty page as a real one.
 - A pack can still legitimately record `fetch_error` on every page — that remains a real and
   reportable finding about a vendor's documentation (Saviynt's dead portal). What it can no longer
   do is record a *successful* fetch of an empty page.

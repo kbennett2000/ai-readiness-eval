@@ -26,9 +26,12 @@ USER_AGENT = "ai-readiness-eval-docs"
 
 # Attempts per page when a docs host answers 2xx with an empty body (ADR-0009). The first
 # attempt is not a retry, so this is 1 fetch + (DEFAULT_RETRIES - 1) backoff retries.
-DEFAULT_RETRIES = 3
-# Floor for the pause between retries when a pack declares no delay of its own.
-MIN_BACKOFF_SECONDS = 15
+DEFAULT_RETRIES = 4
+# Floor for the pause between retries when a pack declares no delay of its own. Measured against
+# a real throttling host: its penalty window outlasts ~90s of cumulative backoff, and every
+# retry made while throttled appears to restart it. Fewer, longer waits clear it; rapid retries
+# do not. The linear schedule below therefore reaches a 180s gap before giving up.
+MIN_BACKOFF_SECONDS = 60
 
 
 class EmptyDocument(RuntimeError):
