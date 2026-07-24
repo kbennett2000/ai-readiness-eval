@@ -117,6 +117,14 @@ class PublicDocsCondition(Condition):
     def _load_text(self, task_id: str, page: dict) -> str:
         path = self._pack.cache_path_for(task_id, page["url"])
         if not path.exists():
+            # Fidelity to the machine reader (ADR-0005): public-docs models what a fetch actually
+            # RETRIEVES. A page the manifest records as unfetchable — a developer portal that does
+            # not resolve, an SPA that returned nothing — injects nothing, exactly as a real pipeline
+            # would get nothing; it is not an error. A page that CLAIMS content (byte_size > 0 and no
+            # fetch_error) but has no cached snapshot is a genuine "forgot to run fetch-docs" and
+            # still raises, so a real fetch is never silently skipped.
+            if page.get("fetch_error") or page.get("byte_size") == 0:
+                return ""
             raise FileNotFoundError(
                 f"no cached doc for {task_id} <- {page['url']}. Run "
                 "`python -m core fetch-docs` first."

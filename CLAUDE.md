@@ -97,3 +97,6 @@ verify with `git ls-files | grep -i private` (must return nothing).
 - **Cycle 2.** Added the job-category taxonomy (ADR-0003) and the pack validator (`core/validate.py`),
   retro-mapped the reference pack, and confirmed packs load from any path (external packs plug in by
   `--pack`/`--packs-dir`). Next up: the first external vendor packs, which live outside this public repo.
+- **Cycle 3.** Added the category rollup + cross-vendor comparison renderer (`core/category.py`,
+  ADR-0004): vendor-agnostic, renders a `category × source` table from any set of packs' committed
+  scores, naming none of them. The first external grids run against packs in a separate private repo.
