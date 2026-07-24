@@ -61,8 +61,23 @@ def normalize_method(method: str | None) -> str:
     return (method or "").strip().upper()
 
 
+# Ways a model says "this API has no version segment". The answer-block contract names no
+# canonical spelling for the empty case (unlike required_scopes, which specifies "[] if none"),
+# so an unversioned API draws all of these — plus an omitted key, which is already "" (ADR-0008).
+_NO_VERSION = {"none", "n/a", "na", "null", "nil", "unversioned", "no version", "-", "--"}
+
+
 def normalize_version(version: str | None) -> str:
-    return (version or "").strip().lstrip("/").lower()
+    """Canonical form of an API version. Every spelling of "there isn't one" collapses to "".
+
+    Sentinels are stripped of surrounding <>, (), [] first, so `<none>` reads as `none`. This is
+    symmetric: it applies to ground truth and answer alike, and a sentinel answered against a real
+    version (`none` vs `v3`) still compares unequal, so no versioned vendor's score can move.
+    """
+    v = (version or "").strip().lstrip("/").lower()
+    if len(v) >= 2 and v[0] in "<([" and v[-1] in ">)]":
+        v = v[1:-1].strip()
+    return "" if v in _NO_VERSION else v
 
 
 def _auth_concepts(text: str | None) -> set[str]:
