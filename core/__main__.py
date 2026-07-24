@@ -557,7 +557,10 @@ def cmd_fetch_docs(args: argparse.Namespace) -> int:
     from .docs_fetch import fetch_all
     pack = _load_pack(args)
     try:
-        summary = fetch_all(pack.docs_manifest_path, pack.docs_cache_dir)
+        if pack.public_docs_user_agent:
+            print(f"  (pack declares a fetch User-Agent: {pack.public_docs_user_agent})")
+        summary = fetch_all(pack.docs_manifest_path, pack.docs_cache_dir,
+                            user_agent=pack.public_docs_user_agent)
     except Exception as exc:
         print(f"ERROR: fetch-docs failed: {exc}", file=sys.stderr)
         return EXIT_ERROR
