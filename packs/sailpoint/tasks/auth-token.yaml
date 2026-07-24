@@ -1,5 +1,6 @@
 id: auth-token
 category: foundational
+job_category: authenticate
 prompt: >
   I have a SailPoint ISC Personal Access Token (a client ID and secret). Write the request
   that exchanges them for an access token I can use to call the ISC REST API.

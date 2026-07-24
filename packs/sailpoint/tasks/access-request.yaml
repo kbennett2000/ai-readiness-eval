@@ -1,5 +1,6 @@
 id: access-request
 category: daily-automation
+job_category: grant-access
 prompt: >
   Submit an access request in ISC to give a user a specific access profile (or role /
   entitlement). How do I call the API to request that access?

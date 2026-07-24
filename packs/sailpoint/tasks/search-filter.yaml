@@ -1,5 +1,6 @@
 id: search-filter
 category: daily-automation
+job_category: search-filter
 prompt: >
   Use the ISC search API to get all identities in the Engineering department. What's the request?
 ground_truth:

@@ -76,15 +76,19 @@ The method's credibility is a feature, so the repo practices the assessment's ow
 ## Add a vendor pack in five steps
 
 1. `mkdir packs/<vendor>` and write **`pack.yaml`** (vendor id + display name; the public-docs source
-   label; optionally a `context_layer` block — omit it for two-condition mode). See
-   [`packs/sailpoint/pack.yaml`](packs/sailpoint/pack.yaml).
+   label; optionally a `context_layer` block — omit it for two-condition mode). A pack may live outside
+   this repo entirely: `--pack <path>`, or a bare name resolved against `--packs-dir` / `AIRE_PACKS_DIR`.
+   See [`packs/sailpoint/pack.yaml`](packs/sailpoint/pack.yaml).
 2. Add **`tasks/*.yaml`** — the common API tasks with spec-traceable `ground_truth`
-   (endpoints/auth/scopes/params). Model them on [`packs/sailpoint/tasks/`](packs/sailpoint/tasks/).
+   (endpoints/auth/scopes/params), each tagged with a `job_category` from the taxonomy
+   ([ADR-0003](docs/adr/adr-0003-job-taxonomy.md)). Model them on
+   [`packs/sailpoint/tasks/`](packs/sailpoint/tasks/).
 3. Write **`specs.yaml`** — the spec pin (repo + SHA) and the `spec_finding` (availability + license).
 4. Write **`docs-manifest.yaml`** — the public-docs pages per task (the cache is fetched, not
    committed).
-5. Run it: `python -m core --pack packs/<vendor> run --condition no-context` (and `public-docs`, and
-   `mcp` if declared), then `python -m core compare <results dirs...>`.
+5. **Validate, then run:** `python -m core --pack packs/<vendor> validate` (the answer-key quality gate),
+   then `run --condition no-context` (and `public-docs`, and `mcp` if declared), then
+   `python -m core compare <results dirs...>`.
 
 ## Running
 
@@ -100,7 +104,11 @@ of scope for the regression gate, which re-scores committed transcripts entirely
 
 ## Status
 
-**Cycle 1 (this repo's first):** extracted the vendor-agnostic core, built the SailPoint reference
-pack from the frozen repo's committed artifacts, and wired the regression gate that reproduces
-73/68/93 exactly. See [docs/adr/adr-0001](docs/adr/adr-0001-purpose-and-core-pack-architecture.md) and
+**Cycle 1:** extracted the vendor-agnostic core, built the SailPoint reference pack from the frozen
+repo's committed artifacts, and wired the regression gate that reproduces 73/68/93 exactly. See
+[adr-0001](docs/adr/adr-0001-purpose-and-core-pack-architecture.md) and
 [adr-0002](docs/adr/adr-0002-extraction-and-regression-gate.md).
+
+**Cycle 2:** added the job-category taxonomy ([adr-0003](docs/adr/adr-0003-job-taxonomy.md)) and the
+pack validator (`core/validate.py`), and confirmed packs load from any path (`--packs-dir`). Next: the
+first external vendor packs, which live outside this public repo and plug in by path.

@@ -1,5 +1,6 @@
 id: widget-create
 category: foundational
+job_category: policy-object-create-and-test
 prompt: How do I create a widget in Acme Widget Cloud?
 ground_truth:
   endpoints:
@@ -7,6 +8,7 @@ ground_truth:
       path: /v3/widgets
       api_version: v3
       operation_id: createWidget
+      spec_ref: { file: widgets/v3/paths/widgets.yaml, operation_id: createWidget }
   auth_flow: OAuth2 bearer token
   required_scopes:
     - "widgets:write"

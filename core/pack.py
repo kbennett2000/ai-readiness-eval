@@ -45,6 +45,11 @@ class Pack:
     project_marker: str
     spec_scope_prefix: str
     context_layer: ContextLayer | None = None
+    # Validation / mode metadata (ADR-0002, ADR-0003). All optional.
+    mode: str | None = None                       # e.g. "diagnosis" for a two-condition prospect pack
+    spec_ref_file_prefix: str | None = None       # constrain task spec_ref.file paths to a spec subtree
+    expected_task_ids: list[str] | None = None     # completeness check for `validate`
+    na_categories: dict | None = None              # {taxonomy category: one-line reason}
 
     @classmethod
     def load(cls, pack_dir: str | Path) -> "Pack":
@@ -81,6 +86,10 @@ class Pack:
             project_marker=(cfg.get("canary", {}) or {}).get("project_marker", ""),
             spec_scope_prefix=(cfg.get("specs_scope", "") or ""),
             context_layer=context_layer,
+            mode=cfg.get("mode"),
+            spec_ref_file_prefix=cfg.get("spec_ref_file_prefix"),
+            expected_task_ids=(list(cfg["expected_task_ids"]) if cfg.get("expected_task_ids") else None),
+            na_categories=(dict(cfg["na_categories"]) if cfg.get("na_categories") else None),
         )
 
     # --- task ground truth -------------------------------------------------- #

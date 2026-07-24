@@ -11,6 +11,19 @@ docs_manifest: docs-manifest.yaml
 specs: specs.yaml
 docs_cache_dir: docs-cache      # gitignored; the manifest is the committed reproducibility record
 specs_scope: idn/               # spec-size scope: the ISC API tree (excludes sibling collections)
+spec_ref_file_prefix: idn/      # every task spec_ref.file resolves under the ISC spec tree
+expected_task_ids:              # completeness check for `validate`
+  - access-request
+  - audit-report
+  - auth-token
+  - cert-campaign
+  - find-identity
+  - grant-revoke
+  - identity-accounts
+  - lifecycle-trigger
+  - search-filter
+  - source-aggregation
+  - transform
 
 public_docs:
   source_label: "SailPoint's official documentation"

@@ -1,5 +1,6 @@
 id: audit-report
 category: daily-automation
+job_category: audit-report
 prompt: >
   I need to pull audit / activity data out of ISC for a report — for example, all events of a
   given type in the last 24 hours. How do I query that?

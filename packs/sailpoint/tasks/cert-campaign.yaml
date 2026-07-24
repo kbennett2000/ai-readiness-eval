@@ -1,5 +1,6 @@
 id: cert-campaign
 category: multi-step
+job_category: review-campaign
 prompt: >
   Create an access-review (certification) campaign in ISC, start it, and then pull the results
   once it's underway. What are the API calls?

@@ -1,5 +1,6 @@
 id: lifecycle-trigger
 category: multi-step
+job_category: event-subscription
 prompt: >
   I want ISC to notify my service whenever a lifecycle event happens (e.g. an identity's access
   is requested or provisioned). How do I subscribe to an event trigger via the API?

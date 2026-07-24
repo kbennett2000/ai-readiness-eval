@@ -1,9 +1,12 @@
-"""The guard: core/ is vendor-agnostic (ADR-0001, ADR-0002).
+"""The guards: the core ENGINE is vendor-agnostic, and the public repo names no prospect.
 
-No file under core/ may name a vendor. If a vendor assumption creeps back into the engine, this test
-fails. Vendor specifics must arrive through a loaded Pack, never a literal in core.
+1. No core ENGINE module (`core/*.py`, excluding the test suite) may name a vendor — vendor specifics
+   must arrive through a loaded Pack. The test suite MAY name SailPoint, which is the public reference
+   pack (not a prospect) and is exercised for cross-pack coverage.
+2. No tracked file in the public repo may name a measured prospect (they live in a private repo).
 """
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,30 +14,57 @@ import pytest
 from core.pack import Pack
 
 CORE_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = CORE_DIR.parent
 ACME_PACK_DIR = CORE_DIR / "tests" / "fixtures" / "pack-acme"
 
-# Tokens that would betray a hardcoded vendor. `pack-acme` is a synthetic, non-vendor identity used
-# only by the tests, so it is allowed; a real vendor name is not.
+# Tokens that would betray a hardcoded vendor in the engine. SailPoint is the public reference pack, so
+# its name/spec-prefix are what the engine must NOT bake in (they belong in packs/sailpoint/, not core).
 VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn/", re.IGNORECASE)
 
-
-def _core_py_files():
-    for path in sorted(CORE_DIR.rglob("*.py")):
-        # Skip this guard file itself: it legitimately spells out the vendor tokens as detector
-        # patterns. Everything else under core/ is scanned.
-        if path.resolve() == Path(__file__).resolve():
-            continue
-        yield path
+# Prospect names that must never appear anywhere tracked in the PUBLIC repo (privacy, cycle 2).
+PROSPECT_TOKENS = re.compile(r"saviynt|okta", re.IGNORECASE)
 
 
-def test_no_vendor_token_anywhere_in_core():
+def _engine_py_files():
+    """Top-level engine modules — core/*.py, NOT core/tests/ (tests may name the reference pack)."""
+    return sorted(CORE_DIR.glob("*.py"))
+
+
+def test_no_vendor_token_in_core_engine():
     offenders = []
-    for path in _core_py_files():
+    for path in _engine_py_files():
         for i, line in enumerate(path.read_text().splitlines(), 1):
             if VENDOR_TOKENS.search(line):
-                offenders.append(f"{path.relative_to(CORE_DIR.parent)}:{i}: {line.strip()}")
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{i}: {line.strip()}")
     assert not offenders, (
-        "core/ must carry no vendor token; found:\n" + "\n".join(offenders)
+        "the core engine must carry no vendor token; found:\n" + "\n".join(offenders)
+    )
+
+
+def test_public_repo_names_no_prospect():
+    """Every tracked file (except this guard, which spells the tokens as patterns) is prospect-free."""
+    try:
+        tracked = subprocess.check_output(
+            ["git", "ls-files"], cwd=REPO_ROOT, text=True
+        ).splitlines()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pytest.skip("not a git checkout")
+    this_file = Path(__file__).resolve()
+    offenders = []
+    for rel in tracked:
+        p = REPO_ROOT / rel
+        if p.resolve() == this_file or not p.is_file():
+            continue
+        try:
+            text = p.read_text(errors="ignore")
+        except OSError:
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if PROSPECT_TOKENS.search(line):
+                offenders.append(f"{rel}:{i}: {line.strip()[:80]}")
+    assert not offenders, (
+        "the public repo must name no measured prospect (they live in the private packs repo); found:\n"
+        + "\n".join(offenders)
     )
 
 

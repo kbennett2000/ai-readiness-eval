@@ -1,5 +1,6 @@
 id: gadget-fetch
 category: foundational
+job_category: find-principal
 prompt: How do I fetch a single gadget by id in Acme Widget Cloud?
 ground_truth:
   endpoints:
@@ -7,6 +8,7 @@ ground_truth:
       path: /v3/gadgets/{id}
       api_version: v3
       operation_id: getGadget
+      spec_ref: { file: widgets/v3/paths/gadgets.yaml, operation_id: getGadget }
   auth_flow: OAuth2 bearer token
   required_scopes: []
   key_parameters:

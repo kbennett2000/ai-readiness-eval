@@ -39,6 +39,12 @@ def _load_pack(args: argparse.Namespace) -> Pack:
     pack_dir = getattr(args, "pack", None) or os.environ.get("AIRE_PACK")
     if not pack_dir:
         raise SystemExit("ERROR: no pack selected — pass --pack <dir> or set AIRE_PACK.")
+    # A pack may live anywhere (including a private repo outside this tree). If --pack is not itself an
+    # existing directory, resolve it as a bare name against --packs-dir / AIRE_PACKS_DIR.
+    if not Path(pack_dir).is_dir():
+        packs_dir = getattr(args, "packs_dir", None) or os.environ.get("AIRE_PACKS_DIR")
+        if packs_dir and (Path(packs_dir) / pack_dir).is_dir():
+            pack_dir = str(Path(packs_dir) / pack_dir)
     return Pack.load(pack_dir)
 
 
@@ -371,7 +377,10 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m core")
-    parser.add_argument("--pack", help="path to the vendor pack dir (or set AIRE_PACK)")
+    parser.add_argument("--pack", help="path to a vendor pack dir, or a bare pack name resolved "
+                                       "against --packs-dir (or set AIRE_PACK)")
+    parser.add_argument("--packs-dir", help="directory holding packs; a bare --pack <name> resolves "
+                                            "to <packs-dir>/<name> (or set AIRE_PACKS_DIR)")
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="run a condition against the tasks and score it")
     run.add_argument("--condition", default="no-context",
@@ -443,7 +452,19 @@ def build_parser() -> argparse.ArgumentParser:
     rb.add_argument("results_dir", help="a results dir with a runs/ subdir")
     rb.add_argument("--note", help="disclosure note recorded in metadata + summary (e.g. why re-scored)")
     rb.set_defaults(func=cmd_rebuild_report)
+
+    val = sub.add_parser("validate", help="validate a pack's task files against the shared schema")
+    val.set_defaults(func=cmd_validate)
     return parser
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    from .validate import format_report, validate_pack
+    pack = _load_pack(args)
+    results = validate_pack(pack)
+    text, total = format_report(results)
+    print(text)
+    return EXIT_OK if total == 0 else EXIT_ERROR
 
 
 def cmd_rebuild_report(args: argparse.Namespace) -> int:

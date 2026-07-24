@@ -1,5 +1,6 @@
 id: find-identity
 category: foundational
+job_category: find-principal
 prompt: >
   How do I look up an identity in our ISC org by an attribute — say, find the identity whose
   email is jane.doe@example.com?

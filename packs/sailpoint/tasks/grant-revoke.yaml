@@ -1,5 +1,6 @@
 id: grant-revoke
 category: daily-automation
+job_category: revoke-access
 prompt: >
   Programmatically grant a role to a user, and separately revoke a role from a user, in ISC.
   What API calls do I make?
