@@ -1,0 +1,7 @@
+# Core engine + tests run on stdlib + PyYAML. jsonschema backs the task-file validator.
+# The `anthropic` SDK is only needed for the (out-of-band) API model transport; the regression
+# gate and all scoring run without it.
+PyYAML>=6.0
+jsonschema>=4.0
+pytest>=8
+anthropic>=0.40

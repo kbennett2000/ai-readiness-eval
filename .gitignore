@@ -1,0 +1,30 @@
+# Personal Claude Code config (permissions) — not shared. This pattern ignores the file both
+# in this standalone project and while the folder is still nested inside its origin repo.
+.claude/settings.local.json
+
+# The shared engine pin (.claude/settings.json) is intentionally NOT ignored — it travels with
+# the repo so every clone runs on the same model/effort.
+
+# cycle runtime
+/.factory/
+/cycle.log
+PAUSE
+HANDOFF.md
+
+# Private business/strategy docs — never commit, never quote, never reference in any tracked file.
+docs/private/
+
+# Secrets — env files never travel with the repo.
+.env
+.env.*
+!.env.example
+
+# Public-docs snapshots are the vendor's copyrighted docs; never committed. Reproducibility comes
+# from each pack's committed docs-manifest.yaml.
+**/docs-cache/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
