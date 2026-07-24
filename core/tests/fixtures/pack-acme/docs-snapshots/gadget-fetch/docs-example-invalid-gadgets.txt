@@ -1,0 +1,2 @@
+Acme Widget Cloud — Gadgets
+GET /v3/gadgets/{id} — fetch a single gadget by its path id. Returns 200 with the gadget.

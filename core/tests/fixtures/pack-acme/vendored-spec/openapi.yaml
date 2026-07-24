@@ -1,0 +1,18 @@
+# Synthetic OpenAPI spec for the pack-acme test fixture. Carries NO real vendor identity so the core
+# no-vendor guard stays clean. Just enough operations to exercise the anchoring gate.
+openapi: 3.0.0
+info:
+  title: Acme Widget Cloud API
+  version: "3.0"
+paths:
+  /v3/widgets:
+    get:
+      operationId: listWidgets
+      summary: List widgets.
+    post:
+      operationId: createWidget
+      summary: Create a widget.
+  /v3/gadgets/{id}:
+    get:
+      operationId: getGadget
+      summary: Fetch a gadget by id.

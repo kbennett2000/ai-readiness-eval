@@ -97,6 +97,11 @@ pip install -r requirements.txt
 pytest                                   # full suite: core engine + every pack's gate
 pytest -m regression                     # just the SailPoint extraction-equivalence gate
 python -m core --pack packs/sailpoint rebuild-report <results_dir>   # re-score archived runs
+
+# The factory: work a ranked queue through recon→validate→anchoring→mock→canary→grid→compare→card.
+python -m core --packs-dir <dir> factory status  --queue <queue.yaml>            # queue at a glance
+python -m core --packs-dir <dir> factory next    --queue <queue.yaml> --model <id>   # one target
+python -m core --packs-dir <dir> factory run     --queue <queue.yaml> --model <id>   # until all done
 ```
 
 Live model runs (the `run` / `canary` commands) use the Claude Code CLI on a subscription and are out

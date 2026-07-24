@@ -8,3 +8,13 @@ tasks:
       - url: https://docs.example.invalid/widgets
         role: api-reference
         note: widgets reference
+  widget-create:
+    pages:
+      - url: https://docs.example.invalid/widgets
+        role: api-reference
+        note: widgets reference
+  gadget-fetch:
+    pages:
+      - url: https://docs.example.invalid/gadgets
+        role: api-reference
+        note: gadgets reference

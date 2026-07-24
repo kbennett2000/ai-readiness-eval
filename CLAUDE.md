@@ -100,3 +100,8 @@ verify with `git ls-files | grep -i private` (must return nothing).
 - **Cycle 3.** Added the category rollup + cross-vendor comparison renderer (`core/category.py`,
   ADR-0004): vendor-agnostic, renders a `category × source` table from any set of packs' committed
   scores, naming none of them. The first external grids run against packs in a separate private repo.
+- **Cycle 4.** Built the factory (`core/factory.py` + a `factory` next/run/status command, ADR-0006):
+  an unattended dispatcher that works a ranked queue through recon→validate→anchoring→mock→canary→grid→
+  compare→card, every stage a hard gate that blocks-with-reason. It reuses the existing per-condition
+  engine in-process, names no vendor, and makes no live vendor-API call. Pack authoring stays external
+  and anchoring-gated (auto-authoring deferred). The real queue + packs live in the private repo.
