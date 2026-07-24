@@ -3,6 +3,8 @@
 Covers normalization edge cases and the two documented judgment calls
 (any-of scopes; required-subset params).
 """
+import pytest
+
 from core.answer_block import AnswerSummary, Endpoint
 from core import scorer
 
@@ -39,6 +41,37 @@ def test_placeholder_names_are_interchangeable():
 def test_normalize_method_and_version():
     assert scorer.normalize_method(" get ") == "GET"
     assert scorer.normalize_version("/Beta") == "beta"
+
+
+# --- unversioned APIs (ADR-0008) ------------------------------------------- #
+
+@pytest.mark.parametrize("answer", ["none", "None", "N/A", "na", "<none>", "(none)", "[N/A]",
+                                    "no version", "unversioned", "-", "null", " none ", None, ""])
+def test_saying_there_is_no_version_equals_omitting_it(answer):
+    """An unversioned API is scored on whether the model knows it — not on which word it picked."""
+    assert scorer.normalize_version(answer) == ""
+
+
+@pytest.mark.parametrize("real", ["v3", "beta", "oauth", "v2025", "nano"])
+def test_real_versions_are_untouched_by_the_sentinel_rule(real):
+    """The rule must not move any versioned vendor's score — incl. versions that merely start
+    like a sentinel ('nano'), and sentinels answered where a real version was required."""
+    assert scorer.normalize_version(real) == real
+    assert scorer.normalize_version("none") != scorer.normalize_version(real)
+
+
+def test_unversioned_endpoint_credits_a_none_answer():
+    """End-to-end: ground truth '/' + an answer of '<none>' scores the version dimension 1.0."""
+    task = _task([{"method": "GET", "path": "/Vault/API/Safes", "api_version": "/"}])
+    score = scorer.score_task(task, _ans([("GET", "/Vault/API/Safes", "<none>")]))
+    assert score.dim("api_version").score == 1.0
+
+
+def test_unversioned_endpoint_still_fails_an_invented_version():
+    """The dimension keeps its teeth: asserting a version this API does not have is wrong."""
+    task = _task([{"method": "GET", "path": "/Vault/API/Safes", "api_version": "/"}])
+    score = scorer.score_task(task, _ans([("GET", "/Vault/API/Safes", "v1")]))
+    assert score.dim("api_version").score == 0.0
 
 
 def test_canonical_auth_flow():
