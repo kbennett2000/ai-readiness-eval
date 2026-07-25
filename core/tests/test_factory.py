@@ -60,6 +60,64 @@ def test_next_target_skips_blocked_and_carded():
     assert factory.next_target(entries) is None
 
 
+def test_next_target_skips_parked():
+    """`parked` is terminal. It has to be, or writing it arms the dispatcher at the target.
+
+    Before ADR-0019 `parked` was English prose in a comment describing what `blocked` meant, not a
+    value the code knew — so an author who wrote the word that already appeared in the file's own
+    documentation would have made that target the NEXT thing the factory dispatched and spent on.
+    """
+    entries = [QueueEntry(id="a", status="parked"), QueueEntry(id="b", status="queued")]
+    assert factory.next_target(entries).id == "b"
+    entries[1].status = "parked"
+    assert factory.next_target(entries) is None
+
+
+def test_load_queue_rejects_an_unknown_status(tmp_path):
+    """An unrecognized status must not be read as "not done", i.e. as "dispatch this next"."""
+    src = tmp_path / "queue.yaml"
+    src.write_text("targets:\n  - id: alpha\n    status: barked\n")
+    with pytest.raises(ValueError) as exc:
+        factory.load_queue(src)
+    assert "barked" in str(exc.value) and "alpha" in str(exc.value)
+    assert "parked" in str(exc.value), "the error must list what IS allowed, not just what is not"
+
+
+@pytest.mark.parametrize("status", sorted(factory.STATUSES))
+def test_every_declared_status_actually_loads(status, tmp_path):
+    src = tmp_path / "queue.yaml"
+    src.write_text(f"targets:\n  - id: alpha\n    status: {status}\n")
+    assert factory.load_queue(src)[0].status == status
+
+
+def test_guard_tokens_default_to_the_id_and_can_be_replaced_or_narrowed():
+    """The public leak guard's name list is computed from these, and holds no names of its own.
+
+    Replacement rather than extension is the load-bearing choice: an id that is also an ordinary word
+    must be able to say "never match me case-insensitively", and `guard_tokens: []` says exactly that.
+    An extension-only field could not express it, and the word would fire on unrelated prose until
+    someone routed around the guard.
+    """
+    assert QueueEntry(id="alpha").leak_guard_tokens() == (["alpha"], [])
+    # a hyphenated id also yields its collapsed form, since a leak may write it either way
+    assert QueueEntry(id="acme-widgets").leak_guard_tokens() == (["acme-widgets", "acmewidgets"], [])
+    # explicit tokens REPLACE the default: the id itself is gone unless it is listed again
+    assert QueueEntry(id="alpha", guard_tokens=["beta"]).leak_guard_tokens() == (["beta"], [])
+    # the empty list is meaningful and is not the same as omitting the field
+    entry = QueueEntry(id="alpha", guard_tokens=[], guard_tokens_cased=["Alpha"])
+    assert entry.leak_guard_tokens() == ([], ["Alpha"])
+
+
+def test_guard_tokens_round_trip_through_save(tmp_path):
+    src = tmp_path / "q.yaml"
+    src.write_text("targets:\n  - id: alpha\n    guard_tokens: []\n    guard_tokens_cased: [Alpha]\n")
+    entries = factory.load_queue(src)
+    out = tmp_path / "out.yaml"
+    factory.save_queue(out, entries)
+    # `guard_tokens: []` must survive a save; dropping it as falsy would silently re-arm the default
+    assert factory.load_queue(out)[0].leak_guard_tokens() == ([], ["Alpha"])
+
+
 # --------------------------------------------------------------------------- #
 # Gates
 # --------------------------------------------------------------------------- #
@@ -267,9 +325,14 @@ def test_render_status_shows_counts_and_block_reasons():
         QueueEntry(id="b", display_name="Beta", tier=2, status="blocked",
                    blocked_reason="[recon] no spec"),
         QueueEntry(id="c", display_name="Gamma", tier=3, status="queued"),
+        QueueEntry(id="d", display_name="Delta", tier=4, status="parked",
+                   blocked_reason="needs a second answer contract"),
     ]
     out = factory.render_status(entries)
-    assert "Alpha" in out and "Beta" in out and "Gamma" in out
+    assert "Alpha" in out and "Beta" in out and "Gamma" in out and "Delta" in out
     assert "$5.50" in out
     assert "blocked: [recon] no spec" in out
-    assert "1 carded · 1 blocked · 1 open" in out
+    # A parked target's reason is the entire record of a decision not to measure something. It was
+    # silently dropped before ADR-0019, because the reason line keyed off the literal "blocked".
+    assert "parked: needs a second answer contract" in out
+    assert "1 carded · 1 blocked · 1 parked · 1 open" in out
