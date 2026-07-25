@@ -109,22 +109,35 @@ def test_scopes_keep_their_inline_comments_and_still_score():
 # What the control catches
 # --------------------------------------------------------------------------- #
 
-def test_an_unrecognized_auth_shape_is_flagged_as_close_to_free():
-    """A dimension can be applicable and still measure almost nothing.
+def test_a_login_style_the_scorer_cannot_name_blocks_the_pack():
+    """The scoring hole ADR-0011 closes, now enforced rather than warned about.
 
-    The scorer recognizes bearer and client-credentials. Ground truth naming neither scores 1.0
-    against any answer that also names neither — so a pack whose vendor uses, say, an API key gets a
-    free 100% on auth unless someone teaches the scorer that shape. The control reports it rather
-    than blocking: the fix belongs in the scorer, not in the pack.
+    Ground truth naming no listed style scores 1.0 against any answer that also names none — the
+    dimension reads as applicable while testing nothing. Mutual TLS is a real auth shape and a
+    genuinely unlisted one, so this is the case a future pack actually hits. The control blocks it,
+    and the message points at the fix: teach `scorer._AUTH_STYLES`, do not rewrite the pack.
     """
-    control = check_task(_task(auth_flow="API key in the X-Api-Key header"))
-    assert control.ok                                        # non-blocking
-    assert any("close to free" in note for note in control.notes)
-    assert control.direct.dim("auth_flow").score == 1.0      # ...and this is the point
+    control = check_task(_task(auth_flow="Mutual TLS: the caller presents a client certificate"))
+    assert not control.ok
+    assert any("names no login style the scorer recognizes" in p for p in control.problems)
+    assert any("scorer._AUTH_STYLES" in p for p in control.problems)
+    # ...and the reason it must block: the dimension still scores a perfect mark.
+    assert control.direct.dim("auth_flow").score == 1.0
 
 
-def test_a_recognized_auth_shape_draws_no_note():
-    assert not any("close to free" in n for n in check_task(_task()).notes)
+@pytest.mark.parametrize("auth_flow", [
+    "API key in the X-Api-Key header",
+    "Session token from the logon call, sent in the Authorization header",
+    "HTTP Basic-auth login (not a token-grant flow)",
+])
+def test_the_styles_taught_this_cycle_no_longer_block(auth_flow):
+    """The three login styles ADR-0011 added must pass the gate they would have failed before it."""
+    control = check_task(_task(auth_flow=auth_flow))
+    assert control.ok, control.problems
+
+
+def test_a_recognized_auth_shape_draws_no_problem():
+    assert check_task(_task()).ok
 
 
 def test_an_asymmetric_scoring_rule_is_caught(monkeypatch):

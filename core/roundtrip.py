@@ -16,6 +16,10 @@ that produced it. What it does prove is:
      construction today, so it is a tripwire rather than a strong test: it fires the moment anyone
      adds a normalization rule to `scorer.py` that applies to one side and not the other.
   3. The answer key survives the answer-block contract's serialize -> parse boundary.
+  4. Every dimension the task will be scored on can actually be tested. A ground-truth login style
+     the scorer cannot name is blocked here (ADR-0011): auth_flow would score 1.0 for any answer
+     that also named nothing recognizable, so the dimension would read as applicable while
+     measuring nothing. That is the one failure this control catches *before* it becomes a number.
 
 Its real value is procedural. When a dimension reads 0.00 across every task and both conditions,
 the suspect-instrument rule says the harness is the suspect before the vendor is. This control
@@ -28,7 +32,26 @@ from dataclasses import dataclass, field
 
 from .answer_block import AnswerSummary, Endpoint, parse, render_block
 from .pack import Pack
-from .scorer import DIMENSIONS, TaskScore, canonical_auth_flow, score_task
+from .scorer import (
+    _AUTH_STYLES,
+    DIMENSIONS,
+    UNKNOWN_AUTH,
+    TaskScore,
+    canonical_auth_flow,
+    score_task,
+)
+
+_KNOWN_STYLES = ", ".join(style for style, _markers in _AUTH_STYLES)
+
+# The phrase the `--mock` provider answers with for each login style. Mock answers must score 1.0,
+# or a pack's free plumbing preflight would report a failure that says nothing about the plumbing.
+_MOCK_AUTH_PHRASE = {
+    "session-token": "Session token from the login call",
+    "oauth2-client-credentials": "OAuth2 client-credentials",
+    "bearer-token": "OAuth2 bearer token",
+    "basic-auth": "HTTP Basic auth",
+    "api-key": "API key",
+}
 
 
 @dataclass
@@ -61,9 +84,7 @@ def answer_from_ground_truth(task: dict, *, canonical_auth: bool = False) -> Ans
     gt = task["ground_truth"]
     auth = gt.get("auth_flow")
     if canonical_auth:
-        auth = ("OAuth2 client-credentials"
-                if canonical_auth_flow(auth) == "oauth2-client-credentials"
-                else "OAuth2 bearer token")
+        auth = _MOCK_AUTH_PHRASE.get(canonical_auth_flow(auth), "OAuth2 bearer token")
     return AnswerSummary(
         endpoints=[
             Endpoint(method=e.get("method"), path=e.get("path"), api_version=e.get("api_version"))
@@ -124,14 +145,18 @@ def check_task(task: dict) -> TaskControl:
         control.parsed = score_task(task, result.summary)
         _collect(control, control.parsed, "parsed")
 
-    # Non-blocking notes: shapes that score but measure less than they appear to.
-    if canonical_auth_flow(gt.get("auth_flow")) == "unknown":
-        control.notes.append(
-            "ground truth names no auth concept the scorer recognizes, so auth_flow scores 1.0 for "
-            "any answer that also names none — the dimension reads as applicable but is close to "
-            "free. A vendor whose auth is neither bearer nor client-credentials needs a scorer rule, "
-            "not a pack workaround"
+    # Blocking: a login style the scorer cannot name is a scoring hole, not a thin instrument.
+    # auth_flow would score 1.0 for any answer that also names nothing recognizable, so the
+    # dimension reads as applicable while testing nothing (ADR-0011). The fix is always a new
+    # style in `scorer._AUTH_STYLES`, never a rewrite of the vendor's documented prose.
+    if canonical_auth_flow(gt.get("auth_flow")) == UNKNOWN_AUTH:
+        control.problems.append(
+            "auth_flow names no login style the scorer recognizes, so the dimension scores 1.0 for "
+            "any answer that also names none — it would read as applicable while measuring nothing. "
+            f"Teach the style to scorer._AUTH_STYLES (known: {_KNOWN_STYLES})"
         )
+
+    # Non-blocking notes: shapes that score but measure less than they appear to.
     raw_params = gt.get("key_parameters") or []
     if raw_params and not any(
         isinstance(p, dict) and p.get("required") is True for p in raw_params

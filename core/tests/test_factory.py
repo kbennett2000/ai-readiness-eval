@@ -129,6 +129,24 @@ def test_roundtrip_gate_blocks_when_a_task_cannot_score_itself(monkeypatch):
     assert "auth_flow scored 0.00" in detail
 
 
+def test_roundtrip_gate_blocks_a_login_style_the_scorer_cannot_name(tmp_path):
+    """No monkeypatch — the real block a future pack hits (ADR-0011).
+
+    A vendor whose auth is mutual TLS would otherwise score a free 1.0 on auth for any answer that
+    also named nothing recognizable, and get carded on a dimension that tested nothing.
+    """
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    task = pack_dir / "tasks" / "widget-list.yaml"
+    task.write_text(task.read_text().replace(
+        "auth_flow: OAuth2 bearer token",
+        "auth_flow: Mutual TLS — the caller presents a client certificate"))
+    ok, detail = factory.check_roundtrip(Pack.load(pack_dir))
+    assert not ok
+    assert "widget-list" in detail
+    assert "no login style the scorer recognizes" in detail
+
+
 def test_anchoring_blocks_on_an_unresolvable_spec_ref(tmp_path):
     pack_dir = tmp_path / "pack-acme"
     shutil.copytree(ACME, pack_dir)
