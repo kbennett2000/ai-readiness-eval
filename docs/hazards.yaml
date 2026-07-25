@@ -355,6 +355,29 @@ entries:
       issue text describes a measured vendor as "the next queued target" and never names it. A
       pre-push hook over commit messages is the cheapest real improvement if this recurs.
 
+  - id: the-prospect-token-list-can-omit-a-prospect
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      Both leak guards only catch a name the pattern already lists. A target that enters the
+      private queue and is never added to `PROSPECT_TOKENS` is invisible to every test here —
+      the guards report green and the name is unprotected. This has already happened once: the
+      list went stale between cycles 2 and 6, and a recon note naming two later prospects
+      reached a commit before the guard objected. Deriving the guard-the-guard parametrization
+      from the pattern (cycle 13) narrows a different gap — it proves every listed token
+      actually fires — and does nothing about this one.
+    status: ungated
+    ungated_reason: >
+      Not closable from this repository, and saying otherwise would be the flattering answer.
+      The authoritative list of measured targets is the private packs repo's `queue.yaml`; a
+      test here cannot read it, and a public copy of it would BE the leak the guard prevents.
+      No assertion over this tree can distinguish "no prospect is missing" from "we forgot".
+    fix_queued_to: >
+      Not queued, in the "not closable here" sense of ADR-0016 rather than the undecided one.
+      The mitigation is procedural and has held since cycle 9: the token is added at the START
+      of a target's life in the queue, before any note exists to leak. If it is ever to be
+      gated, the gate belongs in the PRIVATE repo — a test there can read both `queue.yaml`
+      and the public checkout, and would fail on a queued id the public pattern does not match.
+
   # ------------------------------------------------------------------------ ADR-0008 -----
 
   - id: api-version-has-no-sanctioned-empty-spelling
