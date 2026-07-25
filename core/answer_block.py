@@ -141,3 +141,25 @@ def _str_or_none(value) -> str | None:
         return None
     s = str(value).strip()
     return s or None
+
+
+def render_block(summary: AnswerSummary, *, preamble: str = "") -> str:
+    """Render an AnswerSummary back into a fenced answer-summary block — the inverse of `parse`.
+
+    Used to ask "would this exact answer survive the contract?" without a model in the loop: the
+    round-trip control (ADR-0010) renders ground truth through here and parses it back, and the
+    `--mock` provider builds its responses the same way. Values are emitted by `yaml.safe_dump`,
+    which quotes anything ambiguous — so prose containing `": "` survives verbatim rather than
+    needing to be canonicalized away.
+    """
+    block = {
+        "endpoints": [
+            {"method": e.method, "path": e.path, "api_version": e.api_version}
+            for e in summary.endpoints
+        ],
+        "auth_flow": summary.auth_flow,
+        "required_scopes": list(summary.required_scopes),
+        "key_parameters": list(summary.key_parameters),
+    }
+    body = yaml.safe_dump(block, sort_keys=False, default_flow_style=False)
+    return f"{preamble}```answer-summary\n{body}```\n"

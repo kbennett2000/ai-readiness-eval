@@ -58,8 +58,9 @@ The finding is the *gap between conditions* — how much good context is worth �
 - **`core/`** is vendor-agnostic. It carries no vendor string, path, or task assumption (a guard test
   proves it): the conditions interface + registry, the prompt contract + answer-block parser, the
   deterministic scorer + normalization rules, sterile per-run invocation, runtime tool discovery,
-  transcript tool-discipline assertions, the resumable runner, `rebuild-report`, canaries, and the
-  model-pin guard. Vendor specifics reach it only through a loaded `Pack`.
+  transcript tool-discipline assertions, the resumable runner, `rebuild-report`, canaries, the
+  ground-truth round-trip control, and the model-pin guard. Vendor specifics reach it only through a
+  loaded `Pack`.
 - **`packs/<vendor>/`** holds everything vendor-specific: `tasks/*.yaml`, `specs.yaml` (spec source +
   pinned SHA + license finding), `docs-manifest.yaml`, `pack.yaml` (vendor config), an optional
   context-layer config, and any imported fixtures.
@@ -101,7 +102,19 @@ verify with `git ls-files | grep -i private` (must return nothing).
   ADR-0004): vendor-agnostic, renders a `category × source` table from any set of packs' committed
   scores, naming none of them. The first external grids run against packs in a separate private repo.
 - **Cycle 4.** Built the factory (`core/factory.py` + a `factory` next/run/status command, ADR-0006):
-  an unattended dispatcher that works a ranked queue through recon→validate→anchoring→mock→canary→grid→
-  compare→card, every stage a hard gate that blocks-with-reason. It reuses the existing per-condition
-  engine in-process, names no vendor, and makes no live vendor-API call. Pack authoring stays external
-  and anchoring-gated (auto-authoring deferred). The real queue + packs live in the private repo.
+  an unattended dispatcher that works a ranked queue through recon→validate→roundtrip→anchoring→mock→
+  canary→grid→compare→card, every stage a hard gate that blocks-with-reason. It reuses the existing
+  per-condition engine in-process, names no vendor, and makes no live vendor-API call. Pack authoring
+  stays external and anchoring-gated (auto-authoring deferred). The real queue + packs live in the
+  private repo.
+- **Cycles 5–6.** Driven from the private packs repo; the public core gained the fetch-fidelity rulings
+  those grids forced — a bot-gated docs host is a fetch policy (ADR-0007), an unversioned API is scored
+  on whether the model knows it (ADR-0008), and a 2xx with an empty body is a fetch failure rather than
+  a snapshot of an empty page (ADR-0009).
+- **Cycle 7.** Made the ground-truth round-trip control a standing gate (`core/roundtrip.py`, a
+  `roundtrip` command, and a `roundtrip` stage between `validate` and `anchoring`; ADR-0010). Every pack
+  must score each task's own answer key against itself, perfectly, before any grid burns; the suite
+  enforces it over every pack on disk, not just packs the factory happens to dispatch. The ADR records
+  what the control cannot do: an answer key always matches itself, so it catches an *unscoreable* key,
+  never a *wrong* one. The gates are now declared as data (`factory.GATES`) so `STAGES` and the
+  dispatcher cannot drift.
