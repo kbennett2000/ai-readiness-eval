@@ -143,6 +143,25 @@ def _split_flow_items(inner: str) -> list[str] | None:
     return [s for s in (i.strip() for i in items) if s]
 
 
+def _is_valid_yaml_line(line: str) -> bool:
+    """True if this single line parses as YAML on its own (ADR-0022).
+
+    The repair only ever runs on a block YAML has already rejected, so the question
+    a per-line guard has to answer is not "is this block valid" but "is *this* the
+    line that broke it". Asking the parser is exact where a punctuation test is a
+    proxy: `[a, b]` is valid, `[sortBy[0].name]` and `[scp.pc.{role}]` are not, and
+    no character set has to be enumerated in advance to tell them apart.
+
+    A line valid in isolation but invalid in context is safe to skip — skipping only
+    declines to rewrite it, and some other line is what failed.
+    """
+    try:
+        yaml.safe_load(line.strip())
+    except yaml.YAMLError:
+        return False
+    return True
+
+
 def _repair_flow_lists(block_text: str) -> str | None:
     """Rewrite single-line flow sequences that YAML rejected into block sequences.
 
@@ -164,8 +183,15 @@ def _repair_flow_lists(block_text: str) -> str | None:
             out.append(line)
             continue
         indent, key, inner = m.groups()
-        # A flow sequence that is already valid YAML is never rewritten.
-        if "[" not in inner and "]" not in inner:
+        # A flow sequence that is already valid YAML is never rewritten. Asked directly
+        # of the parser rather than guessed from punctuation (ADR-0022): the original
+        # test looked for a square bracket, because the indexed-parameter notation the
+        # prompt contract demonstrates is what ADR-0014 was written to repair. A brace
+        # placeholder — `[scp.pc.{role}]`, the shape a model reaches for when it does
+        # not know a tenant-specific value — is equally invalid YAML and carries no
+        # square bracket, so the guard skipped the one line in the block that needed
+        # rewriting and the repair reported nothing to do.
+        if _is_valid_yaml_line(line):
             out.append(line)
             continue
         items = _split_flow_items(inner)

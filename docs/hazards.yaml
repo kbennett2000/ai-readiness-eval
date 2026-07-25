@@ -1064,3 +1064,51 @@ entries:
       Gated pack-side, where the manifests are: a test asserting every anchored page either
       clears the floor or declares a reason, AND that no page declares a reason it no longer
       needs. Built with the pack that forced this ADR.
+
+  - id: a-repair-trigger-that-enumerates-notations
+    adr: adr-0022-repair-trigger-asks-the-parser.md
+    hazard: >
+      ADR-0014's repair decided which line to rewrite by scanning for a square bracket, the
+      notation it happened to have seen. A brace placeholder — `[scp.pc.{role}]` — is equally
+      invalid YAML, carries no square bracket, and was classified as "already valid", so the one
+      broken line in the block was skipped and the whole answer discarded. Any trigger that lists
+      the shapes it knows about fails silently on the first shape nobody listed.
+    status: gated
+    gated_by:
+      - core/tests/test_answer_block.py::test_repairs_a_brace_placeholder_in_a_scope_list
+      - core/tests/test_answer_block.py::test_the_trigger_asks_the_parser_rather_than_scanning_for_characters
+      - core/tests/test_answer_block.py::test_a_valid_flow_sequence_is_still_never_rewritten
+
+  - id: a-rescued-run-silently-changes-a-denominator
+    adr: adr-0022-repair-trigger-asks-the-parser.md
+    hazard: >
+      A format failure is excluded from every dimension's denominator, not scored zero. So any change
+      to the parser that rescues a run alters what a published percentage is an average *of*, and can
+      move it in either direction — this one moved a cell down. Nothing on a card distinguishes "the
+      model got worse" from "the instrument started counting a run it used to drop", and nothing warns
+      that a re-score changed a denominator rather than a score. ADR-0022 was drafted asserting the
+      opposite scoring behaviour from memory; the arithmetic contradicted it.
+    status: ungated
+    ungated_reason: >
+      Not a property of the code but of how a number is read. `rebuild-report` already records a
+      disclosure note in metadata and summary, and both re-scores this cycle carry one; whether a card
+      then explains the movement is an authoring act, not an assertion a test can make.
+    fix_queued_to: >
+      Not queued as a gate. The candidate is a scored-run count printed beside every dimension so a
+      denominator change is visible on the card itself, rather than recoverable only by diffing two
+      scores.json. Worth doing when the next parser change touches an already-published pack, which
+      this one did not.
+
+  - id: the-item-guard-is-the-only-thing-bounding-a-widened-trigger
+    adr: adr-0022-repair-trigger-asks-the-parser.md
+    hazard: >
+      With the trigger no longer restricted to a punctuation shape, `_REPAIR_ITEM_RE` is the sole
+      remaining barrier between the repair and a manufactured containment score. Removing or
+      loosening it would not fail any trigger test — the two guards are independent — so its
+      importance is not visible from the code that now depends on it.
+    status: gated
+    gated_by:
+      - core/tests/test_answer_block.py::test_a_comma_inside_a_quoted_item_is_never_split
+      - core/tests/test_answer_block.py::test_a_quoted_scope_sentence_is_never_split
+      - core/tests/test_answer_block.py::test_prose_items_are_not_repaired
+      - core/tests/test_answer_block.py::test_an_unterminated_quote_abandons_the_repair

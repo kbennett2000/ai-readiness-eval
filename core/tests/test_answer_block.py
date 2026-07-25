@@ -242,6 +242,64 @@ def test_a_comma_inside_brackets_or_braces_is_not_a_separator():
     assert result.is_failure
 
 
+# --- ADR-0022: the trigger is the parser, not a punctuation test ------------
+#
+# ADR-0014 decided *which lines* to rewrite by looking for a square bracket,
+# because the indexed-parameter notation is what it was written to repair. A
+# brace placeholder is equally invalid YAML and carries no square bracket, so
+# the guard skipped the only broken line in the block and the repair reported
+# nothing to do. Both cases below are transcribed from real archived runs.
+
+def test_repairs_a_brace_placeholder_in_a_scope_list():
+    """The shape a model reaches for when it does not know a tenant-specific value."""
+    result = answer_block.parse(_block(
+        "required_scopes: [scp.pc.{registered_role_name}]\n"
+        "key_parameters: [grant_type, client_id]"
+    ))
+    assert not result.is_failure
+    assert result.repaired is True
+    assert result.summary.required_scopes == ["scp.pc.{registered_role_name}"]
+
+
+def test_the_rest_of_a_repaired_answer_survives_with_it():
+    """The point of repairing at all: a format failure costs every dimension.
+
+    The run this is transcribed from named the correct endpoint. Discarding it
+    scored the model zero on endpoint, method, version and auth because of a
+    brace in a *scope* list — four dimensions lost to a fifth.
+    """
+    result = answer_block.parse(
+        "```answer-summary\n"
+        "endpoints:\n  - method: GET\n    path: /common/v1/activities\n    api_version: v1\n"
+        "auth_flow: OAuth2 client credentials bearer token\n"
+        "required_scopes: [scp.pc.{your_registered_service_scope}]\n"
+        "key_parameters: [grant_type, client_id, client_secret, scope]\n"
+        "```"
+    )
+    assert not result.is_failure
+    assert result.summary.endpoints[0].path == "/common/v1/activities"
+    assert result.summary.auth_flow == "OAuth2 client credentials bearer token"
+
+
+def test_a_valid_flow_sequence_is_still_never_rewritten():
+    """The predicate must narrow to the broken line, not widen to every line."""
+    assert answer_block._repair_flow_lists(
+        "required_scopes: []\nkey_parameters: [id, skip, take]"
+    ) is None
+
+
+def test_the_trigger_asks_the_parser_rather_than_scanning_for_characters():
+    """Pins the mechanism, not just the outcome (ADR-0022).
+
+    A future edit that swaps the predicate back for a character test would keep
+    every case above passing if it happened to list `{` — and would fail the next
+    notation nobody enumerated. This asserts the question being asked.
+    """
+    assert answer_block._is_valid_yaml_line("key_parameters: [a, b]") is True
+    assert answer_block._is_valid_yaml_line("key_parameters: [sortBy[0].name]") is False
+    assert answer_block._is_valid_yaml_line("required_scopes: [scp.pc.{role}]") is False
+
+
 # --- must-not-repair: scope boundaries, pinned deliberately -----------------
 
 def test_a_multiline_flow_sequence_is_out_of_scope():
