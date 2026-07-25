@@ -10,6 +10,22 @@ import yaml
 from core import docs_fetch
 
 
+def _page(body: str = "reference text") -> str:
+    """A page whose EXTRACTED text clears the ADR-0021 floor.
+
+    These fixtures exercise hashing, provenance and pacing, not text length, so they are
+    padded to look like the smallest real reference page rather than left as a bare `<p>`.
+    Anything under MIN_TEXT_BYTES is now a recorded fetch error, which is the subject of its
+    own tests below.
+    """
+    return (
+        f"<h1>{body}</h1><p>This endpoint returns the requested resource. "
+        "Supported query parameters are fields, filter, sort, pageSize and pageOffset. "
+        "The caller must present a bearer token. A 200 response carries the resource in "
+        "the data member; a 404 is returned when the identifier does not resolve.</p>"
+    )
+
+
 def _write_manifest(tmp_path):
     m = {
         "budget_tokens": 15000,
@@ -28,7 +44,7 @@ def _write_manifest(tmp_path):
 def test_fetch_populates_hash_and_size(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: f"<p>text for {url}</p>")
+                        lambda url, timeout=30, user_agent=None: _page(f"text for {url}"))
     mpath = _write_manifest(tmp_path)
 
     summary = docs_fetch.fetch_all(mpath, cache_dir, today="2026-07-23")
@@ -52,7 +68,7 @@ def test_fetch_error_recorded_not_fatal(tmp_path, monkeypatch):
     def boom(url, timeout=30, user_agent=None):
         if "accounts" in url:
             raise RuntimeError("404 not found")
-        return "<p>ok</p>"
+        return _page("ok")
 
     monkeypatch.setattr(docs_fetch, "_fetch", boom)
     mpath = _write_manifest(tmp_path)
@@ -71,7 +87,7 @@ def test_default_user_agent_is_the_self_identifying_one(tmp_path, monkeypatch):
     """No override => the honest default agent, and no provenance key on the page."""
     seen = []
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or "<p>x</p>")
+                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or _page())
     mpath = _write_manifest(tmp_path)
 
     docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-23")
@@ -89,7 +105,7 @@ def test_user_agent_override_is_used_and_recorded(tmp_path, monkeypatch):
     """
     seen = []
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or "<p>x</p>")
+                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or _page())
     mpath = _write_manifest(tmp_path)
 
     docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-23", user_agent="Mozilla/5.0 (test)")
@@ -205,7 +221,7 @@ def test_a_throttle_that_clears_is_fetched_normally(tmp_path, monkeypatch):
         state["n"] += 1
         if state["n"] == 1:
             raise docs_fetch.EmptyDocument("HTTP 202 with an empty body")
-        return "<p>real reference text</p>"
+        return _page("real reference text")
 
     monkeypatch.setattr(docs_fetch, "_fetch", flaky)
     mpath = _write_manifest(tmp_path)
@@ -238,7 +254,7 @@ def test_declared_delay_paces_pages_but_never_leads(tmp_path, monkeypatch):
     """The delay separates pages; it must not pause before the first fetch."""
     order = []
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: order.append(("fetch", url)) or "<p>x</p>")
+                        lambda url, timeout=30, user_agent=None: order.append(("fetch", url)) or _page())
     mpath = _write_manifest(tmp_path)
 
     docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-24",
@@ -267,3 +283,130 @@ def test_slug_is_filesystem_safe():
     slug = docs_fetch.slug_for("https://docs.example.invalid/api/standard-collection-parameters")
     assert "/" not in slug
     assert slug.endswith("standard-collection-parameters")
+
+
+# --- ADR-0021: the floor is on extracted text, not the raw body --------------------------
+
+# What a client-rendered reference page actually delivers: tens of kilobytes of script and
+# markup wrapping a single navigation crumb. Non-empty as bytes, empty as documentation.
+_CLIENT_RENDERED = (
+    "<!doctype html><html><head><title>GET /activities</title></head><body>"
+    "<a href='#main'>Skip to main content</a><div id='__docusaurus'></div>"
+    "<script>" + "var chunk=1;" * 4000 + "</script></body></html>"
+)
+
+
+def test_a_page_that_renders_to_a_nav_crumb_is_an_error_not_a_snapshot(tmp_path, monkeypatch):
+    """The raw body is fine and the documentation is absent — ADR-0009 cannot see this.
+
+    A measured vendor's operation reference answers HTTP 200 with ~36 KB and extracts to
+    "Skip to main content". Left alone it hashes cleanly, records a plausible byte_size and
+    a unique content_hash, and feeds the public-docs condition nothing at all.
+    """
+    assert len(_CLIENT_RENDERED.encode()) > 40_000            # the body is emphatically not empty
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _CLIENT_RENDERED)
+    mpath = _write_manifest(tmp_path)
+
+    summary = docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25",
+                                   sleep=lambda s: None)
+
+    assert all(s[2].startswith("error") for pages in summary.values() for s in pages)
+    for page in yaml.safe_load(mpath.read_text())["tasks"]["t1"]["pages"]:
+        assert page["content_hash"] is None
+        assert page["byte_size"] == 0
+        assert "under the 200 B floor" in page["fetch_error"]
+
+
+def test_the_render_floor_is_never_retried(tmp_path, monkeypatch):
+    """A throttle clears; a client-rendered page does not. Only one of them is worth waiting for.
+
+    ADR-0009's schedule reaches a 180s gap before giving up. Spending that on a page which
+    will render client-side again in three minutes is nine wasted minutes per page, so the
+    check deliberately lives after `_fetch_with_retry` returns rather than inside it.
+    """
+    calls, slept = [], []
+
+    def rendered(url, timeout=30, user_agent=None):
+        calls.append(url)
+        return _CLIENT_RENDERED
+
+    monkeypatch.setattr(docs_fetch, "_fetch", rendered)
+    mpath = _write_manifest(tmp_path)
+
+    docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25", sleep=slept.append)
+
+    assert len(calls) == 2          # 2 pages, one attempt each — not 2 x DEFAULT_RETRIES
+    assert slept == []              # and not one second of backoff
+
+
+def test_a_declared_reason_keeps_a_short_page_and_records_why(tmp_path, monkeypatch):
+    """The tolerance is opt-in and argued, like ADR-0007's user_agent and ADR-0017's prefix.
+
+    A pack that knows its vendor's reference renders client-side may still anchor to those
+    pages — one carded pack has every page unfetchable — but it has to say so in the
+    manifest, where a reader of the committed record can see it.
+    """
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _CLIENT_RENDERED)
+    m = yaml.safe_load(_write_manifest(tmp_path).read_text())
+    reason = "operation reference renders client-side; anchored for provenance, not for text"
+    m["tasks"]["t1"]["pages"][0]["short_text_ok"] = reason
+    mpath = tmp_path / "manifest.yaml"
+    mpath.write_text(yaml.safe_dump(m, sort_keys=False))
+
+    summary = docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25",
+                                   sleep=lambda s: None)
+
+    assert [s[2] for s in summary["t1"]][0] == "ok"           # declared: kept
+    assert [s[2] for s in summary["t1"]][1].startswith("error")   # undeclared: still an error
+    kept = yaml.safe_load(mpath.read_text())["tasks"]["t1"]["pages"][0]
+    assert kept["short_text_ok"] == reason                    # the argument survives into the record
+    assert kept["byte_size"] < docs_fetch.MIN_TEXT_BYTES      # and the number is not massaged
+    assert kept["content_hash"].startswith("sha256:")
+
+
+def test_an_override_with_no_argument_behind_it_is_rejected(tmp_path, monkeypatch):
+    """`short_text_ok: true` is a waiver with nothing on the record; blank is the same.
+
+    Accepting a bare boolean would turn a documented exception into a silent one, which is
+    the failure mode ADR-0015 exists to catch: a tolerance nobody has to justify decays into
+    a tolerance nobody remembers granting.
+    """
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _CLIENT_RENDERED)
+    for bad in (True, "", "   "):
+        m = yaml.safe_load(_write_manifest(tmp_path).read_text())
+        m["tasks"]["t1"]["pages"][0]["short_text_ok"] = bad
+        mpath = tmp_path / "manifest.yaml"
+        mpath.write_text(yaml.safe_dump(m, sort_keys=False))
+
+        summary = docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25",
+                                       sleep=lambda s: None)
+
+        assert summary["t1"][0][2].startswith("error"), f"{bad!r} must not pass as a reason"
+        page = yaml.safe_load(mpath.read_text())["tasks"]["t1"]["pages"][0]
+        assert "non-empty reason" in page["fetch_error"]
+
+
+def test_the_floor_is_a_floor_and_not_a_haircut(tmp_path, monkeypatch):
+    """Exactly MIN_TEXT_BYTES passes; one byte less does not. Pins the boundary both ways."""
+    from core.html_text import html_to_text
+
+    def page_of(n_bytes):
+        html = "<p>" + "a" * n_bytes + "</p>"
+        pad = n_bytes - len(html_to_text(html).encode())
+        return "<p>" + "a" * (n_bytes + pad) + "</p>"
+
+    at_floor = page_of(docs_fetch.MIN_TEXT_BYTES)
+    assert len(html_to_text(at_floor).encode()) == docs_fetch.MIN_TEXT_BYTES
+    under = page_of(docs_fetch.MIN_TEXT_BYTES - 1)
+
+    for html, expected in ((at_floor, "ok"), (under, "error")):
+        monkeypatch.setattr(docs_fetch, "_fetch",
+                            lambda url, timeout=30, user_agent=None, _h=html: _h)
+        mpath = _write_manifest(tmp_path)
+        summary = docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25",
+                                       sleep=lambda s: None)
+        assert summary["t1"][0][2].startswith(expected), \
+            f"{len(html_to_text(html).encode())} B should be {expected}"
