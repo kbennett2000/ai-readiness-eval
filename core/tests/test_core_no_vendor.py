@@ -32,14 +32,20 @@ VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn
 # `thycotic` is listed beside `delinea` because a vendor's FORMER brand identifies it just as well,
 # and this one still hosts that vendor's published spec — so a stray spec URL in a public file would
 # name the prospect without ever spelling its current name.
+#
+# A target the queue has PARKED is listed too. `blocked` records what this instrument will measure; it
+# says nothing about whose name is ours to publish, and a parked target can be un-parked later.
 PROSPECT_TOKENS = re.compile(
-    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic|beyondtrust", re.IGNORECASE
+    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic|beyondtrust"
+    r"|runpod|hedera|hashgraph|orcarouter|openzeppelin",
+    re.IGNORECASE,
 )
 
-# One prospect's name is also an ordinary phrase in this domain: the reference pack legitimately says
-# "exactly one identity" and "one identity's accounts". Matching it case-insensitively would fire on
-# those, so it is matched only as the capitalized proper noun.
-PROSPECT_TOKENS_CASED = re.compile(r"One Identity")
+# Two prospects' names are also ordinary words in this domain, so they are matched only as capitalized
+# proper nouns. The reference pack legitimately says "exactly one identity" and "one identity's
+# accounts"; and a scheduling note may legitimately say a run happens at midnight. Case-insensitive
+# matching would fire on that ordinary prose, and a guard that cries wolf gets routed around.
+PROSPECT_TOKENS_CASED = re.compile(r"One Identity|Midnight")
 
 
 def _engine_py_files():
@@ -59,7 +65,14 @@ def test_no_vendor_token_in_core_engine():
 
 
 def test_public_repo_names_no_prospect():
-    """Every tracked file (except this guard, which spells the tokens as patterns) is prospect-free."""
+    """Every tracked file (except this guard, which spells the tokens as patterns) is prospect-free.
+
+    That exemption is not a detail. It makes this file the one tracked file in a PUBLIC repository
+    that names every measured prospect — a plaintext roster, better organized than any leak the rule
+    forbids. It is unavoidable for a plaintext matcher and is recorded as a hazard rather than left
+    in this parenthetical: see `the-leak-guard-publishes-the-list-it-protects` in docs/hazards.yaml,
+    and issue #23 for the hashed-token design that would close it and what that would cost.
+    """
     try:
         tracked = subprocess.check_output(
             ["git", "ls-files"], cwd=REPO_ROOT, text=True
@@ -148,22 +161,41 @@ def test_guard_regex_actually_matches_known_vendor_tokens(token):
     assert VENDOR_TOKENS.search(f"prefix {token} suffix")
 
 
-@pytest.mark.parametrize(
-    "token",
-    ["saviynt", "okta", "cyberark", "oneidentity", "pingone", "delinea", "thycotic", "beyondtrust"],
-)
+@pytest.mark.parametrize("token", PROSPECT_TOKENS.pattern.split("|"))
 def test_prospect_regex_actually_matches_every_token_it_claims(token):
     """Guard the guard, prospect side — the equivalent of the vendor-token check above.
 
     Its absence was noticed the ordinary way: removing one token from the pattern on purpose left the
     ref scan failing anyway, because a DIFFERENT token still matched the same ref. A break test that
     cannot fail for the reason you intended proves nothing, so each token is now asserted on its own.
+
+    The token list is READ OFF THE PATTERN rather than restated beside it. Restating it meant a token
+    added to the pattern was covered by nothing until someone remembered to add it here too, and the
+    first tokens to be forgotten are always the newest — the ones no cycle has exercised yet.
+
+    What deriving it CANNOT do, said plainly: it proves every token the pattern claims actually fires,
+    never that every prospect is claimed. A target added to the private queue and forgotten here is
+    invisible to this test and to every other test in this repository, because the list of prospects
+    lives in a repository this one cannot read. That gap is procedural (add the token when the target
+    enters the queue) and is registered as an ungated hazard.
     """
     assert PROSPECT_TOKENS.search(f"cycle-09-{token}"), f"{token!r} is listed but never fires"
     assert PROSPECT_TOKENS.search(f"prefix {token.upper()} suffix"), f"{token!r} is case-sensitive"
 
 
-def test_prospect_regex_matches_the_one_cased_token():
-    # Matched only as the proper noun: the reference pack legitimately writes "exactly one identity".
-    assert PROSPECT_TOKENS_CASED.search("cycle-06-One Identity")
+@pytest.mark.parametrize("token", PROSPECT_TOKENS_CASED.pattern.split("|"))
+def test_cased_prospect_regex_fires_on_the_proper_noun_only(token):
+    """Derived the same way, and asserting BOTH halves of the bargain these tokens were given.
+
+    A cased token buys leniency on ordinary prose, so it has to pay for it: it must still fire on the
+    proper noun, and it must still stay silent on the lowercase word.
+    """
+    assert PROSPECT_TOKENS_CASED.search(f"cycle-06-{token}"), f"{token!r} is listed but never fires"
+    assert not PROSPECT_TOKENS_CASED.search(f"prefix {token.lower()} suffix"), \
+        f"{token!r} is cased-only precisely so the lowercase word does not fire"
+
+
+def test_the_cased_tokens_stay_silent_on_the_prose_they_were_carved_out_for():
+    # The concrete sentences that forced the carve-out, kept as literals so the reason survives.
     assert not PROSPECT_TOKENS_CASED.search("exactly one identity's accounts")
+    assert not PROSPECT_TOKENS_CASED.search("the nightly grid runs at midnight")

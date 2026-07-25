@@ -355,6 +355,55 @@ entries:
       issue text describes a measured vendor as "the next queued target" and never names it. A
       pre-push hook over commit messages is the cheapest real improvement if this recurs.
 
+  - id: the-prospect-token-list-can-omit-a-prospect
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      Both leak guards only catch a name the pattern already lists. A target that enters the
+      private queue and is never added to `PROSPECT_TOKENS` is invisible to every test here —
+      the guards report green and the name is unprotected. This has already happened once: the
+      list went stale between cycles 2 and 6, and a recon note naming two later prospects
+      reached a commit before the guard objected. Deriving the guard-the-guard parametrization
+      from the pattern (cycle 13) narrows a different gap — it proves every listed token
+      actually fires — and does nothing about this one.
+    status: ungated
+    ungated_reason: >
+      Not closable from this repository, and saying otherwise would be the flattering answer.
+      The authoritative list of measured targets is the private packs repo's `queue.yaml`; a
+      test here cannot read it, and a public copy of it would BE the leak the guard prevents.
+      No assertion over this tree can distinguish "no prospect is missing" from "we forgot".
+    fix_queued_to: >
+      Not queued, in the "not closable here" sense of ADR-0016 rather than the undecided one.
+      The mitigation is procedural and has held since cycle 9: the token is added at the START
+      of a target's life in the queue, before any note exists to leak. If it is ever to be
+      gated, the gate belongs in the PRIVATE repo — a test there can read both `queue.yaml`
+      and the public checkout, and would fail on a queued id the public pattern does not match.
+
+  - id: the-leak-guard-publishes-the-list-it-protects
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      `test_public_repo_names_no_prospect` skips its own file, because the pattern has to spell
+      the tokens to match them. The consequence is that the one tracked file in this PUBLIC
+      repository exempted from the rule is a plaintext list of every measured prospect — the
+      whole set, in one place, easier to read than any leak the guard prevents. The rule in
+      CLAUDE.md is "no tracked file in the public repo may name a measured prospect"; its own
+      enforcement mechanism is the standing exception. Adding a target to the guard, which is
+      the cycle-9 discipline, therefore also publishes that target.
+    status: ungated
+    ungated_reason: >
+      Not a gap in the test — the exemption is load-bearing and self-referential. A pattern
+      cannot match a literal it does not contain, so no arrangement of a plaintext matcher
+      closes this. Closing it means changing HOW matching works (salted hashes of tokenized
+      words, or a matcher supplied from outside the tree), which is a design decision with real
+      costs: multi-word and substring tokens do not tokenize cleanly, failure messages can name
+      the file and line but no longer the offending name, and a matcher held outside the tree
+      makes the guard skip rather than fail wherever it is absent — a guard that silently does
+      nothing is worse than one that discloses.
+    fix_queued_to: >
+      Issue kbennett2000/ai-readiness-eval#23, which proposes the hashed-token design and states
+      those costs. Recorded here first because the disclosure long predates the issue: it has
+      been true since the guard was written in cycle 2, was acknowledged only in a parenthetical
+      inside a docstring, and grew by five names in cycle 13 before anyone wrote it down.
+
   # ------------------------------------------------------------------------ ADR-0008 -----
 
   - id: api-version-has-no-sanctioned-empty-spelling
