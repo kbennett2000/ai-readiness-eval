@@ -181,18 +181,36 @@ class TaskScore:
 # Scoring.
 # --------------------------------------------------------------------------- #
 
-def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint]) -> list[dict]:
+def _strip_base_prefix(segments: list[str], prefix: list[str]) -> list[str]:
+    """Drop `prefix` from the front of `segments` if it is there. ADR-0017.
+
+    Applied symmetrically to ground truth and answer, so the comparison stops depending on where
+    two equally-official sources chose to end the base URL. Never guesses: the prefix is whatever
+    the pack declared and nothing else, so this can only ever collapse a difference the pack has
+    said in advance is not a difference.
+    """
+    if not prefix or len(segments) < len(prefix) or segments[:len(prefix)] != prefix:
+        return segments
+    return segments[len(prefix):]
+
+
+def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
+                     base_prefix: list[str] | None = None) -> list[dict]:
     """Greedily match each ground-truth endpoint to an answer endpoint by path.
 
     Returns one record per ground-truth endpoint with match + method/version flags.
     Method and api_version are only credited when the path matched (you cannot have
     the right method on an endpoint you never identified).
+
+    `base_prefix` is empty for every pack that does not opt in, in which case this behaves
+    exactly as it did before ADR-0017 and no archived score can move.
     """
+    pre = base_prefix or []
     used: set[int] = set()
-    ans_norm = [(i, normalize_path(e.path)) for i, e in enumerate(ans_eps)]
+    ans_norm = [(i, _strip_base_prefix(normalize_path(e.path), pre)) for i, e in enumerate(ans_eps)]
     records: list[dict] = []
     for gt in gt_eps:
-        gt_path = normalize_path(gt.get("path"))
+        gt_path = _strip_base_prefix(normalize_path(gt.get("path")), pre)
         gt_method = normalize_method(gt.get("method"))
         gt_version = normalize_version(gt.get("api_version"))
         match_idx = None
@@ -225,14 +243,19 @@ def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint]) -> list[dict]:
     return records
 
 
-def score_task(task: dict, answer: AnswerSummary) -> TaskScore:
-    """Score one parsed answer against one task's ground truth."""
+def score_task(task: dict, answer: AnswerSummary,
+               base_prefix: list[str] | None = None) -> TaskScore:
+    """Score one parsed answer against one task's ground truth.
+
+    `base_prefix` is the pack's opt-in endpoint-address tolerance (ADR-0017), already normalized to
+    segments. Omitted or empty means the pre-ADR-0017 behaviour, exactly.
+    """
     gt = task["ground_truth"]
     result = TaskScore(task_id=task["id"])
 
     # --- endpoint / method / api_version (per-endpoint, aggregated) ---------
     gt_eps = gt["endpoints"]
-    records = _match_endpoints(gt_eps, answer.endpoints)
+    records = _match_endpoints(gt_eps, answer.endpoints, base_prefix)
     result.endpoint_matches = records
     total = len(records)
     matched = sum(1 for r in records if r["matched"])

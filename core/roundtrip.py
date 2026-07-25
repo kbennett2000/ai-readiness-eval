@@ -117,7 +117,7 @@ def _collect(control: TaskControl, score: TaskScore, path_label: str) -> None:
             )
 
 
-def check_task(task: dict) -> TaskControl:
+def check_task(task: dict, base_prefix: list[str] | None = None) -> TaskControl:
     """Round-trip one task. Takes a plain dict so a caller can hand it deliberately hostile input."""
     control = TaskControl(task_id=str(task.get("id") or "(unnamed task)"))
     gt = task.get("ground_truth")
@@ -129,7 +129,7 @@ def check_task(task: dict) -> TaskControl:
     answer = answer_from_ground_truth(task)
 
     # Path 1 — direct: the scorer against an answer object built straight from ground truth.
-    control.direct = score_task(task, answer)
+    control.direct = score_task(task, answer, base_prefix)
     _collect(control, control.direct, "direct")
 
     # Path 2 — text: the same answer serialized to a block and parsed back, which is the path a
@@ -142,7 +142,7 @@ def check_task(task: dict) -> TaskControl:
             f"{result.failure.reason}"
         )
     else:
-        control.parsed = score_task(task, result.summary)
+        control.parsed = score_task(task, result.summary, base_prefix)
         _collect(control, control.parsed, "parsed")
 
     # Blocking: a login style the scorer cannot name is a scoring hole, not a thin instrument.
@@ -197,7 +197,7 @@ def check_pack(pack: Pack) -> list[TaskControl]:
             ))
             continue
         try:
-            controls.append(check_task(task))
+            controls.append(check_task(task, getattr(pack, "base_prefix_segments", None)))
         except Exception as exc:
             controls.append(TaskControl(
                 task_id=str(task.get("id") or "(unnamed task)"), ok=False,

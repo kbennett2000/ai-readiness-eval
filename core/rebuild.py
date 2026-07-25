@@ -19,7 +19,7 @@ from .scorer import DIMENSIONS, format_failure_score, score_task
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
-def score_response(task: dict, raw_text: str):
+def score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None):
     """Parse + score one archived raw response. A format failure is a distinct outcome, never zeroed.
 
     Returns (score, parse_result) so the caller can record an ADR-0014 repair.
@@ -27,7 +27,7 @@ def score_response(task: dict, raw_text: str):
     parsed = answer_block.parse(raw_text)
     if parsed.is_failure:
         return format_failure_score(task["id"], parsed.failure.reason), parsed
-    return score_task(task, parsed.summary), parsed
+    return score_task(task, parsed.summary, base_prefix), parsed
 
 
 def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = None,
@@ -46,7 +46,7 @@ def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = No
         task = tasks_by_id.get(rr["task_id"])
         rec = dict(rr)
         if task is not None:
-            score, parsed = score_response(task, rr.get("raw_response", ""))
+            score, parsed = score_response(task, rr.get("raw_response", ""), pack.base_prefix_segments)
             rec["format_failure"] = score.format_failure
             rec["failure_reason"] = score.failure_reason
             rec["dimensions"] = {dm: (score.dim(dm).score if score.dim(dm) else None)

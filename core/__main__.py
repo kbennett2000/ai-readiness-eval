@@ -81,11 +81,11 @@ def _record(task_id: str, run_index: int, score, resp, *,
     return rec
 
 
-def _score_response(task: dict, raw_text: str):
+def _score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None):
     parsed = answer_block.parse(raw_text)
     if parsed.is_failure:
         return format_failure_score(task["id"], parsed.failure.reason), parsed
-    return score_task(task, parsed.summary), parsed
+    return score_task(task, parsed.summary, base_prefix), parsed
 
 
 # --------------------------------------------------------------------------- #
@@ -334,7 +334,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 reported_models.add(resp.model_reported)
             total_cost += getattr(resp, "cost_usd", 0.0)
             total_ms += getattr(resp, "duration_ms", 0)
-            score, parsed = _score_response(task, resp.text)
+            score, parsed = _score_response(task, resp.text, pack.base_prefix_segments)
             rec = _record(task["id"], run_index, score, resp, tool_discipline=discipline,
                           parsed=parsed)
             records.append(rec)

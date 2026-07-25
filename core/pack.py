@@ -56,6 +56,12 @@ class Pack:
     spec_ref_file_prefix: str | None = None       # constrain task spec_ref.file paths to a spec subtree
     expected_task_ids: list[str] | None = None     # completeness check for `validate`
     na_categories: dict | None = None              # {taxonomy category: one-line reason}
+    # OPT-IN endpoint-address tolerance (ADR-0017). A path prefix the scorer may ignore on either
+    # side of an endpoint comparison, for a vendor whose documentation and whose machine-readable
+    # description disagree about where the base URL ends. Empty for every pack that does not declare
+    # it, so no pack's numbers move by adding this field. Never derived from `base_url`: that field
+    # points at a spec REPOSITORY for several packs, not at an API base.
+    endpoint_base_prefix: str | None = None
 
     @classmethod
     def load(cls, pack_dir: str | Path) -> "Pack":
@@ -98,7 +104,14 @@ class Pack:
             spec_ref_file_prefix=cfg.get("spec_ref_file_prefix"),
             expected_task_ids=(list(cfg["expected_task_ids"]) if cfg.get("expected_task_ids") else None),
             na_categories=(dict(cfg["na_categories"]) if cfg.get("na_categories") else None),
+            endpoint_base_prefix=cfg.get("endpoint_base_prefix") or None,
         )
+
+    @property
+    def base_prefix_segments(self) -> list[str]:
+        """The declared endpoint-base tolerance as comparable segments (ADR-0017); [] if unset."""
+        from .scorer import normalize_path
+        return normalize_path(self.endpoint_base_prefix) if self.endpoint_base_prefix else []
 
     # --- task ground truth -------------------------------------------------- #
     def load_tasks(self, only: set[str] | None = None) -> list[dict]:
