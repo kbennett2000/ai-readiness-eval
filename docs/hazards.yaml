@@ -356,53 +356,105 @@ entries:
       pre-push hook over commit messages is the cheapest real improvement if this recurs.
 
   - id: the-prospect-token-list-can-omit-a-prospect
-    adr: adr-0006-factory-dispatcher.md
+    adr: adr-0018-prospect-names-live-outside-this-repo.md
     hazard: >
-      Both leak guards only catch a name the pattern already lists. A target that enters the
-      private queue and is never added to `PROSPECT_TOKENS` is invisible to every test here —
-      the guards report green and the name is unprotected. This has already happened once: the
-      list went stale between cycles 2 and 6, and a recon note naming two later prospects
-      reached a commit before the guard objected. Deriving the guard-the-guard parametrization
-      from the pattern (cycle 13) narrows a different gap — it proves every listed token
-      actually fires — and does nothing about this one.
-    status: ungated
-    ungated_reason: >
-      Not closable from this repository, and saying otherwise would be the flattering answer.
-      The authoritative list of measured targets is the private packs repo's `queue.yaml`; a
-      test here cannot read it, and a public copy of it would BE the leak the guard prevents.
-      No assertion over this tree can distinguish "no prospect is missing" from "we forgot".
-    fix_queued_to: >
-      Not queued, in the "not closable here" sense of ADR-0016 rather than the undecided one.
-      The mitigation is procedural and has held since cycle 9: the token is added at the START
-      of a target's life in the queue, before any note exists to leak. If it is ever to be
-      gated, the gate belongs in the PRIVATE repo — a test there can read both `queue.yaml`
-      and the public checkout, and would fail on a queued id the public pattern does not match.
+      A leak guard only catches a name its list already holds. While that list was hand-written
+      here, a target could enter the private queue and simply never be added — the guards report
+      green and the name is unprotected. It happened: the list went stale between cycles 2 and 6
+      and a recon note naming two later prospects reached a commit before the guard objected.
+      The list is now DERIVED from the private queue plus the pack directories (ADR-0018), so
+      the same edit that adds a target adds its tokens and forgetting is no longer possible.
+      Deriving also widened coverage from the eight names someone had remembered to type to
+      every target in the queue, including ten that had never been guarded at all.
+    status: gated
+    gated_by:
+      - core/tests/test_core_no_vendor.py::test_prospect_tokens_are_derived_from_the_private_queue
+      - core/tests/test_core_no_vendor.py::test_prospect_regex_actually_matches_every_token_it_claims
 
-  - id: the-leak-guard-publishes-the-list-it-protects
-    adr: adr-0006-factory-dispatcher.md
+  - id: the-leak-guard-is-silent-where-the-private-repo-is-absent
+    adr: adr-0018-prospect-names-live-outside-this-repo.md
     hazard: >
-      `test_public_repo_names_no_prospect` skips its own file, because the pattern has to spell
-      the tokens to match them. The consequence is that the one tracked file in this PUBLIC
-      repository exempted from the rule is a plaintext list of every measured prospect — the
-      whole set, in one place, easier to read than any leak the guard prevents. The rule in
-      CLAUDE.md is "no tracked file in the public repo may name a measured prospect"; its own
-      enforcement mechanism is the standing exception. Adding a target to the guard, which is
-      the cycle-9 discipline, therefore also publishes that target.
+      The residue of ADR-0018, and the price it paid. Because the name list now lives outside
+      this repository, the guard SKIPS wherever `AIRE_PACKS_DIR` is unset — an outside clone, a
+      fresh CI runner, a container that lost its environment. The suite then reports green with
+      its privacy guard never having run, and green is exactly what a reader takes as proof the
+      rule held. The old design could not fail this way; it could only disclose. This is the
+      trade that was made knowingly, not an oversight.
     status: ungated
     ungated_reason: >
-      Not a gap in the test — the exemption is load-bearing and self-referential. A pattern
-      cannot match a literal it does not contain, so no arrangement of a plaintext matcher
-      closes this. Closing it means changing HOW matching works (salted hashes of tokenized
-      words, or a matcher supplied from outside the tree), which is a design decision with real
-      costs: multi-word and substring tokens do not tokenize cleanly, failure messages can name
-      the file and line but no longer the offending name, and a matcher held outside the tree
-      makes the guard skip rather than fail wherever it is absent — a guard that silently does
-      nothing is worse than one that discloses.
+      Failing instead of skipping would break every outside clone of a public repository for a
+      reason unrelated to its own tree, which is a worse outcome than a visible skip. The
+      halfway measures are already taken and do not close it: a misconfigured source FAILS
+      rather than skips, a source yielding zero names FAILS rather than passing green, and the
+      skip message names the variable and the reason. What remains uncovered is nobody being
+      forced to read it.
     fix_queued_to: >
-      Issue kbennett2000/ai-readiness-eval#23, which proposes the hashed-token design and states
-      those costs. Recorded here first because the disclosure long predates the issue: it has
-      been true since the guard was written in cycle 2, was acknowledged only in a parenthetical
-      inside a docstring, and grew by five names in cycle 13 before anyone wrote it down.
+      Not queued, in ADR-0016's "considered and declined" sense rather than the undecided one.
+      The real fix is environmental, not code: set `AIRE_PACKS_DIR` wherever this suite is run
+      by anyone who owns the private repo. If this project ever gains CI, requiring the variable
+      there — and failing without it — is the cheapest real improvement, because a CI runner has
+      no legitimate reason to be missing it.
+
+  - id: prospect-names-remain-in-this-repository-git-history
+    adr: adr-0018-prospect-names-live-outside-this-repo.md
+    hazard: >
+      ADR-0018 removes every prospect name from tracked files at HEAD. It does not and cannot
+      remove them from history. The names sat in the leak guard from cycle 2 and a further five
+      were merged in cycle 13, so `git log -p`, GitHub's commit and pull-request diff views, and
+      every existing clone, fork or mirror still carry the full list. The fix is real but it is
+      forward-looking only: it stops the next name landing, it does not retract the last one.
+    status: ungated
+    ungated_reason: >
+      No test over a working tree can assert anything about history, and the only remedy is a
+      history rewrite — explicitly a blocker-class action under CLAUDE.md, destructive, and
+      incomplete even if performed: it would not clear merged pull-request diffs, issue bodies,
+      GitHub's search index, or any fork. Doing it would trade a certain, large cost for a
+      partial reduction in an exposure that is already public.
+    fix_queued_to: >
+      Issue kbennett2000/ai-readiness-eval#24, which records the recommendation NOT to rewrite
+      and states what a complete remedy would actually cost (deleting and recreating the
+      repository, losing every issue and pull request). That is an operator decision about
+      accepted risk, not a cycle's to take.
+
+  - id: the-leak-scan-excludes-imported-evidence-archives
+    adr: adr-0018-prospect-names-live-outside-this-repo.md
+    hazard: >
+      The leak scan skips `packs/*/fixtures/imported/` (except the hand-written PROVENANCE.md).
+      An exempt region is exactly how the previous guard failed — it excused one file, and that
+      file became the roster — so the shape is worth naming even though the reasoning differs.
+      A prospect's name sitting inside a frozen transcript would not be reported. The exclusion
+      was forced rather than chosen: widening the token list to the whole queue immediately
+      failed on a measured model naming a third-party product inside an example JSON payload,
+      and those archives are the evidence a published number rests on, so redacting one to
+      satisfy a guard is the repair this project must never make.
+    status: gated
+    gated_by:
+      - core/tests/test_core_no_vendor.py::test_the_archive_exclusion_covers_archives_and_nothing_else
+      - core/tests/test_core_no_vendor.py::test_the_guard_does_not_exempt_its_own_file
+
+  # ------------------------------------------------------------------------ ADR-0019 -----
+
+  - id: a-known-status-is-not-an-appropriate-one
+    adr: adr-0019-parked-is-a-status-not-a-synonym.md
+    hazard: >
+      `load_queue` now rejects a status outside the declared vocabulary, which closes the trap
+      that an unrecognized value read as "dispatch this next" — the trap `parked` walked into
+      while it was only prose in a comment. What the check cannot do is judge whether a known
+      status is the RIGHT one. Nothing stops an author marking an unmeasured target `carded`,
+      or recording a deliberate deferral as `blocked` — which would file our own judgement under
+      the target's shortcomings, the distinction ADR-0019 exists to keep. A parked target's
+      reason is free text, so the quality of that record rests entirely on its author.
+    status: ungated
+    ungated_reason: >
+      A vocabulary check is syntactic by construction. Whether a target deserves the status it
+      carries is a claim about the world, and the gates — not the status field — are what make
+      `carded` mean something; a test that tried to infer intent from a queue file would be
+      guessing. The one mechanical half IS covered: every status the code can produce is proven
+      loadable, so the vocabulary and the pipeline cannot drift apart.
+    fix_queued_to: >
+      Not queued, in ADR-0016's "not closable" sense. The nearest real improvement is a check
+      that a `carded` entry has a card on disk, which belongs in the private packs repo where
+      the cards are — the public engine cannot see them.
 
   # ------------------------------------------------------------------------ ADR-0008 -----
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,8 +32,17 @@ from .scorer import DIMENSIONS
 
 # Pipeline stages, in order. A target advances through these; its `status` records how far it got.
 STAGES = ["recon", "validate", "roundtrip", "anchoring", "mock", "canary", "grid", "compare", "card"]
-# A target is "done" (skipped by next_target) when it is either finished or parked.
-DONE_STATUSES = {"carded", "blocked"}
+# A target is "done" (skipped by next_target) when it is finished or parked, in one of three senses:
+#   carded  — measured, a card exists. The pipeline put it here.
+#   blocked — a gate refused it, or it cannot be measured at all. The pipeline or an author put it here.
+#   parked  — it COULD be measured; we decided not to, for now. Only an author puts it here.
+# `blocked` and `parked` are both terminal and are not interchangeable: blocked is a property of the
+# target, parked is a decision about it. See ADR-0019.
+DONE_STATUSES = {"carded", "blocked", "parked"}
+# The whole status vocabulary. `load_queue` rejects anything outside it, because until it did, a
+# plausible-looking value that the code did not know silently meant "dispatch this next" — the exact
+# trap `parked` walked into before it was a real status (ADR-0019).
+STATUSES = {"queued", *STAGES, *DONE_STATUSES}
 _METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
@@ -50,14 +60,24 @@ class QueueEntry:
     status: str = "queued"
     spec_state: str = "unknown"          # verified | partial | unknown
     notes: str = ""
-    blocked_reason: str = ""
+    blocked_reason: str = ""     # why it is not being worked — read for `blocked` AND `parked`
     spend_usd: float = 0.0
     wall_seconds: float = 0.0
     last_run: str = ""
+    # Strings that identify this target to the public repo's leak guard. The guard holds no names of
+    # its own (ADR-0018); it derives them from here, so a name lives in exactly one place — the
+    # private queue that already had to name the target anyway.
+    #   guard_tokens       REPLACES the default (the id, and the id with separators collapsed).
+    #                      Replacement, not extension, because some ids must NOT be matched: a bare
+    #                      id that is also an ordinary word would fire on unrelated prose.
+    #   guard_tokens_cased is matched as written, for names that are ordinary words capitalized.
+    guard_tokens: list | None = None
+    guard_tokens_cased: list = field(default_factory=list)
     extra: dict = field(default_factory=dict)
 
     _KNOWN = ("id", "display_name", "tier", "status", "spec_state", "notes",
-              "blocked_reason", "spend_usd", "wall_seconds", "last_run")
+              "blocked_reason", "spend_usd", "wall_seconds", "last_run",
+              "guard_tokens", "guard_tokens_cased")
 
     @classmethod
     def from_dict(cls, d: dict) -> "QueueEntry":
@@ -80,15 +100,49 @@ class QueueEntry:
             out["wall_seconds"] = round(self.wall_seconds, 1)
         if self.last_run:
             out["last_run"] = self.last_run
+        if self.guard_tokens is not None:
+            out["guard_tokens"] = list(self.guard_tokens)
+        if self.guard_tokens_cased:
+            out["guard_tokens_cased"] = list(self.guard_tokens_cased)
         out.update(self.extra)
         return out
 
+    def leak_guard_tokens(self) -> tuple[list[str], list[str]]:
+        """(case-insensitive, case-sensitive) strings that identify this target.
+
+        Lives on the entry rather than in the guard so the public repo can compute the list without
+        containing it. `guard_tokens: []` is meaningful and is NOT the same as omitting the field: it
+        says "my id must never be matched case-insensitively", which is the only way to declare an id
+        that is also an ordinary English word.
+        """
+        if self.guard_tokens is None:
+            collapsed = re.sub(r"[-_\s]+", "", self.id)
+            default = [self.id] + ([collapsed] if collapsed != self.id else [])
+        else:
+            default = list(self.guard_tokens)
+        return ([str(t) for t in default if str(t).strip()],
+                [str(t) for t in self.guard_tokens_cased if str(t).strip()])
+
 
 def load_queue(path: str | Path) -> list[QueueEntry]:
-    """Load the ranked queue. Accepts either a top-level `targets:` list or a bare list."""
+    """Load the ranked queue. Accepts either a top-level `targets:` list or a bare list.
+
+    A status outside `STATUSES` is an error, not a passenger. Until this check existed the vocabulary
+    was documented only in a comment at the top of the queue file, so an unrecognized value — a typo,
+    or a word an author reasonably expected the code to know — was accepted silently and then read as
+    "not done", i.e. *dispatch this next*. Failing to parse is the cheap end of that mistake.
+    """
     data = yaml.safe_load(Path(path).read_text()) or []
     rows = data.get("targets", []) if isinstance(data, dict) else data
-    return [QueueEntry.from_dict(r) for r in rows]
+    entries = [QueueEntry.from_dict(r) for r in rows]
+    bad = [(e.id, e.status) for e in entries if e.status not in STATUSES]
+    if bad:
+        raise ValueError(
+            f"{Path(path)}: unknown status "
+            + ", ".join(f"{status!r} on {tid!r}" for tid, status in bad)
+            + f". Known statuses: {', '.join(sorted(STATUSES))}."
+        )
+    return entries
 
 
 def save_queue(path: str | Path, entries: list[QueueEntry], *, header: str | None = None) -> None:
@@ -393,11 +447,16 @@ def render_status(entries: list[QueueEntry]) -> str:
         tier = str(e.tier) if e.tier is not None else "-"
         label = e.display_name or e.id
         lines.append(f"{i:>2}  {tier:>4}  {e.status:<9}  {e.spec_state:<8}  {spend:>7}  {wall:>6}  {label}")
-        if e.status == "blocked" and e.blocked_reason:
-            lines.append(f"                                              ↳ blocked: {e.blocked_reason}")
+        # A parked target's reason is as load-bearing as a blocked one — it is the whole record of a
+        # decision not to measure something. Keyed off the status so a third terminal state cannot be
+        # added later and silently print nothing.
+        if e.status in ("blocked", "parked") and e.blocked_reason:
+            lines.append(f"                                              ↳ {e.status}: {e.blocked_reason}")
     done = sum(1 for e in entries if e.status == "carded")
     blocked = sum(1 for e in entries if e.status == "blocked")
-    lines += ["", f"{done} carded · {blocked} blocked · {len(entries) - done - blocked} open"]
+    parked = sum(1 for e in entries if e.status == "parked")
+    lines += ["", f"{done} carded · {blocked} blocked · {parked} parked · "
+                  f"{len(entries) - done - blocked - parked} open"]
     return "\n".join(lines)
 
 
