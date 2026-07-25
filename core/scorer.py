@@ -77,6 +77,16 @@ def normalize_version(version: str | None) -> str:
     v = (version or "").strip().lstrip("/").lower()
     if len(v) >= 2 and v[0] in "<([" and v[-1] in ">)]":
         v = v[1:-1].strip()
+    # A service-qualified version is the same version (ADR-0020). The prompt contract offers
+    # `<service>/v1` as a legal answer in its own right, so an API documented as versioned per
+    # service — `record/v1`, `query/v1` — gets answered in that form by a model that has read the
+    # documentation, and would otherwise compare unequal to a ground truth written `v1`. Applied
+    # symmetrically, so it can only ever collapse a difference the contract already said was not
+    # one. It cannot credit the wrong service: `api_version` is scored only on an endpoint whose
+    # PATH already matched, and the path is where the service segment lives.
+    head, sep, tail = v.rpartition("/")
+    if sep and head and _VERSION_SEG_RE.match(tail) and "/" not in head:
+        v = tail
     return "" if v in _NO_VERSION else v
 
 
@@ -236,9 +246,13 @@ def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
             ans = ans_eps[match_idx]
             rec["answer_method"] = normalize_method(ans.method)
             rec["answer_path"] = "/" + "/".join(normalize_path(ans.path))
-            rec["answer_api_version"] = normalize_version(ans.api_version)
+            # The EXHIBIT keeps what the model actually wrote; only the COMPARISON is normalized.
+            # Recording the normalized form here would erase the evidence needed to tell a wrong
+            # version from a differently-spelled right one — which is the investigation that found
+            # ADR-0020 in the first place.
+            rec["answer_api_version"] = ans.api_version
             rec["method_ok"] = rec["answer_method"] == gt_method
-            rec["version_ok"] = rec["answer_api_version"] == gt_version
+            rec["version_ok"] = normalize_version(ans.api_version) == gt_version
         records.append(rec)
     return records
 
