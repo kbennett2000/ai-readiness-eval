@@ -5,6 +5,11 @@ text, writes it under the pack's gitignored docs cache, and records fetch_date +
 content_hash (sha256 of the cached text) + byte_size back into the manifest. Re-running
 and comparing hashes reveals drift. The page text itself is never committed. Paths are
 supplied by the caller (a `Pack`); this module holds no vendor path.
+
+Two ways a page can arrive and still not be a document, each with its own rule: a body that
+is empty as bytes (`EmptyDocument`, ADR-0009, retried because a throttle can clear) and a
+body that is whole but extracts to nothing (`EmptyRender`, ADR-0021, never retried because
+a client-rendered page will render client-side again in sixty seconds).
 """
 from __future__ import annotations
 
@@ -27,6 +32,11 @@ USER_AGENT = "ai-readiness-eval-docs"
 # Attempts per page when a docs host answers 2xx with an empty body (ADR-0009). The first
 # attempt is not a retry, so this is 1 fetch + (DEFAULT_RETRIES - 1) backoff retries.
 DEFAULT_RETRIES = 4
+# Floor, in bytes of EXTRACTED text, under which a page is not a document (ADR-0021). Chosen
+# as the point below which a page cannot state an endpoint, a method and a parameter — the
+# minimum this project asks a reference page for. A page that genuinely sits under it is kept
+# by declaring `short_text_ok: <reason>` on the manifest entry.
+MIN_TEXT_BYTES = 200
 # Floor for the pause between retries when a pack declares no delay of its own. Measured against
 # a real throttling host: its penalty window outlasts ~90s of cumulative backoff, and every
 # retry made while throttled appears to restart it. Fewer, longer waits clear it; rapid retries
@@ -41,6 +51,24 @@ class EmptyDocument(RuntimeError):
     (one measured vendor's support portal answers HTTP 202 with 0 bytes). Left alone that is
     indistinguishable from a real page: the text extracts to nothing, hashes cleanly, and is
     recorded as a valid snapshot. Raising here forces it down the same path as a 404.
+    """
+
+
+class EmptyRender(RuntimeError):
+    """A page whose body arrived intact but whose extracted text is not a document (ADR-0021).
+
+    `EmptyDocument` tests `raw.strip()` — the body as bytes, before extraction. That catches a
+    host which sends nothing and misses a host which sends everything except the documentation:
+    a client-rendered reference page delivers tens of kilobytes of script, passes the raw-body
+    test, and then extracts to a navigation crumb. Non-empty as bytes, empty as documentation.
+
+    ADR-0005 already said the resulting byte_size makes such pages "visible rather than hidden",
+    and it was right — a measured vendor's reference pages recorded byte_size 1 and stayed
+    committed, because being visible is not the same as being checked. This is the check.
+
+    Deliberately raised AFTER `_fetch_with_retry` returns, so it can never be retried:
+    ADR-0009's backoff answers a throttle, and a page that renders client-side will render
+    client-side again in sixty seconds.
     """
 
 
@@ -90,6 +118,25 @@ def _fetch_with_retry(url: str, *, user_agent: str | None, delay_seconds: float,
     raise last  # type: ignore[misc]
 
 
+def _short_text_reason(page: dict) -> str | None:
+    """This page's declared reason for sitting under the text floor, or None (ADR-0021).
+
+    Present-but-empty is rejected rather than read as absent. `short_text_ok: true` is an
+    override with no argument behind it, and the argument is the entire point of the field:
+    a tolerance this project grants is one a pack asked for in writing, the same shape as
+    `public_docs.user_agent` (ADR-0007) and `endpoint_base_prefix` (ADR-0017).
+    """
+    if "short_text_ok" not in page:
+        return None
+    reason = page["short_text_ok"]
+    if not isinstance(reason, str) or not reason.strip():
+        raise EmptyRender(
+            f"short_text_ok must give a non-empty reason, not {reason!r} — "
+            "a page kept under the text floor has to say why on the record"
+        )
+    return reason.strip()
+
+
 def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None,
               user_agent: str | None = None, delay_seconds: float = 0.0,
               retries: int = DEFAULT_RETRIES, sleep=time.sleep) -> dict:
@@ -123,6 +170,16 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 html = _fetch_with_retry(url, user_agent=user_agent,
                                          delay_seconds=delay_seconds, retries=retries, sleep=sleep)
                 text = html_to_text(html)
+                # ADR-0021: the floor is on extracted text, and it is checked here rather than
+                # inside the retry helper precisely so a client-rendered page is recorded on the
+                # first attempt instead of waiting out a throttle schedule it will never clear.
+                n_text = len(text.encode("utf-8"))
+                if n_text < MIN_TEXT_BYTES and _short_text_reason(page) is None:
+                    raise EmptyRender(
+                        f"extracted text is {n_text} B, under the {MIN_TEXT_BYTES} B floor — "
+                        "the body arrived but carries no documentation (rendered client-side?). "
+                        "Declare short_text_ok: <reason> on this page to keep it."
+                    )
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(text)
                 digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

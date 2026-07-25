@@ -269,12 +269,10 @@ entries:
       The empty-body check tests the raw body, not the extracted text. An HTML shell that
       renders its content with JavaScript hashes cleanly and is recorded as a real snapshot of
       a page that contains almost nothing.
-    status: ungated
-    ungated_reason: >
-      Deliberate. A legitimately short page is still a page, and any minimum-length floor
-      would be a guess that silently reclassifies real pages.
-    fix_queued_to: >
-      Not queued. Recorded in ADR-0009 as the boundary chosen rather than overlooked.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_fetch.py::test_a_page_that_renders_to_a_nav_crumb_is_an_error_not_a_snapshot
+      - core/tests/test_docs_fetch.py::test_the_floor_is_a_floor_and_not_a_haircut
 
   - id: a-2xx-with-an-empty-body-recorded-as-a-clean-fetch
     adr: adr-0009-throttled-docs-fetch.md
@@ -1019,3 +1017,50 @@ entries:
       behind the same trigger, after ADR-0008's unversioned-API wording and ADR-0014's flow-sequence
       example. Three deferrals behind one trigger is itself worth reading as a signal about when that
       re-run should be scheduled. Tracked in ai-readiness-eval.
+
+  - id: an-undocumented-short-text-waiver
+    adr: adr-0021-extracted-text-floor.md
+    hazard: >
+      The text floor can be waived per page. A waiver written as a bare `short_text_ok: true`,
+      or as an empty string, would keep a page carrying no documentation while leaving nothing
+      in the committed record about who decided that or why — turning a documented exception
+      into a silent one, which is the decay mode ADR-0015 exists to catch.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_fetch.py::test_an_override_with_no_argument_behind_it_is_rejected
+      - core/tests/test_docs_fetch.py::test_a_declared_reason_keeps_a_short_page_and_records_why
+
+  - id: the-text-floor-is-a-calibrated-number-not-a-measurement
+    adr: adr-0021-extracted-text-floor.md
+    hazard: >
+      200 bytes is a judgement about what a reference page must be able to say, not a value
+      derived from any corpus. A vendor whose real documentation pages sit just under it would
+      be reclassified as unfetchable, and that reads as a finding about the vendor.
+    status: ungated
+    ungated_reason: >
+      The same class as ADR-0009's retry floor, which is also calibrated against what was in
+      front of it. Deriving the number needs a corpus of pages known-good independently of this
+      instrument, which is the thing the instrument is for. What bounds the damage is that the
+      misclassification cannot be silent: the page is recorded as a fetch error with its real
+      byte count in the message, and a pack that disagrees says so in the manifest.
+    fix_queued_to: >
+      Not queued as a derivation. The boundary is pinned in both directions by
+      test_the_floor_is_a_floor_and_not_a_haircut, so the number cannot drift without a
+      deliberate edit, and any pack that meets it argues its own case in `short_text_ok`.
+
+  - id: a-declared-short-text-reason-is-never-rechecked
+    adr: adr-0021-extracted-text-floor.md
+    hazard: >
+      Nothing verifies that a page declaring `short_text_ok` still needs to. If a vendor ships
+      server-rendered documentation, the waiver goes stale and the pack keeps asserting a
+      condition that stopped being true — the same shape as the stale cohort table that produced
+      three false superlatives before anything checked it.
+    status: ungated
+    ungated_reason: >
+      Core cannot see it. The check compares a declared reason against a fetched byte_size in a
+      committed manifest, and the manifests live in the packs repo, not here. A gate in this
+      repo would have nothing to run against.
+    fix_queued_to: >
+      Gated pack-side, where the manifests are: a test asserting every anchored page either
+      clears the floor or declares a reason, AND that no page declares a reason it no longer
+      needs. Built with the pack that forced this ADR.
