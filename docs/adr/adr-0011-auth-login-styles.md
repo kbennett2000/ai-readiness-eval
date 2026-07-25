@@ -124,6 +124,23 @@ requires re-running the whole cohort. A scorer-only rule is re-appliable to arch
 vendors stay on the same footing. **The contract's single-example bias is recorded as open work**, to be
 taken with the next deliberate cohort re-run — exactly as ADR-0008 recorded the `api_version` gap.
 
+Left there, "recorded as open work" is a note that decays. Two things make it hold instead:
+
+- **The example string is pinned by test.**
+  [`core/tests/test_prompt_contract.py`](../../core/tests/test_prompt_contract.py) pins both places the
+  contract shows the field, and asserts that `scorer._auth_concepts` finds **exactly one** login style
+  in the whole suffix — so an edit that swaps the example *or* adds a second one fails the suite. The
+  pin is not a claim the example is right; it is a claim that changing it is a **re-baseline**, and a
+  re-baseline is a cycle of its own. Unlike a scorer rule, this change cannot be re-applied to archives
+  by `rebuild-report` — the bias is baked into what the model was asked. So the pin's standing
+  instruction is: **change it only in a deliberate cohort re-baseline, bundled with any model change**,
+  since a model change already forces the whole cohort to re-run together.
+- **The bias is disclosed where the number is read.** Every place a login score appears on an affected
+  card carries one line naming the example and its direction. It is the *same* contract for every
+  vendor, so cross-vendor comparison — which is what this method measures — is unaffected; the
+  absolute figure for a non-OAuth product may be understated. A caveat that lives only in an ADR is a
+  caveat the reader of the number never sees.
+
 ## What this still cannot do
 
 - **It cannot read a negation.** "Not an OAuth2 flow" still contributes `client-credentials` to the
