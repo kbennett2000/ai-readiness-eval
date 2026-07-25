@@ -83,6 +83,54 @@ def test_canonical_auth_flow():
     assert scorer.canonical_auth_flow("magic") == "unknown"
 
 
+# --- the three login styles ADR-0011 added ---------------------------------- #
+
+def test_canonical_auth_flow_names_the_styles_added_by_adr_0011():
+    cf = scorer.canonical_auth_flow
+    assert cf("Session token from the logon call, sent in the Authorization header") == "session-token"
+    assert cf("The response carries a sessionId identifying the session") == "session-token"
+    assert cf("Session established beforehand by posting an authentication string") == "session-token"
+    assert cf("the step before establishing a session") == "session-token"
+    assert cf("HTTP Basic auth with username and password") == "basic-auth"
+    assert cf("Basic-auth login (not a token-grant flow)") == "basic-auth"   # separator-insensitive
+    assert cf("API key in the X-Api-Key header") == "api-key"
+    assert cf("send the apikey header") == "api-key"
+    # still nothing: mutual TLS is a real shape and a deliberately unlisted one
+    assert cf("Mutual TLS: the caller presents a client certificate") == "unknown"
+
+
+def test_precedence_is_table_order_and_is_load_bearing():
+    """Which style a multi-style string REQUIRES is the whole ruling; both cases come from real packs."""
+    cf = scorer.canonical_auth_flow
+    # Shape 1 — a session-token product's prose DENIES OAuth. Substring matching cannot read a
+    # negation, so without session-token outranking the OAuth styles this ground truth would
+    # REQUIRE the answer to say the documented-wrong thing.
+    denies_oauth = ("The response body IS the session token, sent verbatim in the Authorization "
+                    "header. Not an OAuth2 flow: there is no client_credentials grant, no token "
+                    "endpoint, and no scopes.")
+    assert cf(denies_oauth) == "session-token"
+    assert scorer.auth_flow_matches(denies_oauth, "session token from the logon call")
+    assert not scorer.auth_flow_matches(denies_oauth, "OAuth2 bearer token (client credentials)")
+    # Shape 2 — a Basic login that mints a bearer token used on every later call requires BEARER:
+    # the dimension measures the per-request credential. Ranking basic-auth higher would move it.
+    basic_login_bearer_calls = ("HTTP Basic-auth login with Authorization: Basic ...; the response "
+                                "carries access_token and token_type=Bearer, sent as "
+                                "Authorization: Bearer on every subsequent call.")
+    assert cf(basic_login_bearer_calls) == "bearer-token"
+    assert scorer.auth_flow_matches(basic_login_bearer_calls, "OAuth2 bearer token")
+    # Shape 3 — an OAuth grant that mentions HTTP Basic client authentication still requires the grant.
+    grant_via_basic = ("OAuth2 client-credentials grant; credentials sent via HTTP Basic per "
+                       "client_secret_basic. The response returns a Bearer JWT.")
+    assert cf(grant_via_basic) == "oauth2-client-credentials"
+
+
+def test_an_unnameable_style_still_degrades_quietly_rather_than_raising():
+    """The fallback survives so the scorer never raises — but `roundtrip` blocks the pack (ADR-0011)."""
+    mtls = "Mutual TLS: the caller presents a client certificate"
+    assert scorer.auth_flow_matches(mtls, "some scheme nobody named")   # the hole, kept explicit
+    assert not scorer.auth_flow_matches(mtls, "OAuth2 bearer token")
+
+
 def test_auth_flow_matches_concept_containment():
     gt_grant = "OAuth2 client-credentials grant; returns a JWT bearer token"
     gt_call = "OAuth2 bearer token (see auth-token)."

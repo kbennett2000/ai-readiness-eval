@@ -74,9 +74,14 @@ The method's credibility is a feature, so the repo practices the assessment's ow
   ([ADR-0010](docs/adr/adr-0010-ground-truth-round-trip-control.md)). It is deliberately modest about
   what it shows: an answer key always matches itself, so the control proves a task is *scoreable* and
   rules the scorer out as a suspect — it cannot tell you the answer key is *right*.
+- **No dimension scores unless it can be positively tested.** The same gate blocks a pack whose auth
+  style the scorer cannot name, because a dimension that credits any unrecognizable answer reads as
+  applicable while measuring nothing ([ADR-0011](docs/adr/adr-0011-auth-login-styles.md)). The fix is
+  always a new rule in the scorer, never a rewrite of the vendor's documented prose.
 - **The suspect-instrument rule.** A dimension reading 0.00 across every task and every condition is
   treated as our own harness until proven otherwise. The control above is how that gets settled
-  mechanically instead of by argument.
+  mechanically instead of by argument. Its harder-to-spot twin: a dimension reading *high* everywhere
+  may simply be giving marks away — ADR-0011 is what that looked like when it happened.
 - **No unlinked claims** — every factual claim in a tracked doc links to its backing artifact.
 - **No vendor-dunk language** — findings are stated clinically as measurements with evidence, never as
   a jab at a vendor.

@@ -118,3 +118,11 @@ verify with `git ls-files | grep -i private` (must return nothing).
   what the control cannot do: an answer key always matches itself, so it catches an *unscoreable* key,
   never a *wrong* one. The gates are now declared as data (`factory.GATES`) so `STAGES` and the
   dispatcher cannot drift.
+- **Cycle 8.** Closed the auth-scoring hole that gate reported (ADR-0011). `auth_flow` recognized only
+  bearer and client-credentials, so ground truth naming neither scored 1.0 against any answer that also
+  named neither — and on a task whose prose *denies* OAuth, the substring matcher credited the
+  documented-wrong answer. `scorer._AUTH_STYLES` now names five login styles in an argued precedence
+  order, and an unlisted style **blocks** `roundtrip` instead of drawing a note: no dimension scores
+  unless it can be positively tested. Scorer-only, so the two affected packs re-scored from archived
+  transcripts at zero model spend; the frozen 73/68/93 gate and every OAuth-shaped pack are byte-identical.
+  The prompt contract's single `auth_flow` example is recorded as open work for the next cohort re-run.
