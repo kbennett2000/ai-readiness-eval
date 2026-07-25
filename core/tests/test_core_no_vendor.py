@@ -4,6 +4,8 @@
    must arrive through a loaded Pack. The test suite MAY name SailPoint, which is the public reference
    pack (not a prospect) and is exercised for cross-pack coverage.
 2. No tracked file in the public repo may name a measured prospect (they live in a private repo).
+3. Nor may any git ref. Branch names are published as surely as file contents, and `git ls-files`
+   cannot see them — a gap found only after a `cycle-NN-<vendor>` branch had already been pushed.
 """
 import re
 import subprocess
@@ -31,7 +33,7 @@ VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn
 # and this one still hosts that vendor's published spec — so a stray spec URL in a public file would
 # name the prospect without ever spelling its current name.
 PROSPECT_TOKENS = re.compile(
-    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic", re.IGNORECASE
+    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic|beyondtrust", re.IGNORECASE
 )
 
 # One prospect's name is also an ordinary phrase in this domain: the reference pack legitimately says
@@ -80,6 +82,35 @@ def test_public_repo_names_no_prospect():
     assert not offenders, (
         "the public repo must name no measured prospect (they live in the private packs repo); found:\n"
         + "\n".join(offenders)
+    )
+
+
+def test_public_repo_ref_names_no_prospect():
+    """Branch names are published too, and `git ls-files` structurally cannot see them.
+
+    Found the ordinary way: a cycle branched as `cycle-NN-<vendor>` and pushed, putting a measured
+    prospect's name on a world-visible ref while `test_public_repo_names_no_prospect` stayed green —
+    it reads tracked file CONTENT, and a ref is neither a file nor tracked. The disclosure is the
+    same one that guard exists to prevent, reached by a route it does not cover.
+
+    Deleting a ref is destructive, so this test does not repair anything. It fails until the operator
+    deletes the branch upstream and prunes, which is the point: an unattended cycle records the
+    problem and cannot forget it, rather than recording it once in a report nobody re-reads.
+    """
+    try:
+        refs = subprocess.check_output(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+            cwd=REPO_ROOT, text=True,
+        ).splitlines()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pytest.skip("not a git checkout")
+    offenders = [r for r in refs if PROSPECT_TOKENS.search(r) or PROSPECT_TOKENS_CASED.search(r)]
+    assert not offenders, (
+        "a git ref names a measured prospect, and refs are world-visible:\n"
+        + "\n".join(offenders)
+        + "\n\nDelete it upstream, then prune the local tracking ref:\n"
+        "  git push origin --delete <branch> && git fetch --prune\n"
+        "A stale remote-tracking ref fails this test after the upstream branch is gone; prune first."
     )
 
 

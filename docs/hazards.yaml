@@ -327,11 +327,33 @@ entries:
   - id: prospect-name-leaks-into-the-public-repo
     adr: adr-0006-factory-dispatcher.md
     hazard: >
-      A measured prospect's name reaching any tracked file in this repository is not
-      walk-backable once pushed.
+      A measured prospect's name reaching this repository is not walk-backable once pushed.
+      The original guard read tracked file CONTENT only, and cycle 12 found the obvious second
+      route already taken: a `cycle-NN-<vendor>` branch had been pushed, publishing the name on
+      a world-visible ref while the guard stayed green — a ref is neither a file nor tracked.
+      Both routes are now scanned. A third remains open and ungated below.
     status: gated
     gated_by:
       - core/tests/test_core_no_vendor.py::test_public_repo_names_no_prospect
+      - core/tests/test_core_no_vendor.py::test_public_repo_ref_names_no_prospect
+
+  - id: prospect-name-leaks-where-no-test-can-read
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      A PR title, a PR body, an issue title, an issue body and a commit message are all
+      world-visible and none of them is a file in the tree, so no test in this repository can
+      read any of them. The privacy rule they are subject to is identical to the one two tests
+      now enforce over files and refs; the enforcement is not.
+    status: ungated
+    ungated_reason: >
+      Checking them means calling the GitHub API from the suite, which would make an offline or
+      unauthenticated run fail for a reason unrelated to the tree. A commit-message check could
+      run locally, but it would cover the one surface of the five that is cheapest to amend and
+      leave the four that are not — coverage that reads stronger than it is.
+    fix_queued_to: >
+      Not queued. The mitigation is procedural and stated in the cycle report: public PR and
+      issue text describes a measured vendor as "the next queued target" and never names it. A
+      pre-push hook over commit messages is the cheapest real improvement if this recurs.
 
   # ------------------------------------------------------------------------ ADR-0008 -----
 
@@ -723,3 +745,46 @@ entries:
     fix_queued_to: >
       Follow-up work, no cycle assigned. Recorded alongside the stale-dimensions trap for the
       same reason.
+
+  # ------------------------------------------------------------------------ ADR-0016 -----
+
+  - id: triage-can-defer-a-real-instrument-fault-as-hygiene
+    adr: adr-0016-deferred-work-has-a-destination.md
+    hazard: >
+      The standing rule sorts every observation into "affects a published number or a
+      vendor-facing claim" (fix now) and "everything else" (file it), and the sort is made by an
+      unattended run with no second opinion. A fault whose consequence is not yet visible in a
+      number reads as hygiene. The two most expensive faults this project has found would BOTH
+      have sorted as "file it" on the evidence available at the time: ADR-0013's endpoint
+      dimension looked like a notation preference until a grid reported 13.7% for a model that
+      was right in 98% of runs, and ADR-0014's format failure was written down as a prediction
+      on a report card and left because it had not yet bitten.
+    status: ungated
+    ungated_reason: >
+      No test can read an observation and decide whether it moves a number, because the
+      observation is not a program input — it is whatever the run happened to notice. A gate
+      here would either grade prose or fire on everything.
+    fix_queued_to: >
+      Not closable as a gate, and not queued as one. The mitigation is that a misfiled item is
+      now filed rather than forgotten, so a triage error is recoverable at review time instead
+      of decaying; the discovery method remains the suspect-instrument rule and reading
+      transcripts.
+
+  - id: a-queued-fix-is-a-link-nothing-resolves
+    adr: adr-0016-deferred-work-has-a-destination.md
+    hazard: >
+      `fix_queued_to` is prose, and unlike `gated_by` it is never resolved against anything. An
+      entry may cite an issue that was closed without the fix, renamed to something else, or
+      never existed, and the registry will go on reporting the hazard as queued. This is the
+      failure ADR-0015 built an `ast` resolver to prevent on the gated side, reappearing on the
+      ungated side where nothing is watching.
+    status: ungated
+    ungated_reason: >
+      Resolving an issue reference means a network call from the test suite, which would make an
+      offline or rate-limited run fail for a reason unrelated to the tree. A shape check on
+      `#\d+` would prove the text looks like a reference, not that the reference is live —
+      coverage that reads stronger than it is, which this file exists to refuse.
+    fix_queued_to: >
+      Not queued. Revisit once entries actually cite issue numbers; a check that runs only when
+      a reference token is present, and only where the network is available, is the shape it
+      would take.

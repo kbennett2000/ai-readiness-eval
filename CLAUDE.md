@@ -17,25 +17,31 @@
 **Do the work. Don't ask permission.** When files change, you ALWAYS — without asking, every time:
 1. Work on a branch, never `master`/`main`.
 2. Commit and push.
-3. Open a PR for human review/merge.
+3. Open a PR **against `main`** for human review/merge — never against another cycle's branch, even when this work builds on one.
 
-Committing, pushing, and opening a PR are never optional and never require confirmation. A human reviews and merges the PR; you do not close the issue.
+Committing, pushing, and opening a PR are never optional and never require confirmation. A human reviews and merges the PR; you never merge your own, and you never assign or close an issue — including one you filed this cycle.
 
 **Decide, don't stall.** If something is uncertain but you can proceed, make the reasonable choice and note it in the PR description. "Should I also do X?" is not a blocker — do the obvious thing or note it and move on. Non-blocking uncertainty never stops a cycle.
 
+**Fix what is load-bearing; file the rest.** Fix in this cycle only what affects a published number or could put a wrong claim in front of a vendor. Everything else — hygiene, refactors, conventions, cleanups, anything you noticed in passing — is filed as a GitHub issue in the repo that owns it, and the cycle continues. Filing is not deferring the decision; the issue is the decision, recorded where it cannot decay. When you cannot tell which side of the line something sits on, ask whether a reader of a published number, or a vendor reading a card, would be misled by leaving it: if yes, fix it now; if no, file it and move on.
+
 **Stopping early is rare and only for true blockers.** Stop only when you are missing information you genuinely cannot proceed without. Stopping means: record the blocker in the PR description (or, if no PR, the cycle report) and exit. This is recording, not asking — you never wait for a reply. A destructive or unwalkbackable action (force push, history rewrite, deleting branches/data) counts as a blocker: do not do it; record it and stop.
 
-## End of cycle — the PR is the record
+## End of cycle — the PR is the record, the tracker is the backlog
 
-**No issue tracker.** This project uses no GitHub issue tracker — the kickoff prompt and the PR
-description are the record. There is no "update the issue" / "comment on the issue" step; do not look
-for an issue number. Before you exit, run exactly one case:
+**The PR is the record; issues are only the backlog.** No cycle is dispatched from an issue number — the
+kickoff prompt and the PR description remain the record of what this cycle did, and there is no "update
+the issue" / "comment on the issue" step. The GitHub tracker holds one thing: work this cycle
+deliberately did not do. You file it; the operator assigns it. Before you exit, run exactly one case:
 
 - **Completed** (files changed): open a PR against `main` (unmerged) whose description carries the full
-  cycle report — what changed, why, evidence links, and any non-blocking decisions made. A human reviews
-  and merges.
+  cycle report — what changed, why, evidence links, any non-blocking decisions made, and every issue you
+  filed this cycle, by repo and number. A human reviews and merges.
 - **Blocked** (missing info you cannot proceed without): state the blocker plainly in the cycle report
   and exit. Recording, not asking.
+
+Filing an issue is never a third exit. Work you chose to defer is not a blocker, and a cycle that filed
+issues and changed no file is still Blocked or Completed on the evidence above — never on the filing.
 
 ## Conventions
 
@@ -169,3 +175,15 @@ verify with `git ls-files | grep -i private` (must return nothing).
   touched, and the frozen 73/68/93 is unmoved.** The picture is not flattering, which is the point:
   **14 of 47 gated, 26 queued nowhere**, and ADR-0008/0011/0014's three prompt items turn out to be one
   accumulating deferral behind a single trigger. Each rule was verified by breaking it on purpose.
+- **Cycle 12.** Adopted the triage rule that decides what a cycle fixes and what it files (ADR-0016):
+  fix in-cycle only what affects a published number or could put a wrong claim in front of a vendor;
+  everything else is filed as a GitHub issue and the cycle continues. This **reverses** the contract's
+  standing "no issue tracker" rule, which was written when there was no queue to name — and that absence
+  is exactly what ADR-0015 had to encode as `fix_queued_to: "not queued"` on 26 of its 33 ungated
+  entries. With a destination, that phrase stops being unavoidable and starts being a claim, so ADR-0016
+  narrows it to three distinguishable states while **changing no field, schema or validator rule**. It
+  refuses the flattering move on the record: opening 26 issues so every entry can cite one would improve
+  the ratio the registry prints without changing the world, which is the error ADR-0015 exists to catch.
+  The prospect guard also grew a second scan — **ref names, not just tracked files** — after a
+  world-visible branch was found naming a measured prospect that `git ls-files` structurally cannot see.
+  No scorer, parser, prompt or fixture is touched; the frozen 73/68/93 is unmoved.
