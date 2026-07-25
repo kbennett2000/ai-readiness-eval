@@ -89,37 +89,22 @@ def _score_response(task: dict, raw_text: str):
 # --------------------------------------------------------------------------- #
 
 def _mock_block_for_task(task: dict) -> str:
-    import yaml
+    from .answer_block import render_block
+    from .roundtrip import answer_from_ground_truth
 
-    from .scorer import canonical_auth_flow
-
-    gt = task["ground_truth"]
-    scopes = [s.split("#", 1)[0].strip() for s in gt.get("required_scopes", [])]
-    scopes = [s for s in scopes if s]
-    params = [p["name"] for p in gt.get("key_parameters", [])
-              if isinstance(p, dict) and p.get("name")]
-    # Clean, canonical auth phrase so the block is always valid YAML (ground-truth
-    # prose contains ": " sequences that would break a naive echo).
-    auth = ("OAuth2 client-credentials"
-            if canonical_auth_flow(gt.get("auth_flow")) == "oauth2-client-credentials"
-            else "OAuth2 bearer token")
-    block = {
-        "endpoints": [
-            {"method": e["method"], "path": e["path"], "api_version": e["api_version"]}
-            for e in gt["endpoints"]
-        ],
-        "auth_flow": auth,
-        "required_scopes": scopes,
-        "key_parameters": params,
-    }
-    body = yaml.safe_dump(block, sort_keys=False, default_flow_style=False)
-    return (
-        f"Here is how you would approach **{task['id']}**.\n\n"
-        f"```answer-summary\n{body}```\n"
-    )
+    # Shares one serializer with the round-trip control (ADR-0010) so the mock provider cannot drift
+    # from the thing that gates it. `canonical_auth=True` is a mock-only convenience: the control
+    # itself deliberately emits the ground truth's own auth prose verbatim.
+    answer = answer_from_ground_truth(task, canonical_auth=True)
+    answer.required_scopes = [s.split("#", 1)[0].strip() for s in answer.required_scopes]
+    answer.required_scopes = [s for s in answer.required_scopes if s]
+    return render_block(answer, preamble=f"Here is how you would approach **{task['id']}**.\n\n")
 
 
 def _build_mock_responses(tasks: list[dict]) -> dict[str, str]:
+    # NOT a round-trip control: the last task is deliberately broken so format-failure handling is
+    # exercised. The control that requires every task to score its own ground truth is the
+    # `roundtrip` gate (ADR-0010).
     responses: dict[str, str] = {}
     for i, task in enumerate(tasks):
         if i == len(tasks) - 1:
@@ -456,8 +441,14 @@ def build_parser() -> argparse.ArgumentParser:
     val = sub.add_parser("validate", help="validate a pack's task files against the shared schema")
     val.set_defaults(func=cmd_validate)
 
+    rt = sub.add_parser("roundtrip",
+                        help="round-trip control: every task must score its own ground truth 1.0 "
+                             "(proves each task is scoreable; cannot detect a wrong answer key)")
+    rt.set_defaults(func=cmd_roundtrip)
+
     fac = sub.add_parser("factory",
-                         help="dispatcher: work a ranked queue through recon→…→card (next|run|status)")
+                         help="dispatcher: work a ranked queue through recon→validate→roundtrip→"
+                              "anchoring→…→card (next|run|status)")
     fac.add_argument("mode", choices=["next", "run", "status"],
                      help="next: drive the next non-blocked target once; run: loop until all "
                           "carded/blocked; status: print the queue")
@@ -476,6 +467,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
     pack = _load_pack(args)
     results = validate_pack(pack)
     text, total = format_report(results)
+    print(text)
+    return EXIT_OK if total == 0 else EXIT_ERROR
+
+
+def cmd_roundtrip(args: argparse.Namespace) -> int:
+    """The round-trip control as a standalone command, so a pack author can run it before the
+    factory ever sees the pack. Same gate the dispatcher runs at the `roundtrip` stage (ADR-0010)."""
+    from .roundtrip import check_pack, format_report
+    pack = _load_pack(args)
+    text, total = format_report(check_pack(pack))
     print(text)
     return EXIT_OK if total == 0 else EXIT_ERROR
 

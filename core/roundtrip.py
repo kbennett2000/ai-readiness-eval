@@ -1,0 +1,213 @@
+"""The ground-truth round-trip control: can a task score its own answer key? (ADR-0010)
+
+Score every task against an answer equal to its own ground truth and require a perfect score. A
+task that cannot score 1.0 against itself is an unscoreable instrument, and no amount of model
+spend will produce a meaningful number from it.
+
+WHAT THIS PROVES — and, just as importantly, what it does not.
+
+An answer key equal to itself always matches itself, so this control **cannot detect a wrong answer
+key**. It would pass a pack whose every path carried a mistaken prefix, which is exactly the fault
+that produced it. What it does prove is:
+
+  1. Every task is scoreable at all — a model returning exactly the documented answer key would be
+     scored 1.0, not counted a format failure or marked against an unreachable dimension.
+  2. The scorer treats ground truth and answers symmetrically. The control is symmetric by
+     construction today, so it is a tripwire rather than a strong test: it fires the moment anyone
+     adds a normalization rule to `scorer.py` that applies to one side and not the other.
+  3. The answer key survives the answer-block contract's serialize -> parse boundary.
+
+Its real value is procedural. When a dimension reads 0.00 across every task and both conditions,
+the suspect-instrument rule says the harness is the suspect before the vendor is. This control
+settles the scorer half of that question mechanically, before a grid is ever run, instead of
+after the money is spent.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from .answer_block import AnswerSummary, Endpoint, parse, render_block
+from .pack import Pack
+from .scorer import DIMENSIONS, TaskScore, canonical_auth_flow, score_task
+
+
+@dataclass
+class TaskControl:
+    """The result of round-tripping one task's ground truth through the scorer."""
+
+    task_id: str
+    ok: bool = True
+    problems: list[str] = field(default_factory=list)   # blocking: an imperfect or unparseable answer
+    na_dimensions: list[str] = field(default_factory=list)  # reported, never a failure
+    notes: list[str] = field(default_factory=list)      # thin-instrument warnings, non-blocking
+    direct: TaskScore | None = None
+    parsed: TaskScore | None = None                     # None when the text path format-failed
+    block_text: str = ""                                # the rendered block, for audit
+
+
+def answer_from_ground_truth(task: dict, *, canonical_auth: bool = False) -> AnswerSummary:
+    """Build the answer a model would give if it reproduced this task's ground truth exactly.
+
+    This mapping is the one place where the answer shape and the ground-truth shape are reconciled,
+    so each translation is explicit:
+
+    - `key_parameters` is a list of dicts in ground truth and a list of names in an answer.
+    - `required_scopes` is passed through verbatim, inline `# comment` and all; `scorer.bare_scope`
+      strips the comment on both sides, so a comment must not change the score.
+    - `auth_flow` is passed through **verbatim** by default. Canonicalizing it would mean testing a
+      phrase this function invented rather than the answer key the pack actually documents; the
+      `--mock` provider is the only caller that wants the canonical form.
+    """
+    gt = task["ground_truth"]
+    auth = gt.get("auth_flow")
+    if canonical_auth:
+        auth = ("OAuth2 client-credentials"
+                if canonical_auth_flow(auth) == "oauth2-client-credentials"
+                else "OAuth2 bearer token")
+    return AnswerSummary(
+        endpoints=[
+            Endpoint(method=e.get("method"), path=e.get("path"), api_version=e.get("api_version"))
+            for e in gt.get("endpoints", [])
+        ],
+        auth_flow=auth,
+        required_scopes=[str(s) for s in gt.get("required_scopes") or []],
+        key_parameters=[
+            str(p["name"]) for p in gt.get("key_parameters") or []
+            if isinstance(p, dict) and p.get("name")
+        ],
+    )
+
+
+def _collect(control: TaskControl, score: TaskScore, path_label: str) -> None:
+    """Fold one TaskScore into the control: any applicable dimension below 1.0 is a problem."""
+    for name in DIMENSIONS:
+        dim = score.dim(name)
+        if dim is None:
+            control.problems.append(f"{path_label}: dimension '{name}' was not scored at all")
+            continue
+        if dim.score is None:
+            if name not in control.na_dimensions:
+                control.na_dimensions.append(name)
+            continue
+        if dim.score != 1.0:
+            control.problems.append(
+                f"{path_label}: {name} scored {dim.score:.2f} against its own ground truth "
+                f"({dim.detail})"
+            )
+
+
+def check_task(task: dict) -> TaskControl:
+    """Round-trip one task. Takes a plain dict so a caller can hand it deliberately hostile input."""
+    control = TaskControl(task_id=str(task.get("id") or "(unnamed task)"))
+    gt = task.get("ground_truth")
+    if not isinstance(gt, dict):
+        control.ok = False
+        control.problems.append("task has no ground_truth mapping")
+        return control
+
+    answer = answer_from_ground_truth(task)
+
+    # Path 1 — direct: the scorer against an answer object built straight from ground truth.
+    control.direct = score_task(task, answer)
+    _collect(control, control.direct, "direct")
+
+    # Path 2 — text: the same answer serialized to a block and parsed back, which is the path a
+    # real response takes. This is what proves the answer key is expressible in the contract.
+    control.block_text = render_block(answer)
+    result = parse(control.block_text)
+    if result.is_failure:
+        control.problems.append(
+            f"parsed: ground truth rendered as an answer block does not parse — "
+            f"{result.failure.reason}"
+        )
+    else:
+        control.parsed = score_task(task, result.summary)
+        _collect(control, control.parsed, "parsed")
+
+    # Non-blocking notes: shapes that score but measure less than they appear to.
+    if canonical_auth_flow(gt.get("auth_flow")) == "unknown":
+        control.notes.append(
+            "ground truth names no auth concept the scorer recognizes, so auth_flow scores 1.0 for "
+            "any answer that also names none — the dimension reads as applicable but is close to "
+            "free. A vendor whose auth is neither bearer nor client-credentials needs a scorer rule, "
+            "not a pack workaround"
+        )
+    raw_params = gt.get("key_parameters") or []
+    if raw_params and not any(
+        isinstance(p, dict) and p.get("required") is True for p in raw_params
+    ):
+        control.notes.append(
+            "no key_parameter is marked `required: true`, so the key_parameters dimension is n/a "
+            "for this task and measures nothing"
+        )
+    # Defensive: `auth_flow` is always applicable today, so an all-n/a task is unreachable. The
+    # guard stands so that a future n/a rule cannot quietly create tasks that pass by measuring
+    # nothing at all.
+    applicable = [d for d in DIMENSIONS if d not in control.na_dimensions]
+    if not applicable:
+        control.problems.append(
+            "every dimension is n/a — this task would pass the control vacuously and measure nothing"
+        )
+
+    control.ok = not control.problems
+    return control
+
+
+def check_pack(pack: Pack) -> list[TaskControl]:
+    """Round-trip every task in a pack. Never raises: a broken task becomes a reported problem.
+
+    The factory's gate loop has no exception handling around it, so a gate that raises would crash
+    the dispatcher instead of blocking the target with a written reason. Blocking is the contract.
+    """
+    try:
+        tasks = pack.load_tasks()
+    except Exception as exc:  # unreadable/invalid task YAML is a control failure, not a crash
+        return [TaskControl(task_id="(suite)", ok=False, problems=[f"tasks could not be loaded: {exc}"])]
+
+    controls: list[TaskControl] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            controls.append(TaskControl(
+                task_id="(suite)", ok=False, problems=["a task file did not parse to a mapping"],
+            ))
+            continue
+        try:
+            controls.append(check_task(task))
+        except Exception as exc:
+            controls.append(TaskControl(
+                task_id=str(task.get("id") or "(unnamed task)"), ok=False,
+                problems=[f"round-trip raised {type(exc).__name__}: {exc}"],
+            ))
+    return controls
+
+
+def format_report(controls: list[TaskControl]) -> tuple[str, int]:
+    """Render the control report and return (text, number of problems). Mirrors validate.format_report."""
+    lines: list[str] = []
+    total = 0
+    for c in sorted(controls, key=lambda c: c.task_id):
+        total += len(c.problems)
+        flag = "ok  " if c.ok else "FAIL"
+        suffix = f"  (n/a: {', '.join(c.na_dimensions)})" if c.na_dimensions else ""
+        lines.append(f"{flag} {c.task_id}{suffix}")
+        for problem in c.problems:
+            lines.append(f"       - {problem}")
+        for note in c.notes:
+            lines.append(f"       ~ note: {note}")
+    if total:
+        failed = sum(1 for c in controls if not c.ok)
+        lines.append(f"\n✗ {total} problem(s) across {failed} task(s): ground truth does not score itself")
+    else:
+        lines.append(f"\n✓ all {len(controls)} task(s) score their own ground truth 1.0")
+    return "\n".join(lines), total
+
+
+def summarize_failures(controls: list[TaskControl], *, limit: int = 3) -> str:
+    """A one-line reason for the factory's queue entry — short, because it lands in a YAML field."""
+    failed = [c for c in controls if not c.ok]
+    if not failed:
+        return ""
+    shown = "; ".join(f"{c.task_id}: {c.problems[0]}" for c in failed[:limit])
+    if len(failed) > limit:
+        shown += f"; (+{len(failed) - limit} more)"
+    return shown

@@ -3,20 +3,23 @@ and stocks the drawer with DRAFT report cards (ADR-0006).
 
 Vendor-agnostic, like the rest of `core`. It carries no vendor name: the ranked `queue.yaml` (which
 names targets) and the packs it drives both live outside this repo and reach the dispatcher only as a
-queue path + a packs dir. The pipeline is a chain of **hard gates** — recon, validate, anchoring, mock,
-canary — each of which, on failure, marks the target `blocked` with a written reason and stops. The
+queue path + a packs dir. The pipeline is a chain of **hard gates** — recon, validate, roundtrip,
+anchoring, mock, canary — each of which, on failure, marks the target `blocked` with a written reason
+and stops. The
 factory never guesses past a gate, never scores a guess, and never reduces N to fit a window. Producing
 is unattended; shipping is gated: every card it writes carries a DRAFT/UNREVIEWED banner and nothing
 leaves the drawer toward a prospect without human review.
 
 Authoring a pack's tasks + anchored ground truth is deliberately NOT the factory's job (that would be
 fabricating the very ground truth the method scores against). Authoring is an external, human/agent step
-whose output must pass the validate + anchoring gates here before any grid burns. See ADR-0006.
+whose output must pass the validate + roundtrip + anchoring gates here before any grid burns. See
+ADR-0006 and ADR-0010.
 """
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,7 +30,7 @@ from .report import _DIM_LABELS
 from .scorer import DIMENSIONS
 
 # Pipeline stages, in order. A target advances through these; its `status` records how far it got.
-STAGES = ["recon", "validate", "anchoring", "mock", "canary", "grid", "compare", "card"]
+STAGES = ["recon", "validate", "roundtrip", "anchoring", "mock", "canary", "grid", "compare", "card"]
 # A target is "done" (skipped by next_target) when it is either finished or parked.
 DONE_STATUSES = {"carded", "blocked"}
 _METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -157,6 +160,39 @@ def check_recon(pack: Pack) -> tuple[bool, str]:
     return True, f"no machine-readable spec ({avail!r}) — doc-anchored mode; availability leads the card"
 
 
+def check_validate(pack: Pack) -> tuple[bool, str]:
+    """Validate gate: every task file matches the schema, and the suite is coherent.
+
+    Thin adapter over `validate.validate_pack` so the schema check is an ordinary entry in `GATES`
+    rather than a special case spliced into the loop. The import stays deferred so `jsonschema` is
+    only imported when a pack is actually being gated.
+    """
+    from .validate import format_report, validate_pack
+
+    _text, total = format_report(validate_pack(pack))
+    if total:
+        return False, f"{total} schema problem(s); run `validate` for detail"
+    return True, "task files match the schema"
+
+
+def check_roundtrip(pack: Pack) -> tuple[bool, str]:
+    """Round-trip control: every task scores its own ground truth 1.0 (ADR-0010).
+
+    A task whose documented answer key cannot score a perfect mark against itself is an unscoreable
+    instrument — a grid run against it would produce a number about our harness, not about the
+    vendor. This gate settles that before any spend. It does NOT check whether the ground truth is
+    *right*: an answer key always matches itself. See `core/roundtrip.py` for the full limit.
+    """
+    from .roundtrip import check_pack, summarize_failures
+
+    controls = check_pack(pack)
+    failures = summarize_failures(controls)
+    if failures:
+        return False, failures
+    n_na = sum(len(c.na_dimensions) for c in controls)
+    return True, f"{len(controls)} task(s) score their own ground truth 1.0 ({n_na} n/a dimension(s))"
+
+
 def check_anchoring(pack: Pack) -> tuple[bool, str]:
     """Anchoring gate: every spec_ref resolves to a real operation in the vendored spec (operationId,
     with method+path agreeing), and every doc_ref URL appears in the docs-manifest. This is the
@@ -205,6 +241,17 @@ def check_anchoring(pack: Pack) -> tuple[bool, str]:
     if pack.spec_ref_file_prefix and n_spec == 0:
         return False, "pack declares spec anchoring (spec_ref_file_prefix) but no endpoint is spec-anchored"
     return True, f"{n_spec} spec-anchored + {n_doc} doc-anchored endpoint(s) resolve"
+
+
+# The deterministic gates, in the order the dispatcher runs them. Declaring them as data (rather than
+# inlining the order in `run_pipeline`) is what keeps STAGES and the dispatcher from drifting apart —
+# a test asserts these names are the leading prefix of STAGES.
+GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
+    ("recon", check_recon),
+    ("validate", check_validate),
+    ("roundtrip", check_roundtrip),
+    ("anchoring", check_anchoring),
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -335,7 +382,8 @@ def _read_scores(out_dir: Path) -> dict:
 def run_pipeline(entry: QueueEntry, pack: Pack, *, today: str, model: str | None = None, n: int = 5,
                  provider: str = "cli", packs_dir: str | None = None,
                  log=print) -> dict:
-    """Drive one target through recon → validate → anchoring → mock → canary → grid → compare → card.
+    """Drive a target through recon → validate → roundtrip → anchoring → mock → canary → grid →
+    compare → card.
 
     Each stage is a hard gate: on failure the target is marked `blocked` with a written reason and the
     function returns. On success `status` advances to `carded`. `provider="mock"` runs the whole spine
@@ -357,20 +405,12 @@ def run_pipeline(entry: QueueEntry, pack: Pack, *, today: str, model: str | None
         return report
 
     # --- deterministic gates (model-free) --- #
-    for stage, fn in (("recon", check_recon), ("anchoring", check_anchoring)):
+    for stage, fn in GATES:
         entry.status = stage
         ok, detail = fn(pack)
         log(f"  {stage}: {'ok' if ok else 'FAIL'} — {detail}")
         if not ok:
             return _block(stage, detail)
-        if stage == "recon":
-            # validate sits between recon and anchoring
-            entry.status = "validate"
-            from .validate import format_report, validate_pack
-            _text, total = format_report(validate_pack(pack))
-            log(f"  validate: {'ok' if total == 0 else f'{total} problem(s)'}")
-            if total:
-                return _block("validate", f"{total} schema problem(s); run `validate` for detail")
 
     # --- mock plumbing proof (always, even before a real grid) --- #
     entry.status = "mock"

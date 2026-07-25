@@ -1,15 +1,15 @@
 """The factory dispatcher (ADR-0006): queue model, gates, and the unattended pipeline.
 
 All model-free — the pipeline runs with `provider="mock"`, so the whole spine (recon → validate →
-anchoring → mock → grid → compare → card → advance) is exercised offline against the synthetic
-`pack-acme` fixture. The guard (`test_core_no_vendor`) proves the factory names no vendor.
+roundtrip → anchoring → mock → grid → compare → card → advance) is exercised offline against the
+synthetic `pack-acme` fixture. The guard (`test_core_no_vendor`) proves the factory names no vendor.
 """
 import shutil
 from pathlib import Path
 
 import pytest
 
-from core import factory
+from core import factory, scorer
 from core.factory import QueueEntry
 from core.pack import Pack
 
@@ -90,6 +90,45 @@ def test_recon_allows_doc_anchored_pack_with_no_spec(tmp_path):
     assert "doc-anchored" in detail
 
 
+def test_gates_are_declared_in_pipeline_order():
+    """STAGES is documentation; GATES is what runs. They must not drift — the old code inlined the
+    order inside run_pipeline, which is exactly how a stage lands in one and not the other."""
+    assert [name for name, _ in factory.GATES] == factory.STAGES[:len(factory.GATES)]
+    assert [name for name, _ in factory.GATES] == ["recon", "validate", "roundtrip", "anchoring"]
+
+
+def test_validate_gate_passes_for_the_fixture_pack():
+    ok, detail = factory.check_validate(Pack.load(ACME))
+    assert ok, detail
+
+
+def test_validate_gate_blocks_on_a_schema_violation(tmp_path):
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    task = pack_dir / "tasks" / "widget-create.yaml"
+    task.write_text(task.read_text().replace("category: foundational", "category: not-a-category"))
+    ok, detail = factory.check_validate(Pack.load(pack_dir))
+    assert not ok
+    assert "schema problem(s)" in detail
+
+
+def test_roundtrip_gate_passes_for_the_fixture_pack():
+    ok, detail = factory.check_roundtrip(Pack.load(ACME))
+    assert ok, detail
+    assert "score their own ground truth 1.0" in detail
+
+
+def test_roundtrip_gate_blocks_when_a_task_cannot_score_itself(monkeypatch):
+    """An asymmetric scoring rule — one that credits only a canonical answer phrase while ground
+    truth is documented prose — makes the dimension unwinnable for every pack. The gate stops it
+    before a grid burns rather than reporting the resulting 0.00 as a finding about a vendor."""
+    monkeypatch.setattr(scorer, "auth_flow_matches",
+                        lambda gt, ans: (ans or "").strip() == "canonical phrase")
+    ok, detail = factory.check_roundtrip(Pack.load(ACME))
+    assert not ok
+    assert "auth_flow scored 0.00" in detail
+
+
 def test_anchoring_blocks_on_an_unresolvable_spec_ref(tmp_path):
     pack_dir = tmp_path / "pack-acme"
     shutil.copytree(ACME, pack_dir)
@@ -133,6 +172,23 @@ def test_pipeline_blocks_with_reason_on_a_broken_pack(tmp_path):
     assert entry.status == "blocked"
     assert entry.blocked_reason.startswith("[anchoring]")
     assert not (pack_dir / "REPORT.scaffold.md").exists()   # never carded past a failed gate
+
+
+def test_pipeline_blocks_at_roundtrip_before_any_grid(tmp_path, monkeypatch):
+    """The whole point of the gate: an unscoreable pack never reaches a paid condition. The stage
+    name in `blocked_reason` is what tells an operator this is a harness fault, not a schema one."""
+    monkeypatch.setattr(scorer, "auth_flow_matches",
+                        lambda gt, ans: (ans or "").strip() == "canonical phrase")
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    entry = QueueEntry(id="pack-acme", display_name="Acme Widget Cloud", tier=1)
+    report = factory.run_pipeline(entry, Pack.load(pack_dir), today="2026-07-24",
+                                  provider="mock", log=lambda *a: None)
+    assert report["outcome"] == "blocked"
+    assert report["stage"] == "roundtrip"
+    assert entry.blocked_reason.startswith("[roundtrip]")
+    assert not (pack_dir / "results").exists()              # blocked before the mock run, let alone a grid
+    assert not (pack_dir / "REPORT.scaffold.md").exists()
 
 
 # --------------------------------------------------------------------------- #

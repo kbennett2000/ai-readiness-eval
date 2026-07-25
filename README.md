@@ -68,6 +68,15 @@ The method's credibility is a feature, so the repo practices the assessment's ow
 - **ADR-first** decisions in [`docs/adr/`](docs/adr/) — read in order, they are the decision story.
 - **A permanent regression gate.** The extraction is only credible if it changed no measurement; the
   gate re-scores the frozen archives and fails loudly if any cell moves (ADR-0002).
+- **A ground-truth round-trip control.** Before any pack burns a grid, every task must score its own
+  answer key against itself and get a perfect mark — a task that cannot do that is an unscoreable
+  instrument, and no amount of model spend makes its number mean anything
+  ([ADR-0010](docs/adr/adr-0010-ground-truth-round-trip-control.md)). It is deliberately modest about
+  what it shows: an answer key always matches itself, so the control proves a task is *scoreable* and
+  rules the scorer out as a suspect — it cannot tell you the answer key is *right*.
+- **The suspect-instrument rule.** A dimension reading 0.00 across every task and every condition is
+  treated as our own harness until proven otherwise. The control above is how that gets settled
+  mechanically instead of by argument.
 - **No unlinked claims** — every factual claim in a tracked doc links to its backing artifact.
 - **No vendor-dunk language** — findings are stated clinically as measurements with evidence, never as
   a jab at a vendor.
@@ -86,9 +95,14 @@ The method's credibility is a feature, so the repo practices the assessment's ow
 3. Write **`specs.yaml`** — the spec pin (repo + SHA) and the `spec_finding` (availability + license).
 4. Write **`docs-manifest.yaml`** — the public-docs pages per task (the cache is fetched, not
    committed).
-5. **Validate, then run:** `python -m core --pack packs/<vendor> validate` (the answer-key quality gate),
-   then `run --condition no-context` (and `public-docs`, and `mcp` if declared), then
-   `python -m core compare <results dirs...>`.
+5. **Validate, round-trip, then run:** `validate` (the schema gate) and `roundtrip` (the answer-key
+   quality gate — every task must score its own ground truth 1.0), then `run --condition no-context`
+   (and `public-docs`, and `mcp` if declared), then `python -m core compare <results dirs...>`.
+
+   ```bash
+   python -m core --pack packs/<vendor> validate
+   python -m core --pack packs/<vendor> roundtrip
+   ```
 
 ## Running
 
@@ -98,7 +112,7 @@ pytest                                   # full suite: core engine + every pack'
 pytest -m regression                     # just the SailPoint extraction-equivalence gate
 python -m core --pack packs/sailpoint rebuild-report <results_dir>   # re-score archived runs
 
-# The factory: work a ranked queue through recon→validate→anchoring→mock→canary→grid→compare→card.
+# The factory: recon→validate→roundtrip→anchoring→mock→canary→grid→compare→card.
 python -m core --packs-dir <dir> factory status  --queue <queue.yaml>            # queue at a glance
 python -m core --packs-dir <dir> factory next    --queue <queue.yaml> --model <id>   # one target
 python -m core --packs-dir <dir> factory run     --queue <queue.yaml> --model <id>   # until all done
