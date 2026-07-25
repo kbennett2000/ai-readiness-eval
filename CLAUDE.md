@@ -118,3 +118,54 @@ verify with `git ls-files | grep -i private` (must return nothing).
   what the control cannot do: an answer key always matches itself, so it catches an *unscoreable* key,
   never a *wrong* one. The gates are now declared as data (`factory.GATES`) so `STAGES` and the
   dispatcher cannot drift.
+- **Cycle 8.** Closed the auth-scoring hole that gate reported (ADR-0011). `auth_flow` recognized only
+  bearer and client-credentials, so ground truth naming neither scored 1.0 against any answer that also
+  named neither — and on a task whose prose *denies* OAuth, the substring matcher credited the
+  documented-wrong answer. `scorer._AUTH_STYLES` now names five login styles in an argued precedence
+  order, and an unlisted style **blocks** `roundtrip` instead of drawing a note: no dimension scores
+  unless it can be positively tested. Scorer-only, so the two affected packs re-scored from archived
+  transcripts at zero model spend; the frozen 73/68/93 gate and every OAuth-shaped pack are byte-identical.
+  The prompt contract's single `auth_flow` example is recorded as open work for the next cohort re-run.
+- **Cycle 9.** Driven from the private packs repo, which measured its first vendor whose flagship
+  publishes a real public OpenAPI document. That forced one core ruling: **where a spec ends its server
+  URL is not where the vendor's docs start the path** (ADR-0013). An OpenAPI 3 `servers[].url` (or a
+  Swagger 2 `basePath`) may absorb any prefix of an endpoint's address, and the anchoring gate had
+  assumed the spec's leftover path was the path a caller writes — so a pack was forced to adopt its
+  vendor's spec notation even when the vendor's own documentation, which is what the measured model has
+  read, drew the base URL elsewhere. `_index_operations` now accepts a path written from any point
+  inside the declared prefix. The gate widened; no scorer rule changed and no dimension got easier.
+  Found the expensive way: a first grid reported an endpoint dimension at 13.7% when the model was in
+  fact right in 98% of runs, and the whole gap was one path segment. The round-trip control (ADR-0010)
+  structurally cannot catch this — an answer key written in the wrong notation still matches itself —
+  so what caught it was the suspect-instrument rule plus reading the transcripts.
+- **Cycle 10.** Closed the format-failure hole the previous cycle reported rather than bundled
+  (ADR-0014). A model naming an indexed API parameter inside the single-line flow sequence **the prompt
+  contract itself demonstrates** produces invalid YAML, and the parser discarded the entire answer —
+  endpoint, method, version and auth along with the parameter list. One narrow repair now runs, only
+  after YAML has already failed, only on the two list-valued keys, with quote-aware splitting and an
+  item guard that abandons the repair rather than guess: both dimensions it can reach are
+  containment-scored, so a careless split could only ever manufacture a score *upward*, and that
+  counterexample is pinned as a must-not-repair test. Repairs are counted and the repaired text is
+  archived. Parser-only, so the whole cohort re-scored from archives at **$0, no model runs**; 7 of 826
+  archived runs were rescued and the frozen 73/68/93 reproduces — though only because the one rescued
+  reference answer scored 6/6, which the ADR records as luck rather than safety. The fix moved cells
+  **down** as well as up, which is the evidence it repairs an instrument instead of inflating a result.
+  Changing the prompt's example is the better permanent fix and is deferred to the next cohort re-run,
+  because it cannot be re-applied to archives.
+- **Cycle 11.** Built the hazard registry (`docs/hazards.yaml` + `core/tests/test_hazards.py`,
+  ADR-0015). Fourteen ADRs had accumulated **47 recorded instrument hazards**, each stated once and
+  then buried in the ADR that found it; nothing listed them, checked that a claimed guard still
+  existed, or noticed when a new ADR added one. ADR-0011 had named that decay mode in its own words —
+  "recorded as open work" is a note that decays — and the cost was paid twice before it was
+  generalized: ADR-0014 repaired a failure the previous card had predicted in writing, and ADR-0013
+  found a dimension reported at 13.7% when the model was right in 98% of runs. Every entry now declares
+  **gated** (naming tests that are resolved against the tree with `ast`, so a renamed test breaks the
+  build) or **ungated** (naming a reason *and* where the fix is queued, including "not queued", said
+  plainly). `drift_pin` — a test that fires when a live hazard's *state* is edited, as the prompt
+  contract's pinned example does — is a property of an ungated entry and can never satisfy the gated
+  requirement; a test asserts that, because recording a drift pin as a gate would be true about a test
+  and false about the world. Every ADR must appear in an entry or be declared hazard-free, so a new one
+  cannot add a blind spot silently. **Reports state only — no scorer, parser, prompt or fixture is
+  touched, and the frozen 73/68/93 is unmoved.** The picture is not flattering, which is the point:
+  **14 of 47 gated, 26 queued nowhere**, and ADR-0008/0011/0014's three prompt items turn out to be one
+  accumulating deferral behind a single trigger. Each rule was verified by breaking it on purpose.

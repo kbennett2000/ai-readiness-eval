@@ -74,9 +74,21 @@ The method's credibility is a feature, so the repo practices the assessment's ow
   ([ADR-0010](docs/adr/adr-0010-ground-truth-round-trip-control.md)). It is deliberately modest about
   what it shows: an answer key always matches itself, so the control proves a task is *scoreable* and
   rules the scorer out as a suspect — it cannot tell you the answer key is *right*.
+- **No dimension scores unless it can be positively tested.** The same gate blocks a pack whose auth
+  style the scorer cannot name, because a dimension that credits any unrecognizable answer reads as
+  applicable while measuring nothing ([ADR-0011](docs/adr/adr-0011-auth-login-styles.md)). The fix is
+  always a new rule in the scorer, never a rewrite of the vendor's documented prose.
+- **The shared prompt is pinned, and its known bias is disclosed on the card.** Every vendor and every
+  model reads the same answer-block contract, so a word changed in it makes past and present vendors
+  incomparable — and unlike a scorer rule, the change cannot be re-applied to archived transcripts.
+  [`core/tests/test_prompt_contract.py`](core/tests/test_prompt_contract.py) pins the one example known
+  to tilt a scored dimension; changing it is reserved for a deliberate cohort re-baseline bundled with
+  any model change ([ADR-0011](docs/adr/adr-0011-auth-login-styles.md) rule 5). Until then the bias is
+  stated wherever the affected number is read, not filed in an ADR the reader never opens.
 - **The suspect-instrument rule.** A dimension reading 0.00 across every task and every condition is
   treated as our own harness until proven otherwise. The control above is how that gets settled
-  mechanically instead of by argument.
+  mechanically instead of by argument. Its harder-to-spot twin: a dimension reading *high* everywhere
+  may simply be giving marks away — ADR-0011 is what that looked like when it happened.
 - **No unlinked claims** — every factual claim in a tracked doc links to its backing artifact.
 - **No vendor-dunk language** — findings are stated clinically as measurements with evidence, never as
   a jab at a vendor.

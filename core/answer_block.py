@@ -6,6 +6,12 @@ once, last"; taking the last one tolerates the model echoing the example), parse
 it as YAML, and validates the shape. Anything that is missing, unparseable, or
 structurally wrong yields a FormatFailure — a distinct outcome from a wrong-but-
 well-formed answer, never silently scored.
+
+One repair is attempted, and only after YAML has already failed: a single-line
+flow sequence on `required_scopes` / `key_parameters` whose items carry API
+parameter notation (`sortBy[0].name`, `requestedItems[].type`) is re-emitted as a
+block sequence. See ADR-0014 — the contract's own example teaches that flow style,
+so this repairs our instrument rather than excusing the answer.
 """
 from __future__ import annotations
 
@@ -21,8 +27,21 @@ _FENCE_RE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 
-# Keys the scorer consumes.
-_ENDPOINT_KEYS = ("method", "path", "api_version")
+# The only line shape the repair will touch (ADR-0014): one of the two list-valued
+# contract keys, written as a single-line flow sequence.
+_FLOW_LIST_RE = re.compile(
+    r"^(\s*)(required_scopes|key_parameters)\s*:\s*\[(.*)\]\s*$"
+)
+
+# A repaired item must look like a scope or a parameter path — no whitespace, no
+# quote characters, no commas. This is the guard that stops the repair from
+# manufacturing a score: splitting a quoted sentence such as
+# `["requestedFor, requestedItems", x[0]]` on its inner comma would hand the
+# scorer two exact ground-truth names that valid YAML would never have produced,
+# and both dimensions this repair can reach are containment-scored, so a bad
+# split can only ever raise a score. Any item failing this abandons the repair
+# for the whole block.
+_REPAIR_ITEM_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_.:$*\[\]{}<>|/#@-]*$")
 
 
 @dataclass
@@ -55,6 +74,12 @@ class ParseResult:
     failure: FormatFailure | None = None
     # The raw text of the answer-summary block that was parsed (for archiving), if any.
     block_text: str | None = None
+    # True when the block only parsed after the ADR-0014 flow-sequence repair.
+    repaired: bool = False
+    # What was actually handed to the YAML parser after repair. Archived so a
+    # reviewer can reproduce a repaired score from the raw response — without it
+    # the text that produced the score would exist nowhere.
+    repaired_block_text: str | None = None
 
     @property
     def is_failure(self) -> bool:
@@ -79,6 +104,79 @@ def _as_str_list(value) -> list[str]:
     return [s for s in out if s]
 
 
+def _split_flow_items(inner: str) -> list[str] | None:
+    """Split a flow-sequence body on its top-level commas.
+
+    Tracks bracket/brace nesting AND quote state, so a comma inside `filter[a,b]`
+    or inside a quoted string is not a separator. Returns None if the text is not
+    safely splittable — unbalanced nesting, or a quote left open — in which case
+    the caller must abandon the repair rather than guess.
+    """
+    items: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    quote: str | None = None
+    for ch in inner:
+        if quote is not None:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'":
+            quote = ch
+            buf.append(ch)
+            continue
+        if ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+            if depth < 0:
+                return None
+        if ch == "," and depth == 0:
+            items.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    if quote is not None or depth != 0:
+        return None
+    items.append("".join(buf))
+    return [s for s in (i.strip() for i in items) if s]
+
+
+def _repair_flow_lists(block_text: str) -> str | None:
+    """Rewrite single-line flow sequences that YAML rejected into block sequences.
+
+    Narrow by design (ADR-0014): only the two list-valued contract keys, only a
+    one-line flow sequence, and only when an item actually carries the bracket
+    notation that makes the line invalid YAML. Every produced item must look like
+    a scope or parameter path; if any does not, the repair is abandoned for the
+    whole block. Items are re-emitted through `yaml.safe_dump`, so quoting is the
+    serializer's problem and never a hand-rolled guess.
+
+    Returns the repaired text, or None if nothing was safely repairable.
+    """
+    lines = block_text.splitlines()
+    out: list[str] = []
+    changed = False
+    for line in lines:
+        m = _FLOW_LIST_RE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        indent, key, inner = m.groups()
+        # A flow sequence that is already valid YAML is never rewritten.
+        if "[" not in inner and "]" not in inner:
+            out.append(line)
+            continue
+        items = _split_flow_items(inner)
+        if items is None or not items or not all(_REPAIR_ITEM_RE.match(i) for i in items):
+            return None
+        dumped = yaml.safe_dump({key: items}, sort_keys=False, default_flow_style=False)
+        out.extend(f"{indent}{ln}" for ln in dumped.rstrip("\n").splitlines())
+        changed = True
+    return "\n".join(out) if changed else None
+
+
 def parse(response_text: str) -> ParseResult:
     """Extract and validate the answer-summary block from a model response."""
     if not response_text or not response_text.strip():
@@ -91,12 +189,27 @@ def parse(response_text: str) -> ParseResult:
         )
 
     block_text = matches[-1].strip()  # contract: last block is the answer
+    repaired = False
+    repaired_text: str | None = None
     try:
         data = yaml.safe_load(block_text)
     except yaml.YAMLError as exc:
-        return ParseResult(
-            failure=FormatFailure(f"answer-summary block is not valid YAML: {exc}", block_text)
-        )
+        # ADR-0014: one narrow repair, attempted only here — never on a block that
+        # already parsed. If it does not produce valid YAML, the original failure
+        # stands unchanged, so the repair can only ever rescue.
+        candidate = _repair_flow_lists(block_text)
+        data = None
+        if candidate is not None:
+            try:
+                data = yaml.safe_load(candidate)
+            except yaml.YAMLError:
+                data = None
+        if data is None:
+            return ParseResult(
+                failure=FormatFailure(f"answer-summary block is not valid YAML: {exc}", block_text)
+            )
+        repaired = True
+        repaired_text = candidate
 
     if not isinstance(data, dict):
         return ParseResult(
@@ -133,7 +246,12 @@ def parse(response_text: str) -> ParseResult:
         required_scopes=_as_str_list(data.get("required_scopes")),
         key_parameters=_as_str_list(data.get("key_parameters")),
     )
-    return ParseResult(summary=summary, block_text=block_text)
+    return ParseResult(
+        summary=summary,
+        block_text=block_text,
+        repaired=repaired,
+        repaired_block_text=repaired_text,
+    )
 
 
 def _str_or_none(value) -> str | None:
@@ -144,13 +262,18 @@ def _str_or_none(value) -> str | None:
 
 
 def render_block(summary: AnswerSummary, *, preamble: str = "") -> str:
-    """Render an AnswerSummary back into a fenced answer-summary block — the inverse of `parse`.
+    """Render an AnswerSummary back into a fenced answer-summary block — a right inverse of `parse`.
 
     Used to ask "would this exact answer survive the contract?" without a model in the loop: the
     round-trip control (ADR-0010) renders ground truth through here and parses it back, and the
     `--mock` provider builds its responses the same way. Values are emitted by `yaml.safe_dump`,
     which quotes anything ambiguous — so prose containing `": "` survives verbatim rather than
     needing to be canonicalized away.
+
+    Not a two-sided inverse, and the asymmetry is load-bearing: `safe_dump` emits BLOCK sequences,
+    so this function can never produce the single-line flow sequence that the ADR-0014 repair
+    exists to rescue. That is precisely why the round-trip control could not catch that defect —
+    the harness's own renderer never speaks the dialect its parser was rejecting.
     """
     block = {
         "endpoints": [

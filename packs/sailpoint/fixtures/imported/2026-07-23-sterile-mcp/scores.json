@@ -1,13 +1,14 @@
 {
   "aggregate": {
-    "format_failures": 1,
-    "overall_accuracy": 0.9251543209876543,
+    "format_failures": 0,
+    "format_repairs": 1,
+    "overall_accuracy": 0.9265151515151515,
     "overall_dimensions": {
-      "api_version": 0.8626543209876543,
-      "auth_flow": 0.9814814814814815,
-      "endpoint": 0.8626543209876543,
-      "key_parameters": 0.9814814814814815,
-      "method": 0.8626543209876543,
+      "api_version": 0.8651515151515151,
+      "auth_flow": 0.9818181818181818,
+      "endpoint": 0.8651515151515151,
+      "key_parameters": 0.9818181818181818,
+      "method": 0.8651515151515151,
       "required_scopes": 1.0
     },
     "per_task": {
@@ -20,7 +21,8 @@
           "method": 1.0,
           "required_scopes": 1.0
         },
-        "format_failures": 1,
+        "format_failures": 0,
+        "format_repairs": 1,
         "runs": 5
       },
       "audit-report": {
@@ -33,6 +35,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "auth-token": {
@@ -45,6 +48,7 @@
           "required_scopes": null
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "cert-campaign": {
@@ -57,6 +61,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "find-identity": {
@@ -69,6 +74,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "grant-revoke": {
@@ -81,6 +87,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "identity-accounts": {
@@ -93,6 +100,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "lifecycle-trigger": {
@@ -105,6 +113,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "search-filter": {
@@ -117,6 +126,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "source-aggregation": {
@@ -129,6 +139,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "transform": {
@@ -141,6 +152,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       }
     },
@@ -648,20 +660,34 @@
     {
       "cost_usd": 0.09024399999999999,
       "dimensions": {
-        "api_version": null,
-        "auth_flow": null,
-        "endpoint": null,
-        "key_parameters": null,
-        "method": null,
-        "required_scopes": null
+        "api_version": 1.0,
+        "auth_flow": 1.0,
+        "endpoint": 1.0,
+        "key_parameters": 1.0,
+        "method": 1.0,
+        "required_scopes": 1.0
       },
       "duration_ms": 32693,
-      "endpoint_matches": [],
-      "failure_reason": "answer-summary block is not valid YAML: while parsing a flow sequence\n  in \"<unicode string>\", line 7, column 17:\n    key_parameters: [requestedFor, requestedItems, r ... \n                    ^\nexpected ',' or ']', but got '['\n  in \"<unicode string>\", line 7, column 62:\n     ... , requestedItems, requestedItems[].type, requestedItems[].id, re ... \n                                         ^",
-      "format_failure": true,
+      "endpoint_matches": [
+        {
+          "answer_api_version": "v3",
+          "answer_method": "POST",
+          "answer_path": "/access-requests",
+          "gt_api_version": "v3",
+          "gt_method": "POST",
+          "gt_path": "/access-requests",
+          "matched": true,
+          "method_ok": true,
+          "version_ok": true
+        }
+      ],
+      "failure_reason": null,
+      "format_failure": false,
+      "format_repaired": true,
       "input_tokens": 13,
       "output_tokens": 1575,
       "raw_response": "Here's how to submit an access request via the ISC API.\n\n## Endpoint\n\n```\nPOST https://{tenant}.api.identitynow.com/v3/access-requests\n```\n\n## Required OAuth Scopes\n\n- `idn:access-request:manage` \u2014 to request access on behalf of another user (admin)\n- `idn:access-request-self:manage` \u2014 for self-service requests only\n\n## Request Body\n\n```json\n{\n  \"requestedFor\": [\"<identity-id>\"],\n  \"requestedItems\": [\n    {\n      \"type\": \"ACCESS_PROFILE\",\n      \"id\": \"<access-profile-id>\",\n      \"comment\": \"Needed for project X onboarding\"\n    }\n  ],\n  \"requestType\": \"GRANT_ACCESS\",\n  \"clientMetadata\": {\n    \"requestedAppName\": \"MyApp\",\n    \"requestedAppId\": \"2c91808f7892918f0178b78da4a305a1\"\n  }\n}\n```\n\n### Key fields\n\n| Field | Required | Notes |\n|---|---|---|\n| `requestedFor` | Yes | Array of identity IDs to grant access to |\n| `requestedItems` | Yes | Array of access items; each needs `type` and `id` |\n| `requestedItems[].type` | Yes | `ACCESS_PROFILE`, `ROLE`, or `ENTITLEMENT` |\n| `requestedItems[].id` | Yes | The ID of the access profile / role / entitlement |\n| `requestedItems[].comment` | No | Business justification comment |\n| `requestType` | No | `GRANT_ACCESS` (default) or `REVOKE_ACCESS` |\n| `clientMetadata` | No | Key/value pairs passed through to approval workflows |\n\n## Example (curl)\n\n```bash\ncurl -X POST \"https://{tenant}.api.identitynow.com/v3/access-requests\" \\\n  -H \"Authorization: Bearer {access_token}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"requestedFor\": [\"2c918084660f45d6016617daa9210584\"],\n    \"requestedItems\": [\n      {\n        \"type\": \"ACCESS_PROFILE\",\n        \"id\": \"2c9180835d2e5168015d32f890ca1581\",\n        \"comment\": \"Required for Q3 project access\"\n      }\n    ],\n    \"requestType\": \"GRANT_ACCESS\"\n  }'\n```\n\n**Tip:** The `requestedFor` and `requestedItems[].id` values must be ISC internal IDs (UUIDs), not names. Use `GET /v3/identities` and `GET /v3/access-profiles` (or `/v3/roles`, `/v3/entitlements`) to look up IDs first.\n\nThe request will enter any approval workflows configured in ISC before access is provisioned.\n\n```answer-summary\nendpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage, idn:access-request-self:manage]\nkey_parameters: [requestedFor, requestedItems, requestedItems[].type, requestedItems[].id, requestedItems[].comment, requestType, clientMetadata]\n```",
+      "repaired_block_text": "endpoints:\n  - method: POST\n    path: /v3/access-requests\n    api_version: v3\nauth_flow: OAuth2 bearer token\nrequired_scopes: [idn:access-request:manage, idn:access-request-self:manage]\nkey_parameters:\n- requestedFor\n- requestedItems\n- requestedItems[].type\n- requestedItems[].id\n- requestedItems[].comment\n- requestType\n- clientMetadata",
       "run_index": 3,
       "task_id": "access-request",
       "tool_discipline": {

@@ -123,3 +123,170 @@ def test_missing_optional_fields_default_empty():
     assert result.summary.required_scopes == []
     assert result.summary.key_parameters == []
     assert result.summary.auth_flow is None
+
+
+# --- ADR-0014: the flow-sequence repair -------------------------------------
+#
+# A model naming a bracketed API parameter (`sortBy[0].name`) inside the flow
+# sequence the prompt contract itself demonstrates produces invalid YAML. The
+# repair rescues that answer; it must never rescue anything whose meaning it
+# would have to guess at.
+
+def _block(body: str) -> str:
+    return (
+        "```answer-summary\n"
+        "endpoints:\n  - method: GET\n    path: /v3/accounts\n    api_version: v3\n"
+        "auth_flow: OAuth2 bearer token\n"
+        f"{body}\n"
+        "```"
+    )
+
+
+def test_repairs_bracketed_parameter_names_in_a_flow_sequence():
+    result = answer_block.parse(_block(
+        "required_scopes: []\n"
+        "key_parameters: [id, skip, take, sortBy[0].name, sortBy[0].direction]"
+    ))
+    assert not result.is_failure
+    assert result.repaired is True
+    assert result.summary.key_parameters == [
+        "id", "skip", "take", "sortBy[0].name", "sortBy[0].direction",
+    ]
+    # The text that was actually parsed is retained, so the score is reproducible.
+    assert "sortBy[0].name" in result.repaired_block_text
+
+
+def test_repairs_empty_bracket_index_notation():
+    result = answer_block.parse(_block(
+        "key_parameters: [requestedFor, requestedItems, requestedItems[].type]"
+    ))
+    assert not result.is_failure
+    assert result.repaired is True
+    assert result.summary.key_parameters[-1] == "requestedItems[].type"
+
+
+def test_repairs_scopes_as_well_as_parameters():
+    result = answer_block.parse(_block(
+        "required_scopes: [idn:accounts:read, sortBy[0].name]\nkey_parameters: [id]"
+    ))
+    assert not result.is_failure
+    assert result.repaired is True
+    assert result.summary.required_scopes == ["idn:accounts:read", "sortBy[0].name"]
+
+
+def test_an_ordinary_parse_is_not_marked_repaired():
+    result = answer_block.parse(PERFECT)
+    assert not result.is_failure
+    assert result.repaired is False
+    assert result.repaired_block_text is None
+
+
+def test_a_valid_flow_sequence_is_never_rewritten():
+    """The repair only ever runs after YAML has already failed."""
+    result = answer_block.parse(_block("key_parameters: [filters, id]"))
+    assert not result.is_failure
+    assert result.repaired is False
+
+
+# --- must-not-repair: the score-manufacture cases ---------------------------
+#
+# `key_parameters` and `required_scopes` are both scored by CONTAINMENT, so
+# splitting one item into several can only ever raise a score, never lower it.
+# A repair that guessed at an item boundary would hand the scorer ground-truth
+# names that valid YAML would never have produced. Every case below must stay a
+# format failure.
+
+def test_a_comma_inside_a_quoted_item_is_never_split():
+    """The counterexample that decided the design: splitting here would score 1.0
+    on key_parameters where valid YAML scores 0.0, for byte-identical content."""
+    result = answer_block.parse(_block(
+        'key_parameters: ["requestedFor, requestedItems", requestedItems[].id]'
+    ))
+    assert result.is_failure
+    assert "not valid YAML" in result.failure.reason
+
+
+def test_a_quoted_scope_sentence_is_never_split():
+    result = answer_block.parse(_block(
+        'required_scopes: ["one of idn:accounts:read, idn:accounts:manage", sortBy[0]]'
+    ))
+    assert result.is_failure
+
+
+def test_prose_items_are_not_repaired():
+    result = answer_block.parse(_block(
+        'key_parameters: [filters: name eq "x", sortBy[0].name]'
+    ))
+    assert result.is_failure
+
+
+def test_an_unterminated_quote_abandons_the_repair():
+    result = answer_block.parse(_block(
+        'key_parameters: [sortBy[0].name, "unterminated]'
+    ))
+    assert result.is_failure
+
+
+def test_a_trailing_comment_containing_a_bracket_abandons_the_repair():
+    result = answer_block.parse(_block(
+        "key_parameters: [a[0], b] # note [see docs]"
+    ))
+    assert result.is_failure
+
+
+def test_a_comma_inside_brackets_or_braces_is_not_a_separator():
+    """Depth tracking covers braces too; an item it cannot vouch for is abandoned."""
+    result = answer_block.parse(_block(
+        "key_parameters: [body{type, id}, sortBy[0].name]"
+    ))
+    assert result.is_failure
+
+
+# --- must-not-repair: scope boundaries, pinned deliberately -----------------
+
+def test_a_multiline_flow_sequence_is_out_of_scope():
+    """Never observed in 826 archived runs; tolerance is written against evidence."""
+    result = answer_block.parse(_block(
+        "key_parameters: [\n  id,\n  sortBy[0].name,\n]"
+    ))
+    assert result.is_failure
+
+
+def test_other_keys_are_out_of_scope():
+    result = answer_block.parse(
+        "```answer-summary\n"
+        "endpoints: [{method: GET, path: /v3/a[0], api_version: v3}]\n"
+        "auth_flow: bearer\n```"
+    )
+    assert result.is_failure
+
+
+def test_unrelated_yaml_damage_keeps_its_original_reason():
+    result = answer_block.parse("```answer-summary\nendpoints: [ : : bad yaml\n```")
+    assert result.is_failure
+    assert "not valid YAML" in result.failure.reason
+    assert result.repaired is False
+
+
+def test_a_missing_block_is_not_repairable():
+    result = answer_block.parse("I cannot answer that.")
+    assert result.is_failure
+    assert "no ```answer-summary``` block found" in result.failure.reason
+
+
+def test_render_block_round_trips_a_bracketed_parameter_name():
+    """render_block emits BLOCK sequences, so it can never produce the shape the
+    repair exists to fix — which is exactly why the ADR-0010 round-trip control
+    could not have caught this defect."""
+    summary = answer_block.AnswerSummary(
+        endpoints=[answer_block.Endpoint("GET", "/v3/a", "v3")],
+        auth_flow="bearer",
+        required_scopes=[],
+        key_parameters=["id", "sortBy[0].name"],
+    )
+    rendered = answer_block.render_block(summary)
+    assert "key_parameters: [" not in rendered
+    result = answer_block.parse(rendered)
+    assert not result.is_failure
+    assert result.repaired is False
+    assert result.summary.key_parameters == ["id", "sortBy[0].name"]

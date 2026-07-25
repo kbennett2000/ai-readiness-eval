@@ -20,11 +20,14 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 def score_response(task: dict, raw_text: str):
-    """Parse + score one archived raw response. A format failure is a distinct outcome, never zeroed."""
+    """Parse + score one archived raw response. A format failure is a distinct outcome, never zeroed.
+
+    Returns (score, parse_result) so the caller can record an ADR-0014 repair.
+    """
     parsed = answer_block.parse(raw_text)
     if parsed.is_failure:
-        return format_failure_score(task["id"], parsed.failure.reason)
-    return score_task(task, parsed.summary)
+        return format_failure_score(task["id"], parsed.failure.reason), parsed
+    return score_task(task, parsed.summary), parsed
 
 
 def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = None,
@@ -43,12 +46,20 @@ def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = No
         task = tasks_by_id.get(rr["task_id"])
         rec = dict(rr)
         if task is not None:
-            score = score_response(task, rr.get("raw_response", ""))
+            score, parsed = score_response(task, rr.get("raw_response", ""))
             rec["format_failure"] = score.format_failure
             rec["failure_reason"] = score.failure_reason
             rec["dimensions"] = {dm: (score.dim(dm).score if score.dim(dm) else None)
                                  for dm in DIMENSIONS}
             rec["endpoint_matches"] = score.endpoint_matches
+            # Clear before re-deciding: `dict(rr)` carries the archived value forward, so a
+            # conditionally-set key would otherwise survive a rebuild in which the repair no
+            # longer fires — a stale `true` that could never be cleared (ADR-0014).
+            rec.pop("format_repaired", None)
+            rec.pop("repaired_block_text", None)
+            if parsed.repaired:
+                rec["format_repaired"] = True
+                rec["repaired_block_text"] = parsed.repaired_block_text
         records.append(rec)
 
     # Infer <YYYY-MM-DD>-<condition> from the dir name (e.g. 2026-07-23-no-context).

@@ -53,7 +53,7 @@ def _results_dir(pack: Pack) -> Path:
 
 
 def _record(task_id: str, run_index: int, score, resp, *,
-            tool_discipline: dict | None = None) -> dict:
+            tool_discipline: dict | None = None, parsed=None) -> dict:
     dims = {d: (score.dim(d).score if score.dim(d) else None) for d in DIMENSIONS}
     rec = {
         "task_id": task_id,
@@ -72,14 +72,20 @@ def _record(task_id: str, run_index: int, score, resp, *,
     }
     if tool_discipline is not None:
         rec["tool_discipline"] = tool_discipline
+    # ADR-0014: present only on a run the repair actually rescued, so every
+    # untouched archive stays byte-identical. The repaired text is archived with
+    # it — a repaired score must stay reproducible from what was really parsed.
+    if parsed is not None and getattr(parsed, "repaired", False):
+        rec["format_repaired"] = True
+        rec["repaired_block_text"] = parsed.repaired_block_text
     return rec
 
 
 def _score_response(task: dict, raw_text: str):
     parsed = answer_block.parse(raw_text)
     if parsed.is_failure:
-        return format_failure_score(task["id"], parsed.failure.reason), None
-    return score_task(task, parsed.summary), parsed.block_text
+        return format_failure_score(task["id"], parsed.failure.reason), parsed
+    return score_task(task, parsed.summary), parsed
 
 
 # --------------------------------------------------------------------------- #
@@ -328,11 +334,14 @@ def cmd_run(args: argparse.Namespace) -> int:
                 reported_models.add(resp.model_reported)
             total_cost += getattr(resp, "cost_usd", 0.0)
             total_ms += getattr(resp, "duration_ms", 0)
-            score, _block = _score_response(task, resp.text)
-            rec = _record(task["id"], run_index, score, resp, tool_discipline=discipline)
+            score, parsed = _score_response(task, resp.text)
+            rec = _record(task["id"], run_index, score, resp, tool_discipline=discipline,
+                          parsed=parsed)
             records.append(rec)
             run_path.write_text(json.dumps(rec, indent=2))
             status = "FMT-FAIL" if score.format_failure else "scored"
+            if rec.get("format_repaired"):
+                status += " [FMT-REPAIRED]"
             disc = "" if discipline["ok"] else " [DISCIPLINE-FAIL]"
             print(f"  {task['id']} run {run_index + 1}/{args.n}: {status}{disc} "
                   f"({discipline['detail']})")
@@ -353,7 +362,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"\nWrote {out_dir}/summary.md and scores.json")
     print(f"Overall accuracy: "
           f"{'n/a' if agg['overall_accuracy'] is None else f'{agg['overall_accuracy'] * 100:.0f}%'}"
-          f"  |  format failures: {agg['format_failures']}/{agg['total_runs']}")
+          f"  |  format failures: {agg['format_failures']}/{agg['total_runs']}"
+          + (f"  |  format repairs: {agg['format_repairs']}" if agg.get("format_repairs") else ""))
     if total_cost or total_ms:
         print(f"Subscription usage: ${total_cost:.4f}  |  wall (sum of call durations): "
               f"{total_ms / 1000:.0f}s")

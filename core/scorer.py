@@ -80,44 +80,66 @@ def normalize_version(version: str | None) -> str:
     return "" if v in _NO_VERSION else v
 
 
-def _auth_concepts(text: str | None) -> set[str]:
-    """The set of auth concepts a string mentions, separator-insensitive.
+# The login styles the scorer can positively name, MOST SPECIFIC FIRST (ADR-0011). The first style
+# present in a string is the one that string requires, so this order is load-bearing:
+#
+#   * session-token outranks the OAuth styles because a session token is minted by one vendor's own
+#     login call, and because OAuth words appear inside session-token prose as NEGATIONS ("not an
+#     OAuth2 flow: there is no client_credentials grant") that substring matching cannot read.
+#   * basic-auth and api-key rank BELOW bearer because a Basic login that returns a bearer token
+#     sends the bearer token on every subsequent call, and the per-request credential is what this
+#     dimension measures.
+#
+# Markers are matched after `-`/`_` are folded to spaces and the text is lowercased, so
+# `client_credentials`, `Basic-auth` and `sessionId` all land. A style is added here, never worked
+# around in a pack's ground truth — the `roundtrip` gate blocks a pack whose style is not listed.
+_AUTH_STYLES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # `session` and `logon` name the concept broadly on purpose. A first, narrower marker list of
+    # exact phrases scored 0 for answers reading "session bearer token" and "session cookie via
+    # authString login" — correct namings of the mechanism, failed on wording. That made the
+    # dimension measure our phrasebook. Bare `login` is deliberately NOT a marker: it appears in
+    # OAuth-shaped ground truth ("Basic-auth login ... POST /api/login") and would reclassify it.
+    ("session-token", ("session", "logon")),
+    ("oauth2-client-credentials", ("client credentials",)),
+    ("bearer-token", ("bearer",)),
+    ("basic-auth", ("basic auth", "basic authentication", "http basic")),
+    ("api-key", ("api key", "apikey", "subscription key")),
+)
 
-    'client credentials', 'client-credentials', 'client_credentials' all count as the
-    client-credentials grant; 'bearer' counts as a bearer token.
-    """
+UNKNOWN_AUTH = "unknown"
+
+
+def _auth_concepts(text: str | None) -> set[str]:
+    """The set of login styles a string mentions, separator-insensitive."""
     t = (text or "").lower().replace("-", " ").replace("_", " ")
-    concepts: set[str] = set()
-    if "client credentials" in t:
-        concepts.add("client-credentials")
-    if "bearer" in t:
-        concepts.add("bearer")
-    return concepts
+    return {style for style, markers in _AUTH_STYLES if any(m in t for m in markers)}
 
 
 def canonical_auth_flow(text: str | None) -> str:
-    """A single display label for an auth string (client-credentials is the more specific)."""
-    c = _auth_concepts(text)
-    if "client-credentials" in c:
-        return "oauth2-client-credentials"
-    if "bearer" in c:
-        return "bearer-token"
-    return "unknown"
+    """The one login style a string requires: the first `_AUTH_STYLES` entry it mentions."""
+    present = _auth_concepts(text)
+    for style, _markers in _AUTH_STYLES:
+        if style in present:
+            return style
+    return UNKNOWN_AUTH
 
 
 def auth_flow_matches(gt_text: str | None, answer_text: str | None) -> bool:
-    """True if the answer contains the ground truth's PRIMARY auth concept.
+    """True if the answer names the login style the ground truth requires.
 
-    Ground-truth prose can mention both concepts (the grant task describes obtaining a JWT
-    *bearer* token via *client-credentials*), so we pick the more specific present concept as
-    the requirement: client-credentials for the token-grant task, bearer for the per-call tasks.
-    The answer matches if it names that concept — an answer that additionally mentions the
-    other concept (e.g. "client credentials bearer token") still matches.
+    Ground-truth prose routinely mentions more than one style — the grant task describes obtaining a
+    *bearer* token via *client-credentials*; a session-token product's prose says it is not OAuth —
+    so the requirement is the most specific style present, per `_AUTH_STYLES` order. The answer
+    matches if it names that style; naming additional styles as well does not hurt.
+
+    A ground truth naming no listed style falls back to comparing labels, which means `unknown`
+    matches `unknown` — an answer scores as long as it too names nothing recognizable. That is why
+    `roundtrip.check_task` refuses to let such a pack run at all (ADR-0011): the fallback is a
+    scoring hole, kept only so the scorer degrades quietly instead of raising, never relied on.
     """
-    gt = _auth_concepts(gt_text)
-    if not gt:
-        return canonical_auth_flow(gt_text) == canonical_auth_flow(answer_text)
-    required = "client-credentials" if "client-credentials" in gt else "bearer"
+    required = canonical_auth_flow(gt_text)
+    if required == UNKNOWN_AUTH:
+        return canonical_auth_flow(answer_text) == UNKNOWN_AUTH
     return required in _auth_concepts(answer_text)
 
 

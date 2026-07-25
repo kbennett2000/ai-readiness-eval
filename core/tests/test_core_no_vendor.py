@@ -23,8 +23,16 @@ VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn
 
 # Prospect names that must never appear anywhere tracked in the PUBLIC repo (privacy, cycle 2).
 # Every prospect the factory has carded belongs here — the list went stale between cycles 2 and 6,
-# which let a recon note naming two later prospects reach a commit before the guard objected.
-PROSPECT_TOKENS = re.compile(r"saviynt|okta|cyberark|oneidentity|pingone", re.IGNORECASE)
+# which let a recon note naming two later prospects reach a commit before the guard objected. Since
+# cycle 9 the name is added at the START of a vendor's cycle, before any recon note exists to leak:
+# a guard that trails the work protects the cycle after the one that needed it.
+#
+# `thycotic` is listed beside `delinea` because a vendor's FORMER brand identifies it just as well,
+# and this one still hosts that vendor's published spec — so a stray spec URL in a public file would
+# name the prospect without ever spelling its current name.
+PROSPECT_TOKENS = re.compile(
+    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic", re.IGNORECASE
+)
 
 # One prospect's name is also an ordinary phrase in this domain: the reference pack legitimately says
 # "exactly one identity" and "one identity's accounts". Matching it case-insensitively would fire on

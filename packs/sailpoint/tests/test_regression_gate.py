@@ -2,8 +2,15 @@
 
 Re-scoring the imported SailPoint archives through the extracted, vendor-agnostic core MUST reproduce
 the frozen repo's canonical tables EXACTLY: overall 73 / 68 / 93 and every per-task, per-dimension
-cell. The only permitted byte-differences are the documented run-provenance metadata class (AUDIT.md
-§2). If any score-bearing cell moves, that is an extraction bug — this test fails loudly.
+cell. The only permitted byte-differences are the documented run-provenance metadata class
+(`METADATA_DROPPED_ON_REBUILD` / `METADATA_ADDED_ON_REBUILD` below). If any score-bearing cell moves,
+that is an extraction bug — this test fails loudly.
+
+When a scoring or parsing RULE deliberately changes, the derived fixture files (scores.json,
+summary.md, the comparison) are re-derived in the same commit as the rule, under an ADR, and the diff
+is the evidence a reviewer reads. The transcripts in `runs/` are never rewritten, and
+`EXPECTED_OVERALL` is a hand-written anchor that no regeneration can move on its own. Last such
+re-derivation: ADR-0014 (the answer-format repair).
 
 Run just this gate:
 
@@ -67,6 +74,27 @@ def test_overall_headline_reproduces(rebuilt, cond):
         f"{cond}: overall re-scored to {overall*100:.1f}%, expected {EXPECTED_OVERALL[cond]}% — "
         "an extraction bug moved a cell."
     )
+
+
+@pytest.mark.regression
+def test_the_answer_format_repair_fires_exactly_once_in_this_corpus():
+    """ADR-0014 is pinned by count, not merely permitted.
+
+    One archived `mcp` answer listed `requestedItems[].type` in a single-line flow sequence, which is
+    valid parameter notation and invalid YAML; it is repaired and scored. Nothing else in 165 frozen
+    transcripts is. If a future tolerance change starts rescuing more, that is a widening of the
+    instrument and must be argued in its own ADR rather than discovered in a headline.
+    """
+    counts = {c: rebuilt_agg["format_repairs"] for c, rebuilt_agg in
+              ((c, json.loads((_fixture_dir(c) / "scores.json").read_text())["aggregate"])
+               for c in CONDITIONS)}
+    assert counts == {"no-context": 0, "public-docs": 0, "mcp": 1}, counts
+    mcp = json.loads((_fixture_dir("mcp") / "scores.json").read_text())
+    assert mcp["aggregate"]["format_failures"] == 0
+    repaired = [r for r in mcp["runs"] if r.get("format_repaired")]
+    assert len(repaired) == 1 and repaired[0]["task_id"] == "access-request"
+    # The repaired text is archived, so a repaired score stays reproducible.
+    assert "requestedItems[].type" in repaired[0]["repaired_block_text"]
 
 
 @pytest.mark.regression
