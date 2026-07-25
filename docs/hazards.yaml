@@ -589,6 +589,11 @@ entries:
       The next deliberate cohort re-baseline. Same trigger as
       `prompt-contract-offers-one-login-style` and
       `api-version-has-no-sanctioned-empty-spelling`; the three are one change.
+    # Pinned, not fixed: the contract still teaches the style. The pin only makes
+    # changing the example a deliberate re-baseline rather than a silent edit,
+    # which is why this entry stays ungated.
+    drift_pin:
+      - core/tests/test_prompt_contract.py::test_the_list_style_example_is_pinned
 
   - id: repair-split-can-manufacture-a-containment-score
     adr: adr-0014-answer-format-repair.md
