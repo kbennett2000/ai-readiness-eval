@@ -116,15 +116,52 @@ def _load_spec_file(path: Path) -> dict:
     return json.loads(text) if path.suffix == ".json" else yaml.safe_load(text)
 
 
-def _index_operations(spec: dict) -> dict[str, tuple[str, str]]:
-    """operationId -> (METHOD, path) for every operation in an OpenAPI spec."""
-    idx: dict[str, tuple[str, str]] = {}
+def _spec_prefix_segments(spec: dict) -> list[str]:
+    """The path segments a spec declares to be in front of every one of its paths.
+
+    OpenAPI 3 puts them in `servers[0].url`, Swagger 2 in `basePath`. A spec is free to split the
+    address between the two — `servers[0].url: /Vendor/api` with paths `/v1/things` describes exactly
+    the same URL as `servers[0].url: /Vendor` with paths `/api/v1/things`. That split is the spec
+    author's convenience and says nothing about the API.
+    """
+    raw = ""
+    servers = spec.get("servers")
+    if isinstance(servers, list) and servers and isinstance(servers[0], dict):
+        raw = str(servers[0].get("url") or "")
+    if not raw:
+        raw = str(spec.get("basePath") or "")
+    if "://" in raw:  # an absolute server URL: keep only its path component
+        rest = raw.split("://", 1)[1]
+        raw = rest[rest.find("/"):] if "/" in rest else ""
+    return [s for s in raw.split("/") if s]
+
+
+def _anchor_paths(spec_path: str, prefix_segments: list[str]) -> list[str]:
+    """Every path a pack may legitimately write for one spec path.
+
+    The bare spec path, plus that path prefixed by any SUFFIX of the spec's declared server prefix.
+    For a prefix of `/Vendor/api` and a spec path of `/v1/things`, a pack may write `/v1/things`,
+    `/api/v1/things`, or `/Vendor/api/v1/things` — all three name the same endpoint, and which one is
+    right depends on where the VENDOR'S OWN documentation says the base URL ends. Ground truth has to
+    be free to follow the documentation, because that is what the model being measured has read.
+    """
+    base = spec_path.strip().rstrip("/") or "/"
+    out = [base]
+    for i in range(len(prefix_segments) - 1, -1, -1):
+        out.append("/" + "/".join(prefix_segments[i:]) + base)
+    return out
+
+
+def _index_operations(spec: dict) -> dict[str, tuple[str, list[str]]]:
+    """operationId -> (METHOD, [acceptable paths]) for every operation in an OpenAPI spec."""
+    prefix = _spec_prefix_segments(spec)
+    idx: dict[str, tuple[str, list[str]]] = {}
     for path, item in (spec.get("paths") or {}).items():
         if not isinstance(item, dict):
             continue
         for method, op in item.items():
             if method.lower() in _METHODS and isinstance(op, dict) and op.get("operationId"):
-                idx[op["operationId"]] = (method.upper(), path)
+                idx[op["operationId"]] = (method.upper(), _anchor_paths(path, prefix))
     return idx
 
 
@@ -227,11 +264,16 @@ def check_anchoring(pack: Pack) -> tuple[bool, str]:
                 if oid not in ops:
                     problems.append(f"{task['id']}: operationId '{oid}' not in vendored spec")
                     continue
-                method, path = ops[oid]
+                method, accepted = ops[oid]
                 if method != ep["method"].upper():
                     problems.append(f"{task['id']}/{oid}: method {ep['method']} != spec {method}")
-                if path.strip().rstrip("/").lower() != ep["path"].strip().rstrip("/").lower():
-                    problems.append(f"{task['id']}/{oid}: path {ep['path']} != spec {path}")
+                want = ep["path"].strip().rstrip("/").lower()
+                if want not in {p.strip().rstrip("/").lower() for p in accepted}:
+                    problems.append(
+                        f"{task['id']}/{oid}: path {ep['path']} != spec {accepted[0]}"
+                        + (f" (nor with the spec's server prefix: {', '.join(accepted[1:])})"
+                           if len(accepted) > 1 else "")
+                    )
             elif doc:
                 n_doc += 1
                 if doc["url"] not in manifest_urls:

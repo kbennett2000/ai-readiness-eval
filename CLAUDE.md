@@ -126,3 +126,15 @@ verify with `git ls-files | grep -i private` (must return nothing).
   unless it can be positively tested. Scorer-only, so the two affected packs re-scored from archived
   transcripts at zero model spend; the frozen 73/68/93 gate and every OAuth-shaped pack are byte-identical.
   The prompt contract's single `auth_flow` example is recorded as open work for the next cohort re-run.
+- **Cycle 9.** Driven from the private packs repo, which measured its first vendor whose flagship
+  publishes a real public OpenAPI document. That forced one core ruling: **where a spec ends its server
+  URL is not where the vendor's docs start the path** (ADR-0013). An OpenAPI 3 `servers[].url` (or a
+  Swagger 2 `basePath`) may absorb any prefix of an endpoint's address, and the anchoring gate had
+  assumed the spec's leftover path was the path a caller writes — so a pack was forced to adopt its
+  vendor's spec notation even when the vendor's own documentation, which is what the measured model has
+  read, drew the base URL elsewhere. `_index_operations` now accepts a path written from any point
+  inside the declared prefix. The gate widened; no scorer rule changed and no dimension got easier.
+  Found the expensive way: a first grid reported an endpoint dimension at 13.7% when the model was in
+  fact right in 98% of runs, and the whole gap was one path segment. The round-trip control (ADR-0010)
+  structurally cannot catch this — an answer key written in the wrong notation still matches itself —
+  so what caught it was the suspect-instrument rule plus reading the transcripts.
