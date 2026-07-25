@@ -788,3 +788,41 @@ entries:
       Not queued. Revisit once entries actually cite issue numbers; a check that runs only when
       a reference token is present, and only where the network is available, is the shape it
       would take.
+
+  # ------------------------------------------------------------------------ ADR-0017 -----
+
+  - id: no-signal-when-a-pack-needs-a-base-prefix
+    adr: adr-0017-endpoint-base-prefix.md
+    hazard: >
+      `endpoint_base_prefix` is opt-in, and nothing detects that a pack needs it. The condition is
+      invisible until someone reads transcripts: the pack validates, anchors, and round-trips green,
+      and the only symptom is a cold endpoint score far below the documented one — which reads as a
+      large documentation lift, the exact result this project is looking for, so it is the least
+      likely number to be questioned. It cost a grid here and a grid at ADR-0013.
+    status: ungated
+    ungated_reason: >
+      A gate would have to decide that a gap between conditions is too large to be real, which is a
+      judgement about the finding rather than about the instrument. Every threshold considered would
+      either fire on the honest large gaps this method exists to find, or sit high enough to have
+      missed this one.
+    fix_queued_to: >
+      Not queued as a gate. A cheaper non-gate is queued instead: report, per condition, how many
+      unmatched answers would have matched under some single leading prefix, so the artifact shows up
+      as a number in the run summary rather than waiting to be noticed. Filed to ai-readiness-eval.
+
+  - id: a-declared-prefix-is-not-checked-against-the-vendor
+    adr: adr-0017-endpoint-base-prefix.md
+    hazard: >
+      A pack declares the prefix itself, and nothing verifies the string names a real base URL for
+      that vendor. A careless or over-broad declaration — a prefix that is actually a resource
+      segment — would collapse a real distinction and raise the endpoint score for a wrong answer.
+    status: ungated
+    ungated_reason: >
+      Verifying it means knowing the vendor's base URL independently of the pack, which is the pack's
+      own claim; there is no second source in the tree to check it against. The bounded protection
+      that does exist is structural: only a leading occurrence of one declared prefix is absorbed,
+      pinned by a must-not-inflate test that keeps `/admin/users/{id}` from matching `/users/{id}`.
+    fix_queued_to: >
+      Not queued. The realistic mitigation is review: the declaration sits in `pack.yaml` beside its
+      reason, and a prefix that is not a base URL is visible to a human reading the pack, which is
+      where every other anchoring claim in this project is also checked.
