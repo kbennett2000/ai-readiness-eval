@@ -65,7 +65,14 @@ def test_no_vendor_token_in_core_engine():
 
 
 def test_public_repo_names_no_prospect():
-    """Every tracked file (except this guard, which spells the tokens as patterns) is prospect-free."""
+    """Every tracked file (except this guard, which spells the tokens as patterns) is prospect-free.
+
+    That exemption is not a detail. It makes this file the one tracked file in a PUBLIC repository
+    that names every measured prospect — a plaintext roster, better organized than any leak the rule
+    forbids. It is unavoidable for a plaintext matcher and is recorded as a hazard rather than left
+    in this parenthetical: see `the-leak-guard-publishes-the-list-it-protects` in docs/hazards.yaml,
+    and issue #23 for the hashed-token design that would close it and what that would cost.
+    """
     try:
         tracked = subprocess.check_output(
             ["git", "ls-files"], cwd=REPO_ROOT, text=True
