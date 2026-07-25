@@ -965,3 +965,57 @@ entries:
       Not queued. The realistic mitigation is review: the declaration sits in `pack.yaml` beside its
       reason, and a prefix that is not a base URL is visible to a human reading the pack, which is
       where every other anchoring claim in this project is also checked.
+
+  # ---------------------------------------------------------------------- ADR-0020 ---
+
+  - id: the-contract-offers-a-version-spelling-the-scorer-refused
+    adr: adr-0020-service-qualified-version.md
+    hazard: >
+      The prompt contract advertises `<service>/v1` as a legal `api_version` answer, and
+      `normalize_version` compared it as a plain string, so it never equalled a ground truth written
+      `v1`. On an API documented as versioned per service, a model that had read the documentation
+      answered the contract's own second form on 55 of 55 endpoints and the dimension reported 1%.
+      The published gap would have said that vendor's documentation makes the model WORSE overall,
+      on the strength of a dimension measuring this project's own string comparison. `normalize_path`
+      had handled the identical case on the path side for cycles, in a comment sitting directly above
+      the version code and naming this dimension as where the difference is captured.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer_service_version.py::test_a_service_qualified_version_collapses_to_the_version
+      - core/tests/test_scorer_service_version.py::test_a_bare_version_is_untouched
+      - core/tests/test_scorer_service_version.py::test_the_collapse_is_symmetric
+      - core/tests/test_scorer_service_version.py::test_a_genuinely_different_version_still_scores_zero
+      - core/tests/test_scorer_service_version.py::test_the_wrong_service_is_caught_by_the_endpoint_dimension_not_this_one
+
+  - id: normalizing-an-exhibit-erases-the-evidence-that-finds-defects
+    adr: adr-0020-service-qualified-version.md
+    hazard: >
+      `endpoint_matches[].answer_api_version` is an EXHIBIT, not a comparison input, and the first
+      attempt at ADR-0020 wrote the normalized form into it. No score moved — the ten affected
+      archived answers were wrong before and after — but ten committed `search/v1` strings silently
+      became `v1`, destroying the record of what the model actually said. That record is the only
+      thing that distinguishes a wrong version from a differently-spelled right one, and reading it
+      is how this defect was found at all. The general hazard: any normalization applied to a
+      recorded field rather than to a comparison quietly removes the evidence a later cycle needs.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer_service_version.py::test_the_exhibit_records_what_the_model_wrote_not_the_normalized_form
+      - packs/sailpoint/tests/test_regression_gate.py::test_per_run_scores_are_byte_identical
+
+  - id: the-prompt-contract-still-advertises-two-spellings-for-one-version
+    adr: adr-0020-service-qualified-version.md
+    hazard: >
+      The scorer now accepts both spellings, which makes the measurement correct and leaves the cause
+      in place: the contract still tells every model that `v3` and `<service>/v1` are both fine, so
+      answers keep arriving in two notations and every future normalization rule has to keep
+      absorbing the difference. The clean fix is to name one spelling in the contract.
+    status: ungated
+    ungated_reason: >
+      The prompt is the shared instrument. Changing it makes every previously measured vendor
+      incomparable and cannot be re-applied to archives, whereas a scorer-only change re-scores every
+      existing transcript offline at zero model spend — which is what happened here.
+    fix_queued_to: >
+      The next deliberate cohort re-baseline, where it is now the THIRD prompt-contract item queued
+      behind the same trigger, after ADR-0008's unversioned-API wording and ADR-0014's flow-sequence
+      example. Three deferrals behind one trigger is itself worth reading as a signal about when that
+      re-run should be scheduled. Tracked in ai-readiness-eval.
