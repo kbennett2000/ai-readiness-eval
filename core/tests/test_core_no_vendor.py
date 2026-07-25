@@ -146,3 +146,24 @@ def test_preflight_marker_comes_from_pack(acme_pack):
 def test_guard_regex_actually_matches_known_vendor_tokens(token):
     # Guard the guard: ensure the detector would fire on the tokens it claims to catch.
     assert VENDOR_TOKENS.search(f"prefix {token} suffix")
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["saviynt", "okta", "cyberark", "oneidentity", "pingone", "delinea", "thycotic", "beyondtrust"],
+)
+def test_prospect_regex_actually_matches_every_token_it_claims(token):
+    """Guard the guard, prospect side — the equivalent of the vendor-token check above.
+
+    Its absence was noticed the ordinary way: removing one token from the pattern on purpose left the
+    ref scan failing anyway, because a DIFFERENT token still matched the same ref. A break test that
+    cannot fail for the reason you intended proves nothing, so each token is now asserted on its own.
+    """
+    assert PROSPECT_TOKENS.search(f"cycle-09-{token}"), f"{token!r} is listed but never fires"
+    assert PROSPECT_TOKENS.search(f"prefix {token.upper()} suffix"), f"{token!r} is case-sensitive"
+
+
+def test_prospect_regex_matches_the_one_cased_token():
+    # Matched only as the proper noun: the reference pack legitimately writes "exactly one identity".
+    assert PROSPECT_TOKENS_CASED.search("cycle-06-One Identity")
+    assert not PROSPECT_TOKENS_CASED.search("exactly one identity's accounts")
