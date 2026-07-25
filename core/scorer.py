@@ -94,9 +94,12 @@ def normalize_version(version: str | None) -> str:
 # `client_credentials`, `Basic-auth` and `sessionId` all land. A style is added here, never worked
 # around in a pack's ground truth — the `roundtrip` gate blocks a pack whose style is not listed.
 _AUTH_STYLES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("session-token", ("session token", "sessionid", "session id", "logon call", "logon token",
-                       "establish a session", "establishing a session", "session established",
-                       "within that session", "login session")),
+    # `session` and `logon` name the concept broadly on purpose. A first, narrower marker list of
+    # exact phrases scored 0 for answers reading "session bearer token" and "session cookie via
+    # authString login" — correct namings of the mechanism, failed on wording. That made the
+    # dimension measure our phrasebook. Bare `login` is deliberately NOT a marker: it appears in
+    # OAuth-shaped ground truth ("Basic-auth login ... POST /api/login") and would reclassify it.
+    ("session-token", ("session", "logon")),
     ("oauth2-client-credentials", ("client credentials",)),
     ("bearer-token", ("bearer",)),
     ("basic-auth", ("basic auth", "basic authentication", "http basic")),

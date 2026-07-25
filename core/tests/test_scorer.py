@@ -124,6 +124,37 @@ def test_precedence_is_table_order_and_is_load_bearing():
     assert cf(grant_via_basic) == "oauth2-client-credentials"
 
 
+@pytest.mark.parametrize("answer", [
+    "session bearer token",
+    "Session bearer token (Authorization header)",
+    "session cookie (authString POST)",
+    "session-based authentication (login token)",
+    "Application Server session authentication",
+    "Session token from the logon call",
+])
+def test_real_answers_that_name_the_session_mechanism_are_credited(answer):
+    """Regression on a marker list that was too narrow, caught by reading the near-misses.
+
+    A first draft matched exact phrases ("session token", "sessionid", ...) and scored 0 for every
+    string here — all of which name the mechanism correctly and differ only in wording. That made
+    the dimension measure our phrasebook rather than the model. `session`/`logon` match the concept.
+
+    The consequence is stated rather than hidden: "session bearer token" IS credited. The scored
+    dimension asks whether the model names the session mechanism; whether it *also* reaches for
+    bearer vocabulary is a separate, transcript-counted observation.
+    """
+    gt = "Session token from the logon call, sent in the Authorization header"
+    assert scorer.auth_flow_matches(gt, answer)
+
+
+def test_bare_login_is_not_a_session_marker():
+    """`login` appears in OAuth-shaped ground truth, so making it a marker would reclassify a pack
+    that legitimately requires bearer — the third-vendor safety property (ADR-0011 rule 3)."""
+    basic_login = ("HTTP Basic-auth login. POST to the login path; the response carries "
+                   "access_token and token_type=Bearer, sent on every subsequent call.")
+    assert scorer.canonical_auth_flow(basic_login) == "bearer-token"
+
+
 def test_an_unnameable_style_still_degrades_quietly_rather_than_raising():
     """The fallback survives so the scorer never raises — but `roundtrip` blocks the pack (ADR-0011)."""
     mtls = "Mutual TLS: the caller presents a client certificate"

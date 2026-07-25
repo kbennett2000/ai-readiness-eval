@@ -56,6 +56,28 @@ Matching stays separator-insensitive, so `client_credentials`, `Basic-auth` and 
 The two existing display labels are preserved verbatim, so no `detail` string moves for a reason
 unrelated to this change.
 
+**A marker list is itself an instrument, and the first draft of this one was a bad one.** It matched
+exact phrases — `session token`, `sessionid`, `establishing a session`. Re-scoring with it produced a
+`public-docs` auth figure of 20% for a session-token pack, which looked like a finding. Reading the
+answers it scored 0 showed what it actually was:
+
+> `session bearer token` · `session cookie (authString POST)` · `session-based authentication (login
+> token)` · `Application Server session authentication`
+
+Every one of those names the mechanism correctly and fails only on wording — 40 of that pack's 50
+`public-docs` runs. The figure was measuring **our phrasebook**. The markers are therefore the concept
+words `session` and `logon`, and the near-miss strings above are pinned as a regression test.
+
+Two things follow, and both are stated rather than hidden. First, `session bearer token` **is** now
+credited: the scored dimension asks whether the model names the session mechanism, and whether it
+*also* reaches for bearer vocabulary is a separate, transcript-counted observation. Second, bare
+`login` is deliberately **not** a marker — it appears in OAuth-shaped ground truth (*"Basic-auth login
+… POST /api/login"*) and would reclassify a pack that legitimately requires `bearer`.
+
+The general lesson is the suspect-instrument rule applied one level down: **a number produced by a rule
+written this cycle is the rule's suspect first.** The check that caught it costs nothing — read the
+answers the new rule scores zero, and ask whether they are wrong or merely worded differently.
+
 **2. The order is load-bearing, and each position is argued rather than tuned.**
 
 - `session-token` outranks the OAuth styles because a session token is minted by *one vendor's own
@@ -126,16 +148,21 @@ taken with the next deliberate cohort re-run — exactly as ADR-0008 recorded th
   | pack (unnamed; both session-token products) | `auth` no-context | `auth` public-docs | overall gap |
   |---|---|---|---|
   | A — before | 10% | 36% | +16 pts |
-  | A — after | **26%** | **82%** | **+22 pts** |
+  | A — after | **28%** | **100%** | **+25 pts** |
   | B — before | 2% | 100% | +38 pts |
-  | B — after | **18%** | **20%** | **+19 pts** |
+  | B — after | **20%** | **100%** | **+35 pts** |
 
-  Pack B's published headline — *documentation moves authentication from 2% to 100%* — does not
-  survive. What the docs actually moved was the model's willingness to say "bearer"; they did not get
-  it to name the session model. Pack A's *"auth is the one dimension documentation does not fix"* does
-  not survive either, in the opposite direction. Both cards carry the before/after and the reason.
+  Pack A's published finding — *"auth is the one dimension documentation does not mostly fix"* — does
+  not survive: it is now the dimension documentation fixes **completely**, and by the largest margin on
+  that card. Pack B's headline figure of 100% survives, but it is a different claim. It used to mean
+  *the model stopped saying "bearer"*; it now means **50 of 50 answers name the session mechanism**,
+  which is what the card said it meant all along and could not previously support. Both cards carry
+  the before/after and the reason.
 - Every claim resting on those figures is re-derived wherever it appears, including the cross-vendor
   ranking of documentation lift, which changes hands.
+- **A published number can move because the instrument improved, and that has to read as normal.**
+  Two cards change materially here with no new evidence and no model call. The archives make that
+  cheap; the ADR trail is what makes it legible rather than suspicious.
 - The general rule this sets, alongside ADR-0008's *"a uniformly-zero dimension is a suspect
   instrument"*: **a dimension that cannot be positively tested must not be allowed to score.** Free
   marks are harder to notice than zeros, because nothing looks broken.
