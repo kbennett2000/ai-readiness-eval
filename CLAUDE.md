@@ -138,3 +138,17 @@ verify with `git ls-files | grep -i private` (must return nothing).
   fact right in 98% of runs, and the whole gap was one path segment. The round-trip control (ADR-0010)
   structurally cannot catch this — an answer key written in the wrong notation still matches itself —
   so what caught it was the suspect-instrument rule plus reading the transcripts.
+- **Cycle 10.** Closed the format-failure hole the previous cycle reported rather than bundled
+  (ADR-0014). A model naming an indexed API parameter inside the single-line flow sequence **the prompt
+  contract itself demonstrates** produces invalid YAML, and the parser discarded the entire answer —
+  endpoint, method, version and auth along with the parameter list. One narrow repair now runs, only
+  after YAML has already failed, only on the two list-valued keys, with quote-aware splitting and an
+  item guard that abandons the repair rather than guess: both dimensions it can reach are
+  containment-scored, so a careless split could only ever manufacture a score *upward*, and that
+  counterexample is pinned as a must-not-repair test. Repairs are counted and the repaired text is
+  archived. Parser-only, so the whole cohort re-scored from archives at **$0, no model runs**; 7 of 826
+  archived runs were rescued and the frozen 73/68/93 reproduces — though only because the one rescued
+  reference answer scored 6/6, which the ADR records as luck rather than safety. The fix moved cells
+  **down** as well as up, which is the evidence it repairs an instrument instead of inflating a result.
+  Changing the prompt's example is the better permanent fix and is deferred to the next cohort re-run,
+  because it cannot be re-applied to archives.

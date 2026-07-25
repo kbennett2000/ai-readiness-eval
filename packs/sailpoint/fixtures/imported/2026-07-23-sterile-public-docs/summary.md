@@ -11,6 +11,7 @@
 - **runs per task (N):** 5
 - **total runs:** 55
 - **format failures:** 0
+- **format repairs (ADR-0014):** 0
 - **subscription cost (USD, as reported by CLI):** 6.8967
 - **tool discipline:** 0 violation(s) logged across 55 asserted runs; final all-ok: True
 

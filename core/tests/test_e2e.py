@@ -61,7 +61,7 @@ def _record_from(task, run_index, text):
     else:
         s = score_task(task, parsed.summary)
     dims = {d: (s.dim(d).score if s.dim(d) else None) for d in DIMENSIONS}
-    return {
+    rec = {
         "task_id": task["id"],
         "run_index": run_index,
         "format_failure": s.format_failure,
@@ -70,6 +70,9 @@ def _record_from(task, run_index, text):
         "endpoint_matches": s.endpoint_matches,
         "raw_response": text,
     }
+    if parsed.repaired:  # mirrors the runner (ADR-0014)
+        rec["format_repaired"] = True
+    return rec
 
 
 def test_three_run_mix_reports_correctly(tmp_path):
@@ -136,3 +139,49 @@ def test_api_provider_blocked_without_key(tmp_path, monkeypatch):
     rc = main(["--pack", ACME, "run", "--condition", "no-context", "--provider", "api",
                "--n", "1", "--out", str(tmp_path / "x")])
     assert rc == 3
+
+
+# --- ADR-0014: the repair counter is reported, never absorbed ---------------
+
+REPAIRED = """\
+```answer-summary
+endpoints:
+  - method: GET
+    path: /v3/widgets
+    api_version: v3
+auth_flow: OAuth2 bearer token
+required_scopes: [widgets:read]
+key_parameters: [filters, sortBy[0].name]
+```
+"""
+
+
+def test_format_repairs_are_counted_and_always_reported(tmp_path):
+    task = _task()
+    records = [
+        _record_from(task, 0, PERFECT),
+        _record_from(task, 1, REPAIRED),
+    ]
+    # The repair fires through the real parse path, not a hand-set flag.
+    assert records[1]["format_repaired"] is True
+    assert "format_repaired" not in records[0]
+
+    agg = report.aggregate(records)
+    assert agg["format_repairs"] == 1
+    assert agg["per_task"]["widget-list"]["format_repairs"] == 1
+    # A repaired run is SCORED, not counted a failure.
+    assert agg["format_failures"] == 0
+    assert agg["total_runs"] == 2
+
+    out = tmp_path / "rep"
+    report.write_reports(out, records, {"condition": "no-context"})
+    summary = (out / "summary.md").read_text()
+    assert "**format repairs (ADR-0014):** 1" in summary
+
+
+def test_the_repair_counter_is_present_even_when_zero():
+    """A reader must be able to tell 'nothing needed repair' from 'this report
+    predates the counter'."""
+    agg = report.aggregate([_record_from(_task(), 0, PERFECT)])
+    assert agg["format_repairs"] == 0
+    assert agg["per_task"]["widget-list"]["format_repairs"] == 0

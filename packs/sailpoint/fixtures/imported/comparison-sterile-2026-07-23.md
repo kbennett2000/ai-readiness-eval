@@ -13,14 +13,14 @@
 
 | dimension | no-context | public-docs | mcp | Δ(mcp−no-context) | Δ(mcp−public-docs) |
 |---|---|---|---|---|---|
-| endpoint | 76% | 81% | 86% | +10 pts | +5 pts |
-| method | 76% | 81% | 86% | +10 pts | +5 pts |
-| version | 76% | 59% | 86% | +11 pts | +27 pts |
-| auth | 98% | 100% | 98% | -0 pts | -2 pts |
+| endpoint | 76% | 81% | 87% | +10 pts | +5 pts |
+| method | 76% | 81% | 87% | +10 pts | +5 pts |
+| version | 76% | 59% | 87% | +11 pts | +27 pts |
+| auth | 98% | 100% | 98% | +0 pts | -2 pts |
 | scopes | 22% | 2% | 100% | +78 pts | +98 pts |
 | params | 87% | 87% | 98% | +11 pts | +11 pts |
 | **overall** | 73% | 68% | 93% | +20 pts | +24 pts |
-| format failures | 0/55 | 0/55 | 1/55 | | |
+| format failures | 0/55 | 0/55 | 0/55 | | |
 
 ## Per-task accuracy (mean of applicable dimensions)
 
@@ -53,7 +53,6 @@
 | search-filter | 100% / 100% / 100% | 100% / 100% / 100% | 100% / 0% / 100% | 100% / 100% / 100% | 0% / 0% / 100% | 100% / 100% / 100% |
 | source-aggregation | 50% / 50% / 75% | 50% / 50% / 75% | 45% / 40% / 75% | 100% / 100% / 100% | 100% / 0% / 100% | 60% / 40% / 100% |
 | transform | 33% / 47% / 67% | 33% / 47% / 67% | 33% / 47% / 67% | 100% / 100% / 100% | 0% / 0% / 100% | 100% / 100% / 100% |
-
 ## Delta vs cycle-6 contaminated: what the crib sheet (CLAUDE.md) was worth
 
 > cycle-7 sterile − cycle-6 contaminated, per condition per dimension (matched by condition name). Positive = cycle-7 sterile scored higher; negative = the condition leaned on ambient CLAUDE.md.

@@ -55,6 +55,7 @@ def aggregate(records: list[dict]) -> dict:
         per_task[tid] = {
             "runs": n_runs,
             "format_failures": n_fmt,
+            "format_repairs": sum(1 for r in runs if r.get("format_repaired")),
             "dimensions": dim_means,
         }
 
@@ -76,6 +77,9 @@ def aggregate(records: list[dict]) -> dict:
         "overall_accuracy": mean(applicable) if applicable else None,
         "total_runs": len(records),
         "format_failures": sum(1 for r in records if r.get("format_failure")),
+        # ADR-0014. Always present, including as 0 — a reader must be able to tell
+        # "no answer needed repair" from "this report predates the counter".
+        "format_repairs": sum(1 for r in records if r.get("format_repaired")),
     }
 
 
@@ -96,7 +100,8 @@ def render_summary_md(agg: dict, metadata: dict) -> str:
         f"- **spec_sha:** {metadata.get('spec_sha')}",
         f"- **runs per task (N):** {metadata.get('n')}",
         f"- **total runs:** {agg['total_runs']}",
-        f"- **format failures:** {agg['format_failures']}",]
+        f"- **format failures:** {agg['format_failures']}",
+        f"- **format repairs (ADR-0014):** {agg.get('format_repairs', 0)}",]
     if metadata.get("total_cost_usd") is not None and metadata.get("provider") not in (None, "mock"):
         lines.append(f"- **subscription cost (USD, as reported by CLI):** "
                      f"{metadata.get('total_cost_usd')}")

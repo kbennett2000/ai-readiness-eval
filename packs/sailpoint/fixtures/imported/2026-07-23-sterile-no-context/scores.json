@@ -1,6 +1,7 @@
 {
   "aggregate": {
     "format_failures": 0,
+    "format_repairs": 0,
     "overall_accuracy": 0.7260606060606061,
     "overall_dimensions": {
       "api_version": 0.7575757575757576,
@@ -21,6 +22,7 @@
           "required_scopes": 0.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "audit-report": {
@@ -33,6 +35,7 @@
           "required_scopes": 0.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "auth-token": {
@@ -45,6 +48,7 @@
           "required_scopes": null
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "cert-campaign": {
@@ -57,6 +61,7 @@
           "required_scopes": 0.6
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "find-identity": {
@@ -69,6 +74,7 @@
           "required_scopes": 0.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "grant-revoke": {
@@ -81,6 +87,7 @@
           "required_scopes": 0.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "identity-accounts": {
@@ -93,6 +100,7 @@
           "required_scopes": 0.2
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "lifecycle-trigger": {
@@ -105,6 +113,7 @@
           "required_scopes": 0.4
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "search-filter": {
@@ -117,6 +126,7 @@
           "required_scopes": 0.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "source-aggregation": {
@@ -129,6 +139,7 @@
           "required_scopes": 1.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       },
       "transform": {
@@ -141,6 +152,7 @@
           "required_scopes": 0.0
         },
         "format_failures": 0,
+        "format_repairs": 0,
         "runs": 5
       }
     },
