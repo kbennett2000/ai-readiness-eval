@@ -4,6 +4,8 @@
    must arrive through a loaded Pack. The test suite MAY name SailPoint, which is the public reference
    pack (not a prospect) and is exercised for cross-pack coverage.
 2. No tracked file in the public repo may name a measured prospect (they live in a private repo).
+3. Nor may any git ref. Branch names are published as surely as file contents, and `git ls-files`
+   cannot see them — a gap found only after a `cycle-NN-<vendor>` branch had already been pushed.
 """
 import re
 import subprocess
@@ -31,7 +33,7 @@ VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn
 # and this one still hosts that vendor's published spec — so a stray spec URL in a public file would
 # name the prospect without ever spelling its current name.
 PROSPECT_TOKENS = re.compile(
-    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic", re.IGNORECASE
+    r"saviynt|okta|cyberark|oneidentity|pingone|delinea|thycotic|beyondtrust", re.IGNORECASE
 )
 
 # One prospect's name is also an ordinary phrase in this domain: the reference pack legitimately says
@@ -83,6 +85,35 @@ def test_public_repo_names_no_prospect():
     )
 
 
+def test_public_repo_ref_names_no_prospect():
+    """Branch names are published too, and `git ls-files` structurally cannot see them.
+
+    Found the ordinary way: a cycle branched as `cycle-NN-<vendor>` and pushed, putting a measured
+    prospect's name on a world-visible ref while `test_public_repo_names_no_prospect` stayed green —
+    it reads tracked file CONTENT, and a ref is neither a file nor tracked. The disclosure is the
+    same one that guard exists to prevent, reached by a route it does not cover.
+
+    Deleting a ref is destructive, so this test does not repair anything. It fails until the operator
+    deletes the branch upstream and prunes, which is the point: an unattended cycle records the
+    problem and cannot forget it, rather than recording it once in a report nobody re-reads.
+    """
+    try:
+        refs = subprocess.check_output(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+            cwd=REPO_ROOT, text=True,
+        ).splitlines()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pytest.skip("not a git checkout")
+    offenders = [r for r in refs if PROSPECT_TOKENS.search(r) or PROSPECT_TOKENS_CASED.search(r)]
+    assert not offenders, (
+        "a git ref names a measured prospect, and refs are world-visible:\n"
+        + "\n".join(offenders)
+        + "\n\nDelete it upstream, then prune the local tracking ref:\n"
+        "  git push origin --delete <branch> && git fetch --prune\n"
+        "A stale remote-tracking ref fails this test after the upstream branch is gone; prune first."
+    )
+
+
 def test_no_vendor_token_in_pack_acme_fixture():
     # The test fixture itself must stay vendor-neutral, else the guard above would have to whitelist it.
     for path in sorted(ACME_PACK_DIR.rglob("*")):
@@ -115,3 +146,24 @@ def test_preflight_marker_comes_from_pack(acme_pack):
 def test_guard_regex_actually_matches_known_vendor_tokens(token):
     # Guard the guard: ensure the detector would fire on the tokens it claims to catch.
     assert VENDOR_TOKENS.search(f"prefix {token} suffix")
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["saviynt", "okta", "cyberark", "oneidentity", "pingone", "delinea", "thycotic", "beyondtrust"],
+)
+def test_prospect_regex_actually_matches_every_token_it_claims(token):
+    """Guard the guard, prospect side — the equivalent of the vendor-token check above.
+
+    Its absence was noticed the ordinary way: removing one token from the pattern on purpose left the
+    ref scan failing anyway, because a DIFFERENT token still matched the same ref. A break test that
+    cannot fail for the reason you intended proves nothing, so each token is now asserted on its own.
+    """
+    assert PROSPECT_TOKENS.search(f"cycle-09-{token}"), f"{token!r} is listed but never fires"
+    assert PROSPECT_TOKENS.search(f"prefix {token.upper()} suffix"), f"{token!r} is case-sensitive"
+
+
+def test_prospect_regex_matches_the_one_cased_token():
+    # Matched only as the proper noun: the reference pack legitimately writes "exactly one identity".
+    assert PROSPECT_TOKENS_CASED.search("cycle-06-One Identity")
+    assert not PROSPECT_TOKENS_CASED.search("exactly one identity's accounts")
