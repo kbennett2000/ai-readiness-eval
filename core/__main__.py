@@ -53,7 +53,7 @@ def _results_dir(pack: Pack) -> Path:
 
 
 def _record(task_id: str, run_index: int, score, resp, *,
-            tool_discipline: dict | None = None, parsed=None) -> dict:
+            tool_discipline: dict | None = None, parsed=None, mock: bool = False) -> dict:
     dims = {d: (score.dim(d).score if score.dim(d) else None) for d in DIMENSIONS}
     rec = {
         "task_id": task_id,
@@ -72,6 +72,12 @@ def _record(task_id: str, run_index: int, score, resp, *,
     }
     if tool_discipline is not None:
         rec["tool_discipline"] = tool_discipline
+    # Provenance stamp. Written only on a mock run, so every real archive stays byte-identical and no
+    # committed result moves — the same discipline `format_repaired` follows below. The resume path
+    # reads it to refuse reusing a mock answer in a real grid; absence therefore has to mean "real",
+    # which is exactly what it means for every archive written before this stamp existed.
+    if mock:
+        rec["mock"] = True
     # ADR-0014: present only on a run the repair actually rescued, so every
     # untouched archive stays byte-identical. The repaired text is archived with
     # it — a repaired score must stay reproducible from what was really parsed.
@@ -79,6 +85,31 @@ def _record(task_id: str, run_index: int, score, resp, *,
         rec["format_repaired"] = True
         rec["repaired_block_text"] = parsed.repaired_block_text
     return rec
+
+
+def may_reuse_archived_run(prev: dict, *, is_mock: bool) -> tuple[bool, str]:
+    """Whether an archived run may stand in for a run we are about to make, and why not if not.
+
+    Two independent conditions, both of which have to hold:
+
+    * **Discipline.** A run that failed its tool-discipline assertion was never a valid measurement,
+      so it is re-run rather than reused.
+    * **Provenance.** A mock answer may only satisfy a mock run, and a real answer a real run.
+      `--mock` writes its per-condition runs into the SAME date-stamped directory a real grid uses
+      (only the mock *preflight* gets a directory of its own), so the documented dry-run sequence —
+      `factory next --provider mock`, then `factory next --model <id>` on the same day — would
+      otherwise resume straight off the mock answers and publish them under a metadata block naming
+      the real model.
+
+    Absence of the `mock` key means "real", which is what it means for every archive written before
+    the stamp existed — so no committed result is invalidated and no re-run is forced.
+    """
+    if bool(prev.get("mock", False)) != is_mock:
+        return False, ("archived run is mock, this run is not" if prev.get("mock")
+                       else "archived run is real, this run is mock")
+    if not prev.get("tool_discipline", {}).get("ok", True):
+        return False, "archived run failed its tool-discipline assertion"
+    return True, ""
 
 
 def _score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None):
@@ -296,16 +327,20 @@ def cmd_run(args: argparse.Namespace) -> int:
     for task in tasks:
         for run_index in range(args.n):
             run_path = runs_dir / f"{task['id']}-run{run_index}.json"
-            # Resumable: reuse an archived run that already passed its tool-discipline assertion.
+            # Resumable: reuse an archived run only if it is still a valid stand-in for the run we
+            # would otherwise make. See `may_reuse_archived_run` for the two conditions and why the
+            # provenance one is load-bearing rather than bookkeeping.
             if run_path.exists() and not args.overwrite:
                 prev = json.loads(run_path.read_text())
-                if prev.get("tool_discipline", {}).get("ok", True):
+                reusable, why_not = may_reuse_archived_run(prev, is_mock=mock is not None)
+                if reusable:
                     records.append(prev)
                     total_cost += prev.get("cost_usd", 0.0)
                     total_ms += prev.get("duration_ms", 0)
                     reused += 1
                     print(f"  {task['id']} run {run_index + 1}/{args.n}: reused (archived)")
                     continue
+                print(f"  {task['id']} run {run_index + 1}/{args.n}: re-running ({why_not})")
 
             messages = condition.build_messages(task)
             system = condition.system_prompt(task)
@@ -336,7 +371,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             total_ms += getattr(resp, "duration_ms", 0)
             score, parsed = _score_response(task, resp.text, pack.base_prefix_segments)
             rec = _record(task["id"], run_index, score, resp, tool_discipline=discipline,
-                          parsed=parsed)
+                          parsed=parsed, mock=mock is not None)
             records.append(rec)
             run_path.write_text(json.dumps(rec, indent=2))
             status = "FMT-FAIL" if score.format_failure else "scored"

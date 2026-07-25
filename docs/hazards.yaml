@@ -337,6 +337,44 @@ entries:
       - core/tests/test_core_no_vendor.py::test_public_repo_names_no_prospect
       - core/tests/test_core_no_vendor.py::test_public_repo_ref_names_no_prospect
 
+  - id: a-mock-answer-can-be-resumed-into-a-real-grid
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      `run --mock` writes its per-condition runs into the SAME date-stamped results directory a
+      real grid uses — only the mock *preflight* gets a directory of its own — and the runner is
+      resumable. So the dry-run sequence this project's own README documents (`factory next
+      --provider mock`, then `factory next --model <id>` on the same day) resumed straight off the
+      mock answers, counted them as measured, and wrote a metadata block naming the real model and
+      a real spend. Publishing a mock number as a vendor's result is the worst failure available to
+      this harness, and it sat on the documented happy path.
+    status: gated
+    gated_by:
+      - core/tests/test_run_provenance.py::test_a_mock_archive_is_refused_by_a_real_run
+      - core/tests/test_run_provenance.py::test_a_real_archive_is_refused_by_a_mock_run
+      - core/tests/test_run_provenance.py::test_a_disciplined_mock_archive_is_still_refused_by_a_real_run
+      - core/tests/test_run_provenance.py::test_a_mock_run_stamps_every_archived_run
+      - core/tests/test_run_provenance.py::test_a_second_mock_run_still_resumes
+
+  - id: run-provenance-is-recorded-only-as-an-absence
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      The guard above reads a `mock: true` stamp, and treats its ABSENCE as "this was a real run".
+      That is what absence means for every archive written before the stamp existed, which is why
+      it was chosen — the alternative invalidates every committed result and forces a full re-burn.
+      But it means the guard protects against a mock archive mislabelled as real, and not against
+      any other provenance mismatch: a run archived under a different model, a different prompt
+      contract, or a different scorer version is still reused without comment.
+    status: ungated
+    ungated_reason: >
+      A full provenance hash over model, prompt and scorer would catch the general case, but it
+      would also invalidate every archive in the cohort the moment any of the three changed —
+      which is precisely what `rebuild-report` exists to avoid, since re-scoring archives offline
+      at zero model spend is how three previous cycles corrected published numbers.
+    fix_queued_to: >
+      Not queued as a hash. The mitigation that already exists is that a deliberate cohort
+      re-baseline re-runs everything anyway, and the model is recorded in each condition's
+      metadata where a reader can see it.
+
   - id: prospect-name-leaks-where-no-test-can-read
     adr: adr-0006-factory-dispatcher.md
     hazard: >
