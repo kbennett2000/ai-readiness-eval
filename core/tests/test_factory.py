@@ -157,6 +157,54 @@ def test_anchoring_blocks_on_an_unresolvable_spec_ref(tmp_path):
     assert "conjureWidget" in detail
 
 
+# --- the spec's server prefix is notation, not address (ADR-0013) ----------- #
+
+@pytest.mark.parametrize("server_url, path_key", [
+    ("/Vendor/api", "/v1/things"),          # OpenAPI 3, prefix split off into servers
+    ("https://h.example/Vendor/api", "/v1/things"),   # absolute server URL — path component only
+])
+def test_a_pack_may_write_the_path_from_any_point_in_the_spec_prefix(server_url, path_key):
+    """All three notations name the same endpoint, so all three must anchor.
+
+    Which one is CORRECT is decided by the vendor's documentation, not by the spec — a vendor whose
+    spec folds `/api` into servers[0].url routinely documents its base URL as the host and writes
+    every worked example as `/api/v1/...`. Pinning ground truth to the spec's notation scored a
+    correct answer wrong on one path segment (ADR-0013).
+    """
+    spec = {"servers": [{"url": server_url}],
+            "paths": {path_key: {"get": {"operationId": "listThings"}}}}
+    _method, accepted = factory._index_operations(spec)["listThings"]
+    assert "/v1/things" in accepted            # the spec's own notation
+    assert "/api/v1/things" in accepted        # what the docs usually say
+    assert "/Vendor/api/v1/things" in accepted # from the host
+    assert "/things" not in accepted           # not a free-for-all: the prefix is what the spec declares
+
+
+def test_swagger2_base_path_is_the_same_prefix():
+    spec = {"basePath": "/Vendor/api",
+            "paths": {"/v1/things": {"get": {"operationId": "listThings"}}}}
+    _method, accepted = factory._index_operations(spec)["listThings"]
+    assert {"/v1/things", "/api/v1/things", "/Vendor/api/v1/things"} <= set(accepted)
+
+
+def test_a_spec_with_no_server_prefix_accepts_only_its_own_path():
+    """The no-prefix case is what the frozen reference pack is, and it must not widen."""
+    spec = {"paths": {"/v3/accounts": {"get": {"operationId": "listAccounts"}}}}
+    _method, accepted = factory._index_operations(spec)["listAccounts"]
+    assert accepted == ["/v3/accounts"]
+
+
+def test_anchoring_still_blocks_a_path_that_matches_no_notation(tmp_path):
+    """Widening the accepted set must not turn the gate off."""
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    task = pack_dir / "tasks" / "widget-create.yaml"
+    task.write_text(task.read_text().replace("path: /v3/widgets", "path: /v3/gadgets"))
+    ok, detail = factory.check_anchoring(Pack.load(pack_dir))
+    assert not ok
+    assert "/v3/gadgets" in detail
+
+
 # --------------------------------------------------------------------------- #
 # Pipeline (offline, mock provider)
 # --------------------------------------------------------------------------- #
