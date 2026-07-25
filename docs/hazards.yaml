@@ -1,0 +1,720 @@
+# The hazard registry — every recorded way this project's instruments can mislead.
+#
+# WHY THIS FILE EXISTS (ADR-0015)
+#   A hazard recorded in an ADR is recorded once and then buried in the ADR that found it.
+#   ADR-0011 named the decay mode in its own words: "Left there, 'recorded as open work' is a
+#   note that decays." It decayed twice at measurable cost — ADR-0014 repaired a failure the
+#   previous cycle's card had predicted in writing and left unfixed, and ADR-0013 found a
+#   dimension reported at 13.7% when the model was right in 98% of runs.
+#
+#   So every hazard here must declare one of two things, and `core/tests/test_hazards.py`
+#   fails if it declares neither.
+#
+# VOCABULARY — the distinction this file exists to hold
+#   gated        A test fires that prevents the hazard from occurring, or from regressing
+#                silently. `gated_by` names it, and the test must exist on disk.
+#   ungated      No such test. `ungated_reason` says why, `fix_queued_to` says where the fix
+#                is queued (including "not queued", said plainly).
+#   drift_pin    OPTIONAL, and ONLY on an ungated entry. A test that fires if the hazard's
+#                *state* is changed, while the hazard itself stays live. ADR-0011's OAuth
+#                example is the type case: the pin makes editing it a deliberate re-baseline;
+#                it does not remove the bias. A drift pin NEVER satisfies the gated
+#                requirement, and a test asserts that it cannot.
+#
+# SCOPE
+#   Included: recorded ways a measurement, gate, or control of this project can be wrong,
+#   blind, or silently misleading. Excluded: feature backlog — ADR-0004's richer cross-vendor
+#   views and ADR-0006's `cmd_run` refactor are deferred work, not hazards, and are not here.
+#
+# HOW IT GROWS
+#   By ADR, not ad hoc — the same rule as `core/taxonomy.py`. An ADR that records no hazard is
+#   listed in `adrs_with_no_recorded_hazard` rather than simply omitted, so a new ADR forces a
+#   decision instead of silently adding a blind spot.
+#
+# WHAT IT CANNOT DO
+#   It lists hazards somebody wrote down. An unrecognized hazard is still invisible here. This
+#   is a decay gate, not a discovery method.
+
+version: 1
+
+# Every ADR on disk is accounted for by at least one entry below, so this list is empty.
+adrs_with_no_recorded_hazard: []
+
+entries:
+
+  # ---------------------------------------------------------------- ADR-0001 / ADR-0002 ---
+
+  - id: privacy-check-is-a-manual-pre-push-grep
+    adr: adr-0001-purpose-and-core-pack-architecture.md
+    hazard: >
+      The rule that business material never reaches a tracked file is enforced by a human
+      running `git ls-files | grep -i private` before each push. Nothing fails if it is
+      skipped, and the failure mode is unrecoverable once pushed.
+    status: ungated
+    ungated_reason: >
+      A test could assert that no tracked path matches, but the real hazard is content
+      quoted out of a private file into an ADR or commit message, which no path check sees.
+      The weaker check was never written because it would read as coverage it does not give.
+    fix_queued_to: >
+      Not queued. A path-level check is cheap and would close half of it; the half it cannot
+      close is the half that matters, which is why it has not been treated as a win.
+
+  - id: vendor-guard-is-a-token-grep-not-a-semantic-check
+    adr: adr-0001-purpose-and-core-pack-architecture.md
+    hazard: >
+      "core/ is vendor-agnostic" is enforced by grepping for a fixed list of vendor tokens. A
+      vendor assumption expressed without any listed token — a hardcoded path shape, a task
+      count, an auth style assumed universal — passes the guard.
+    status: ungated
+    ungated_reason: >
+      A grep cannot check semantics. The guard proves the absence of names, not the absence
+      of coupling.
+    fix_queued_to: >
+      Not queued. Mitigated in review, and by keeping vendor specifics reachable only through
+      a loaded Pack so coupling has to be written deliberately to exist at all.
+    drift_pin:
+      - core/tests/test_core_no_vendor.py::test_guard_regex_actually_matches_known_vendor_tokens
+
+  - id: unpinned-model-makes-runs-incomparable
+    adr: adr-0001-purpose-and-core-pack-architecture.md
+    hazard: >
+      A grid run against an unpinned model alias silently measures whatever the alias resolved
+      to that day, and its numbers cannot be compared to any other condition.
+    status: gated
+    gated_by:
+      - core/tests/test_run_guard.py::test_unpinned_cli_run_is_blocked
+
+  - id: provenance-class-is-invisible-to-the-regression-gate
+    adr: adr-0002-extraction-and-regression-gate.md
+    hazard: >
+      The frozen-table gate asserts byte identity everywhere except a documented
+      run-provenance class (`cli_policy`, `tool_discipline_summary`, `reused_runs` /
+      `rebuilt_from_runs`). A change whose whole effect lands inside that class is invisible
+      to the gate.
+    status: ungated
+    ungated_reason: >
+      Deliberate. Those keys legitimately differ between an original run and an offline
+      rebuild, so requiring byte identity there would make the gate unrunnable.
+    fix_queued_to: >
+      Not queued. The class is bounded rather than compared, which is the trade accepted when
+      the gate was written.
+    drift_pin:
+      - packs/sailpoint/tests/test_regression_gate.py::test_metadata_diff_is_only_the_provenance_class
+
+  - id: rebuild-report-on-fixtures-defeats-the-regression-gate
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      Regenerating the frozen fixtures with `rebuild-report` drops the run-provenance
+      metadata and the tool-discipline line the gate's own assertions read, which would leave
+      the gate comparing a rebuild to a rebuild forever — green, and measuring nothing.
+    status: gated
+    gated_by:
+      - packs/sailpoint/tests/test_regression_gate.py::test_metadata_diff_is_only_the_provenance_class
+      - packs/sailpoint/tests/test_regression_gate.py::test_summary_diff_is_only_the_tool_discipline_note
+
+  - id: live-context-layer-rerun-is-out-of-scope-for-the-equivalence-claim
+    adr: adr-0002-extraction-and-regression-gate.md
+    hazard: >
+      The third condition's frozen headline is reproducible only by re-scoring archived
+      transcripts offline. The live server is external and is never started, so that number
+      has never been re-verified end to end against a running layer.
+    status: ungated
+    ungated_reason: >
+      Deliberate scope boundary. Vendoring the external server to make a live re-run possible
+      was rejected as out of proportion to what it would prove.
+    fix_queued_to: >
+      Not queued. The claim the gate makes is extraction equivalence, and it is stated as
+      that rather than as reproducibility of the original run.
+
+  - id: answer-block-contract-assumes-a-rest-shaped-task
+    adr: adr-0002-extraction-and-regression-gate.md
+    hazard: >
+      The six scored dimensions presuppose a REST-shaped readiness task. A vendor whose
+      readiness is not API-shaped cannot be measured by this contract, and nothing detects
+      that before a pack is authored against it.
+    status: ungated
+    ungated_reason: >
+      The contract is the method, not a pack setting. Detecting "this vendor does not fit"
+      mechanically would require a second contract to compare against.
+    fix_queued_to: >
+      A new ADR, not a pack. Recorded in ADR-0002 as an explicit boundary of the method.
+
+  # ------------------------------------------------------------------------- ADR-0003/4 ---
+
+  - id: per-task-scores-are-not-cross-vendor-comparable
+    adr: adr-0003-job-taxonomy.md
+    hazard: >
+      Tasks are product-native by design, so one vendor's per-task number means something
+      different from another's. Nothing prevents a reader — or a future renderer — from
+      putting two per-task figures side by side.
+    status: ungated
+    ungated_reason: >
+      The rule is about how numbers are read, and the committed artifacts contain both the
+      per-task and the per-category view. Code cannot tell which one a reader is comparing.
+    fix_queued_to: >
+      Not queued. Enforced by convention: cross-vendor comparison happens only at category
+      level, and the renderer emits only category rollups.
+
+  - id: taxonomy-was-derived-from-one-pack
+    adr: adr-0003-job-taxonomy.md
+    hazard: >
+      The category set was derived from the reference pack's eleven tasks and asserted to fit
+      any enterprise identity product. A vendor whose surface does not decompose this way gets
+      forced into a category or marked N/A.
+    status: ungated
+    ungated_reason: >
+      Generality cannot be tested without the vendors that would disprove it. Every pack added
+      is evidence either way, and N/A is a first-class recorded outcome rather than a fudge.
+    fix_queued_to: >
+      Not queued as code. The set grows only by amending ADR-0003, so widening it is a visible
+      decision rather than a drift.
+
+  - id: category-rollup-is-a-mean-of-means
+    adr: adr-0004-category-cross-vendor-comparison.md
+    hazard: >
+      Where a vendor maps several tasks to one category, that category's number is the mean of
+      the tasks' means — raw runs are not re-pooled, so tasks with different run counts weigh
+      equally.
+    status: ungated
+    ungated_reason: >
+      Coarse by design, and stated as such. The consumable committed artifact is each pack's
+      aggregate, not its raw runs, so re-pooling would require the renderer to reach past the
+      published artifact.
+    fix_queued_to: >
+      Not queued. Would need an ADR, because it changes what a published category number means.
+
+  - id: nothing-stops-a-caller-mixing-conditions-in-one-table
+    adr: adr-0004-category-cross-vendor-comparison.md
+    hazard: >
+      The cross-vendor renderer takes one labeled rollup per source and cannot know which
+      condition each represents. A table mixing a cold column with a documented one would
+      render cleanly and read as like-for-like.
+    status: ungated
+    ungated_reason: >
+      Deliberate: keeping the renderer free of condition assumptions is what lets a
+      two-condition pack and a three-condition pack appear in the same table at all.
+    fix_queued_to: >
+      Not queued. The caller labels each column and the label is what a reader checks.
+
+  # --------------------------------------------------------------------- ADR-0005/7/9 ----
+
+  - id: unfetchable-docs-are-indistinguishable-from-a-zero-lift
+    adr: adr-0005-public-docs-fetch-fidelity.md
+    hazard: >
+      An un-fetchable page injects nothing, so the documented condition scores as if the docs
+      did not help. A zero lift caused by our fetcher and a zero lift caused by the vendor's
+      documentation produce the same headline number.
+    status: ungated
+    ungated_reason: >
+      The distinction lives in the committed manifest (`fetch_error`, `byte_size`), not in the
+      score. Refusing to run the grid instead would suppress the finding the method exists to
+      make.
+    fix_queued_to: >
+      Not queued as a gate. ADR-0007 and ADR-0009 each closed one instance where our client,
+      not the vendor, caused the zero; the general case is answered by reading the manifest.
+
+  - id: a-page-that-claims-content-but-has-no-snapshot
+    adr: adr-0005-public-docs-fetch-fidelity.md
+    hazard: >
+      Forgetting to fetch would otherwise look identical to a vendor whose pages are all
+      un-fetchable — every page injects nothing, and the grid runs anyway.
+    status: gated
+    gated_by:
+      - core/tests/test_public_docs_condition.py::test_missing_cache_raises
+      - core/tests/test_public_docs_condition.py::test_unfetchable_page_injects_nothing_not_error
+
+  - id: a-browser-user-agent-hides-the-bot-gate-it-was-added-for
+    adr: adr-0007-docs-fetch-user-agent.md
+    hazard: >
+      A docs host that serves browsers and refuses self-identifying readers is itself a
+      finding. A fetcher that always presented as a browser would never surface it, so the
+      override that makes such a vendor measurable also destroys the signal if it becomes the
+      default.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_fetch.py::test_default_user_agent_is_the_self_identifying_one
+      - core/tests/test_docs_fetch.py::test_user_agent_override_is_used_and_recorded
+
+  - id: no-prior-pack-affected-was-a-one-time-manual-recheck
+    adr: adr-0007-docs-fetch-user-agent.md
+    hazard: >
+      The claim that no already-published finding changed when the User-Agent override landed
+      rests on a manual re-fetch of every committed manifest URL under both agents, done once.
+      Nothing re-runs it.
+    status: ungated
+    ungated_reason: >
+      Re-running it means live network calls against vendor docs hosts on every suite run,
+      which the method deliberately does not do.
+    fix_queued_to: >
+      Not queued. The manifest records which agent produced each snapshot, so the check is
+      repeatable by hand from the committed record.
+
+  - id: retry-floor-is-calibrated-against-one-host
+    adr: adr-0009-throttled-docs-fetch.md
+    hazard: >
+      The throttle backoff was measured against a single live host. A host with a longer
+      penalty window still exhausts its retries and records a fetch error, which then reads as
+      a fact about that vendor's documentation.
+    status: ungated
+    ungated_reason: >
+      Calibration needs the host. A guessed floor would trade one silent misclassification
+      for another, which is the reason a minimum-length heuristic was also refused.
+    fix_queued_to: >
+      Not queued. A pack declares its own `fetch_delay_seconds`, so a newly met host is
+      accommodated by config and its recon ADR says what the host does.
+
+  - id: a-near-empty-page-still-counts-as-a-page
+    adr: adr-0009-throttled-docs-fetch.md
+    hazard: >
+      The empty-body check tests the raw body, not the extracted text. An HTML shell that
+      renders its content with JavaScript hashes cleanly and is recorded as a real snapshot of
+      a page that contains almost nothing.
+    status: ungated
+    ungated_reason: >
+      Deliberate. A legitimately short page is still a page, and any minimum-length floor
+      would be a guess that silently reclassifies real pages.
+    fix_queued_to: >
+      Not queued. Recorded in ADR-0009 as the boundary chosen rather than overlooked.
+
+  - id: a-2xx-with-an-empty-body-recorded-as-a-clean-fetch
+    adr: adr-0009-throttled-docs-fetch.md
+    hazard: >
+      A host that throttles automated readers with a success status and no body would be
+      recorded with a valid hash and a byte size, asserting a clean fetch of an empty
+      document — a failure that leaves no trace in the committed record.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_fetch.py::test_empty_body_on_a_success_status_is_an_error_not_a_snapshot
+      - core/tests/test_docs_fetch.py::test_throttled_page_is_retried_then_recorded_as_an_error
+
+  # ------------------------------------------------------------------------ ADR-0006 -----
+
+  - id: machine-invented-ground-truth
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      The cardinal failure: a model asked to author a pack would fabricate exactly the answer
+      key it is then scored against. Every dimension would read high and measure nothing.
+    status: gated
+    gated_by:
+      - core/tests/test_factory.py::test_anchoring_blocks_on_an_unresolvable_spec_ref
+      - core/tests/test_factory.py::test_recon_blocks_when_spec_claimed_but_not_vendored
+
+  - id: validation-catches-shape-not-correctness
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      A pack can be schema-valid, fully anchored, and round-trip clean while its ground truth
+      is wrong. Every automated gate in the pipeline checks form; none checks fact.
+    status: ungated
+    ungated_reason: >
+      Only a human reading the vendor's source establishes that a key is right. Anchoring
+      proves it is traceable and round-trip proves it is scoreable; neither proves it is true.
+    fix_queued_to: >
+      Auto-authoring is deferred to its own cycle, revisited only once several packs exist as
+      patterns. Until then an un-authored target blocks with a written reason.
+
+  - id: sterility-canary-is-skipped-on-resumed-conditions
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      The canary proves sterility once per pipeline; a resumed condition skips it. A run that
+      resumes into a differently-configured environment is not re-proved sterile.
+    status: ungated
+    ungated_reason: >
+      Re-running the canary per resume costs model spend on every interruption, which is the
+      cost the resumable runner exists to avoid.
+    fix_queued_to: >
+      Not queued. Recorded in ADR-0006 as a documented skip.
+
+  - id: prospect-name-leaks-into-the-public-repo
+    adr: adr-0006-factory-dispatcher.md
+    hazard: >
+      A measured prospect's name reaching any tracked file in this repository is not
+      walk-backable once pushed.
+    status: gated
+    gated_by:
+      - core/tests/test_core_no_vendor.py::test_public_repo_names_no_prospect
+
+  # ------------------------------------------------------------------------ ADR-0008 -----
+
+  - id: api-version-has-no-sanctioned-empty-spelling
+    adr: adr-0008-unversioned-apis.md
+    hazard: >
+      The contract shows how to say "no scopes" and does not show how to say "no version". A
+      model that correctly identifies an unversioned API has no sanctioned way to write it,
+      so some will still answer a plausible-looking version.
+    status: ungated
+    ungated_reason: >
+      The scorer now accepts every spelling of the empty version, but the contract itself
+      still does not offer one. Fixing the contract changes what the model was asked, so it
+      cannot be re-applied to archived transcripts and would break comparability with every
+      grid already run.
+    fix_queued_to: >
+      The next deliberate cohort re-baseline — the same trigger as
+      `prompt-contract-offers-one-login-style` and `prompt-contract-teaches-the-flow-list-style`.
+      All three are prompt changes and must move together.
+
+  - id: unversioned-api-version-is-not-cross-vendor-averageable
+    adr: adr-0008-unversioned-apis.md
+    hazard: >
+      For an unversioned vendor the version dimension measures "correctly reported the absence
+      of a version"; for a versioned one it measures "picked the right version". Averaging the
+      two into one cross-vendor figure silently mixes two questions.
+    status: ungated
+    ungated_reason: >
+      The scorer cannot know which question a reader is asking of the number, and both are
+      legitimate dimensions to publish.
+    fix_queued_to: >
+      Not queued. A pack in that position says so on its card rather than letting the two
+      average into one claim.
+
+  # ------------------------------------------------------------------------ ADR-0010 -----
+
+  - id: roundtrip-cannot-detect-a-wrong-answer-key
+    adr: adr-0010-ground-truth-round-trip-control.md
+    hazard: >
+      An answer key always matches itself. The round-trip control detects a key that cannot be
+      scored and never one that is wrong — it would have passed the pack whose mistaken path
+      prefix appeared identically on both sides of the comparison. Reading a green roundtrip
+      as evidence that ground truth is correct is a misreading of the control.
+    status: ungated
+    ungated_reason: >
+      Structural, and unfixable by this control. Catching a wrong key requires comparing it to
+      something outside itself — the vendor's documentation — which is a human recon judgement.
+    fix_queued_to: >
+      Not queued as a code fix. Detection is the suspect-instrument rule from ADR-0008 plus
+      reading transcripts, which is what caught ADR-0013 after the grid had already been paid
+      for.
+
+  - id: roundtrip-cannot-catch-the-harness-own-dialect
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      The harness renders ground truth as block sequences, so its own renderer can never
+      produce the single-line flow sequence its parser was rejecting. A construct the harness
+      accepts from itself but not from a model round-trips perfectly and is invisible to the
+      control. This is the second named blind spot in the same control, and the third
+      consecutive cycle in which one of them was the thing that mattered.
+    status: ungated
+    ungated_reason: >
+      Structural, for the same reason as the wrong-key blind spot: a control that compares the
+      harness to itself cannot see a dialect gap between the harness and a model.
+    fix_queued_to: >
+      Not queued. Closing it means round-tripping ground truth through every serialization the
+      contract permits, not just the one the renderer emits.
+
+  - id: key-parameters-with-no-required-flag-is-only-a-note
+    adr: adr-0010-ground-truth-round-trip-control.md
+    hazard: >
+      A task whose parameter list marks nothing `required: true` scores n/a on that dimension.
+      The control reports it as a non-blocking note, so a pack can publish with a dimension
+      that was never actually tested.
+    status: ungated
+    ungated_reason: >
+      ADR-0011 promoted the auth half of this same note to a blocking problem and left this
+      half a note. n/a is a legitimate outcome for a task with genuinely no required
+      parameter, so blocking on it would block every such pack.
+    fix_queued_to: >
+      Not queued anywhere, and this entry is the record of that. It is the closest live
+      analogue to the gap ADR-0011 closed.
+
+  - id: na-dimensions-are-excluded-from-the-perfection-requirement
+    adr: adr-0010-ground-truth-round-trip-control.md
+    hazard: >
+      The round-trip gate requires every *applicable* dimension to score exactly 1.0. A
+      dimension reading n/a is reported, not counted, so a key can pass the control while
+      leaving dimensions untested.
+    status: ungated
+    ungated_reason: >
+      Deliberate. Failing on n/a would block every pack with a scopeless or
+      parameterless task, which are ordinary and legitimate shapes.
+    fix_queued_to: >
+      Not queued. The n/a dimensions are reported in the control's output, so the hole is
+      visible per task rather than aggregated away.
+
+  - id: gates-and-stages-can-drift
+    adr: adr-0010-ground-truth-round-trip-control.md
+    hazard: >
+      The pipeline's stage list is documentation; the gate tuple is what runs. When the order
+      was inlined in the dispatcher, a stage could exist in one and not the other — which had
+      already happened once, with one gate spliced into a loop over the others.
+    status: gated
+    gated_by:
+      - core/tests/test_factory.py::test_gates_are_declared_in_pipeline_order
+
+  - id: an-unattended-gate-that-raises-crashes-without-a-reason
+    adr: adr-0010-ground-truth-round-trip-control.md
+    hazard: >
+      The dispatcher's gate loop has no exception handling, and no human is watching the run.
+      A gate that raises kills the cycle without recording why it stopped.
+    status: gated
+    gated_by:
+      - core/tests/test_roundtrip.py::test_a_task_with_no_ground_truth_is_reported_not_raised
+      - core/tests/test_roundtrip.py::test_check_pack_reports_unreadable_tasks
+      - core/tests/test_roundtrip.py::test_a_malformed_ground_truth_is_reported_not_raised
+
+  - id: editing-the-reference-pack-to-satisfy-a-gate
+    adr: adr-0010-ground-truth-round-trip-control.md
+    hazard: >
+      A gate that can be satisfied by editing the thing it measures is not a gate. Editing the
+      reference pack's ground truth is the one move that would silently shift the frozen
+      anchor every other claim is checked against.
+    status: gated
+    gated_by:
+      - packs/sailpoint/tests/test_regression_gate.py::test_overall_headline_reproduces
+      - packs/sailpoint/tests/test_regression_gate.py::test_per_run_scores_are_byte_identical
+
+  # ------------------------------------------------------------------------ ADR-0011 -----
+
+  - id: scorer-cannot-read-a-negation
+    adr: adr-0011-auth-login-styles.md
+    hazard: >
+      Ground truth stating "not an OAuth2 flow — there is no client_credentials grant" still
+      contributes that concept to the extracted set. The precedence order rescues the known
+      case; a future key that denies a higher-ranked style than the one it uses would be
+      scored wrongly, and the ADR states plainly that no test on disk would catch it.
+    status: ungated
+    ungated_reason: >
+      Substring extraction cannot parse negation. Reading it properly means understanding the
+      prose, which is a different class of instrument than a deterministic scorer.
+    fix_queued_to: >
+      Not queued. Recorded in ADR-0011's "what this still cannot do" as a known live gap.
+
+  - id: unlisted-login-style-scores-for-free
+    adr: adr-0011-auth-login-styles.md
+    hazard: >
+      Before ADR-0011 the scorer knew two auth concepts. Ground truth naming neither scored
+      1.0 against any answer that also named neither, so the dimension read as applicable
+      while testing nothing — twenty of sixty-three tasks. A sixth login style would do the
+      same again.
+    status: gated
+    gated_by:
+      - core/tests/test_roundtrip.py::test_a_login_style_the_scorer_cannot_name_blocks_the_pack
+      - core/tests/test_factory.py::test_roundtrip_gate_blocks_a_login_style_the_scorer_cannot_name
+
+  - id: auth-markers-can-measure-our-phrasebook
+    adr: adr-0011-auth-login-styles.md
+    hazard: >
+      The first draft of the login-style marker list matched exact phrases and scored zero on
+      forty of one pack's fifty documented runs — every one of which named the mechanism
+      correctly and differed only in wording. A marker list is itself an instrument, and a new
+      rule's own output is the rule's suspect first.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_real_answers_that_name_the_session_mechanism_are_credited
+      - core/tests/test_scorer.py::test_bare_login_is_not_a_session_marker
+      - core/tests/test_scorer.py::test_precedence_is_table_order_and_is_load_bearing
+
+  - id: auth-flow-cannot-judge-whether-an-answer-understands-itself
+    adr: adr-0011-auth-login-styles.md
+    hazard: >
+      An answer naming the right auth style for the wrong reason scores identically to one
+      that understands it. The dimension measures naming, not comprehension.
+    status: ungated
+    ungated_reason: >
+      Inherent to deterministic scoring, which is the property that makes this method
+      reproducible at all. Judging reasoning would require a model in the scoring loop.
+    fix_queued_to: >
+      Not queued, and not intended to be. Recorded so the dimension is not read as more than
+      it is.
+
+  - id: prompt-contract-offers-one-login-style
+    adr: adr-0011-auth-login-styles.md
+    hazard: >
+      The contract shows exactly one example for the auth field, naming one of five login
+      styles the scorer knows. Every measured model has read it. That is a plain bias toward
+      OAuth wording on products that do not use it, and it understates the absolute figure for
+      a non-OAuth product.
+    status: ungated
+    ungated_reason: >
+      Changing the example changes what the model was asked. Unlike a scorer rule it cannot be
+      re-applied to archived transcripts, so it would make every previously measured vendor
+      incomparable and require re-running the whole cohort.
+    fix_queued_to: >
+      The next deliberate cohort re-baseline, bundled with any model change — since a model
+      change already forces the cohort to re-run together. Same trigger as
+      `api-version-has-no-sanctioned-empty-spelling`.
+    drift_pin:
+      - core/tests/test_prompt_contract.py::test_the_auth_flow_example_is_pinned
+      - core/tests/test_prompt_contract.py::test_the_contract_offers_exactly_one_login_style
+
+  # ------------------------------------------------------------------------ ADR-0013 -----
+
+  - id: wrong-base-address-notation-passes-the-anchoring-gate
+    adr: adr-0013-spec-server-prefix.md
+    hazard: >
+      A spec may split an endpoint's address between its server URL and its path key wherever
+      the spec author found convenient, and the vendor's documentation may draw the base URL
+      somewhere else entirely. The gate now accepts a path written from any point inside the
+      declared prefix — so an author who picks the notation the vendor's readers do not use
+      still gets a green gate and a depressed score. This cost one grid an endpoint dimension
+      reported at 13.7% when the model was right in 98% of runs.
+    status: ungated
+    ungated_reason: >
+      Which notation is correct depends on where the vendor tells a developer the base URL
+      ends, which is a recon judgement about documentation, not a property of the spec. The
+      gate's job is to reject a path anchored to nothing; it deliberately does not pick among
+      several equally-anchored notations.
+    fix_queued_to: >
+      Not queued. Detection is the suspect-instrument rule — an implausibly low dimension is
+      the harness's fault until proven otherwise — plus reading the transcripts. The affected
+      pack's card carries the before and after rather than only the corrected number.
+
+  - id: a-path-anchored-to-nothing
+    adr: adr-0013-spec-server-prefix.md
+    hazard: >
+      Widening the gate to accept several notations could have widened it into accepting a
+      path that resolves to no operation at all, which is the fabricated-ground-truth failure
+      the gate exists to stop.
+    status: gated
+    gated_by:
+      - core/tests/test_factory.py::test_anchoring_still_blocks_a_path_that_matches_no_notation
+      - core/tests/test_factory.py::test_a_spec_with_no_server_prefix_accepts_only_its_own_path
+
+  # ------------------------------------------------------------------------ ADR-0014 -----
+
+  - id: prompt-contract-teaches-the-flow-list-style
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      The contract's worked example writes its lists as a single-line flow sequence. A model
+      copying that shape and naming an indexed API parameter inside it produces invalid YAML,
+      and the parser discarded the entire answer — endpoint, method, version and auth along
+      with the parameter list. The harness demonstrated the style and then punished a
+      legitimate use of it.
+    status: ungated
+    ungated_reason: >
+      ADR-0014 repaired the parser, which is re-appliable to archives. Rewriting the example
+      as a block sequence would make the failure structurally impossible for every future run
+      — the better permanent fix — but it changes what the model was asked, so it cannot be
+      re-applied to archived transcripts and would break comparability with every grid already
+      run.
+    fix_queued_to: >
+      The next deliberate cohort re-baseline. Same trigger as
+      `prompt-contract-offers-one-login-style` and
+      `api-version-has-no-sanctioned-empty-spelling`; the three are one change.
+
+  - id: repair-split-can-manufacture-a-containment-score
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      Both dimensions the answer-format repair can reach are scored by containment, so
+      splitting one item into several can only ever raise a score. A hedging answer written as
+      one quoted string, split naively on its comma, yields two exact ground-truth names and
+      scores 1.0 where the valid-YAML reading scores 0.0. The bias would be monotonically
+      upward and would look like a result.
+    status: gated
+    gated_by:
+      - core/tests/test_answer_block.py::test_a_comma_inside_a_quoted_item_is_never_split
+      - core/tests/test_answer_block.py::test_a_quoted_scope_sentence_is_never_split
+      - core/tests/test_answer_block.py::test_prose_items_are_not_repaired
+      - core/tests/test_answer_block.py::test_an_unterminated_quote_abandons_the_repair
+      - core/tests/test_answer_block.py::test_a_trailing_comment_containing_a_bracket_abandons_the_repair
+
+  - id: other-malformed-answer-families-are-not-repaired
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      The repair covers one shape because that is the only shape in the corpus. A colon-space
+      inside unquoted prose is the most plausible next candidate and would hit an
+      always-applicable dimension, discarding whole answers the same way.
+    status: ungated
+    ungated_reason: >
+      The tolerance is written against measured evidence — one failure family across the
+      archived corpus — and no further. Widening it speculatively is how a repair becomes a
+      score adjustment.
+    fix_queued_to: >
+      Deliberately not queued: it stays out of scope until a run actually produces it. ADR-0014
+      records this as a boundary chosen rather than overlooked.
+    drift_pin:
+      - core/tests/test_answer_block.py::test_a_multiline_flow_sequence_is_out_of_scope
+      - core/tests/test_answer_block.py::test_other_keys_are_out_of_scope
+      - core/tests/test_answer_block.py::test_unrelated_yaml_damage_keeps_its_original_reason
+
+  - id: the-frozen-headline-held-by-luck
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      The reference tables reproduced across ADR-0014 because the single rescued answer
+      happened to score 6/6. Anything below roughly 0.917 would have moved a published figure
+      by a point. "The anchor did not move" is a fact about this corpus, not a property of the
+      change — and the regression gate reads as a stronger guarantee than it gave here.
+    status: ungated
+    ungated_reason: >
+      No test can assert that a future parser or scorer change will leave the anchor unmoved;
+      that is precisely what the gate is for, and the gate is allowed to fail.
+    fix_queued_to: >
+      Not queued. The honest response is that a moved anchor is a stop-and-record, never a
+      re-baseline.
+    drift_pin:
+      - packs/sailpoint/tests/test_regression_gate.py::test_the_answer_format_repair_fires_exactly_once_in_this_corpus
+
+  - id: format-failures-are-not-comparable-across-adr-0014
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      The metric's definition did not change but the instrument's tolerance did. A
+      format-failure count from before the repair and one from after are different
+      measurements, and nothing in the artifact says which side of the change it sits on.
+    status: ungated
+    ungated_reason: >
+      A per-report provenance marker would have to be back-filled onto archives that predate
+      it, which is the same class of retroactive edit the method avoids.
+    fix_queued_to: >
+      Not queued. Any cross-cycle reading of the number must state which side of ADR-0014 it
+      is on; the repair counter being always present, including as zero, is what lets a reader
+      tell a re-scored report from one that predates the counter.
+
+  - id: stale-dimensions-cached-in-run-files
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      Re-scoring rewrites the aggregate and the summary only, so a re-scored archive's per-run
+      files keep their pre-rebuild dimension values. Nothing reads them today; a future
+      consumer that does would read numbers that were superseded without noticing.
+    status: ungated
+    ungated_reason: >
+      Rewriting the per-run transcripts would edit the frozen evidence, which is the one thing
+      a re-score must not touch. Fixing it properly means separating the raw response from the
+      derived scores in the file format.
+    fix_queued_to: >
+      Follow-up work, no cycle assigned. ADR-0014 records it as a live trap rather than
+      widening that cycle to fix it.
+
+  # ------------------------------------------------------------------------ ADR-0015 -----
+
+  - id: the-registry-only-lists-hazards-somebody-recognized
+    adr: adr-0015-hazard-registry.md
+    hazard: >
+      This file lists what somebody wrote down. An unrecognized blind spot is exactly as
+      invisible here as it was before, and a complete-looking registry invites being read as
+      a complete list of what can go wrong — the same misreading as taking a green round-trip
+      for proof that a key is right.
+    status: ungated
+    ungated_reason: >
+      A gate cannot detect a hazard nobody has articulated. Mining ADR prose for hedging words
+      and demanding a row per match was considered and rejected as too noisy to survive
+      contact with real writing.
+    fix_queued_to: >
+      Not queued, and not closable. The registry is a decay gate, not a discovery method; the
+      discovery method is still the suspect-instrument rule and reading transcripts.
+
+  - id: the-registry-does-not-rank-hazards
+    adr: adr-0015-hazard-registry.md
+    hazard: >
+      Thirty-one ungated hazards are listed flat, so a structural limit nobody can close sits
+      beside a live trap with a known fix. A reader scanning for what matters most gets no
+      help from the file.
+    status: ungated
+    ungated_reason: >
+      Ranking them would invent an ordering no evidence supports. The two fields that decide
+      whether a hazard needs attention — is anything watching it, and what is it waiting on —
+      are already required of every entry.
+    fix_queued_to: >
+      Not queued. Revisit if the count grows past what a reader can hold, at which point
+      grouping by trigger would be more honest than grading by severity.
+
+  - id: repaired-runs-are-unmarked-in-the-invented-endpoint-exhibit
+    adr: adr-0014-answer-format-repair.md
+    hazard: >
+      The invented-endpoint analysis skips format failures, so a run rescued by the repair now
+      enters that exhibit's denominator without a marker. The exhibit's population changed
+      silently across the change.
+    status: ungated
+    ungated_reason: >
+      Low impact, and marking it means threading repair state into an analysis that currently
+      reads only scored runs.
+    fix_queued_to: >
+      Follow-up work, no cycle assigned. Recorded alongside the stale-dimensions trap for the
+      same reason.
