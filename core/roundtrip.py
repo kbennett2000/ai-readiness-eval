@@ -37,6 +37,7 @@ from .scorer import (
     DIMENSIONS,
     UNKNOWN_AUTH,
     TaskScore,
+    alternate_problems,
     canonical_auth_flow,
     score_task,
 )
@@ -46,11 +47,13 @@ _KNOWN_STYLES = ", ".join(style for style, _markers in _AUTH_STYLES)
 # The phrase the `--mock` provider answers with for each login style. Mock answers must score 1.0,
 # or a pack's free plumbing preflight would report a failure that says nothing about the plumbing.
 _MOCK_AUTH_PHRASE = {
+    "hmac-signature": "HMAC message signature",
     "session-token": "Session token from the login call",
     "oauth2-client-credentials": "OAuth2 client-credentials",
     "bearer-token": "OAuth2 bearer token",
     "basic-auth": "HTTP Basic auth",
     "api-key": "API key",
+    "access-token": "Access token",
 }
 
 
@@ -155,6 +158,11 @@ def check_task(task: dict, base_prefix: list[str] | None = None) -> TaskControl:
             "any answer that also names none — it would read as applicable while measuring nothing. "
             f"Teach the style to scorer._AUTH_STYLES (known: {_KNOWN_STYLES})"
         )
+
+    # Blocking: a declared set of acceptable login styles is checked here, before any grid, because
+    # a bad declaration never fails loudly at scoring time — it silently changes what counts as a
+    # correct answer. Each rule is argued in `scorer.alternate_problems` (ADR-0023).
+    control.problems.extend(alternate_problems(gt))
 
     # Non-blocking notes: shapes that score but measure less than they appear to.
     raw_params = gt.get("key_parameters") or []

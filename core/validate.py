@@ -20,6 +20,7 @@ import yaml
 from jsonschema import Draft7Validator
 
 from .pack import Pack
+from .scorer import KNOWN_AUTH_STYLES
 from .taxonomy import CATEGORIES
 
 VALID_DIFFICULTY = ["foundational", "daily-automation", "multi-step"]
@@ -99,6 +100,24 @@ def build_schema(*, spec_ref_file_prefix: str | None = None) -> dict:
                         },
                     },
                     "auth_flow": {"type": "string", "minLength": 1},
+                    # Optional (ADR-0023). The additional login styles the vendor documents as valid
+                    # for this operation. Shape only here; the rules that keep a set from becoming a
+                    # way to make any answer right are argued and enforced in
+                    # `scorer.alternate_problems`, which the `roundtrip` gate runs before any grid.
+                    "auth_flow_alternates": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["style", "evidence", "note"],
+                            "properties": {
+                                "style": {"enum": list(KNOWN_AUTH_STYLES)},
+                                "evidence": {"type": "string", "pattern": r"^https?://"},
+                                "note": {"type": "string", "minLength": 40},
+                            },
+                        },
+                    },
                     "required_scopes": {"type": "array"},
                     "key_parameters": {"type": "array", "minItems": 1},
                     "success_shape": {"type": "string", "minLength": 1},

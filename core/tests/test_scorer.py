@@ -391,3 +391,147 @@ def test_format_failure_score():
     assert s.format_failure
     assert s.failure_reason == "no block"
     assert s.dimensions == {}
+
+
+# --------------------------------------------------------------------------- #
+# Either-of auth scoring (ADR-0023)
+# --------------------------------------------------------------------------- #
+
+# The ground truth that produced ADR-0023. A payments flagship signs each request with an HMAC over
+# a canonical string; the key it signs with travels in an `Api-Key` header, so the prose names both.
+_HMAC_GT = (
+    "HMAC message signature. Every call carries `Api-Key`, `Client-Request-Id`, `Timestamp` and "
+    "`Auth-Token-Type: HMAC`; the `Authorization` header holds a base64 HMAC-SHA256 signature "
+    "computed over apiKey + clientRequestId + timestamp + payload using the API secret."
+)
+
+
+def test_request_signing_outranks_the_key_it_signs_with():
+    """The inversion ADR-0023 exists to fix, pinned in both directions.
+
+    Before `hmac-signature` existed this key canonicalized to `api-key` — which is not `unknown`, so
+    ADR-0011's roundtrip block never fired — and the dimension ran backwards: the answer that
+    correctly described request signing scored 0 while "just send your API key" scored 1.
+    """
+    assert scorer.canonical_auth_flow(_HMAC_GT) == "hmac-signature"
+    assert scorer.auth_flow_matches(
+        _HMAC_GT, "HMAC-SHA256 request signature in the Authorization header")
+    assert not scorer.auth_flow_matches(
+        _HMAC_GT, "Send your API key in the Api-Key header. That's it.")
+
+
+def test_bare_signed_is_not_an_hmac_marker():
+    """Why the markers are narrow. Two published packs describe an OAuth client assertion as a
+    "signed JWT"; a `signature`/`signed` marker would recanonicalize them and move their numbers."""
+    jwt = ("OAuth 2.0 client credentials grant: POST a signed JWT client assertion to the token "
+           "endpoint.")
+    assert scorer.canonical_auth_flow(jwt) == "oauth2-client-credentials"
+
+
+def test_access_token_ranks_last_so_it_cannot_recanonicalize_oauth_prose():
+    """`access token` appears inside OAuth prose across the cohort. Ranked last, the style can only
+    fire where nothing else did, which is what makes adding it score-neutral for every archive."""
+    oauth = "OAuth2 client credentials; send the result as `Authorization: Bearer <access_token>`."
+    assert scorer.canonical_auth_flow(oauth) == "oauth2-client-credentials"
+    assert "access-token" in scorer._auth_concepts(oauth)          # recognized, but not required
+    assert scorer.canonical_auth_flow("An opaque access token in the Authorization header") \
+        == "access-token"
+
+
+def test_a_single_style_key_scores_exactly_as_before():
+    """The invariance the whole change rests on: with no alternates declared the accepted set is
+    `{required}` and nothing else, so every archived pack re-scores byte-identically."""
+    gt = "OAuth2 bearer token in the Authorization header"
+    for answer in ("bearer token", "an API key", "HTTP Basic auth", "", None):
+        assert scorer.auth_flow_matches(gt, answer) == \
+            (scorer.canonical_auth_flow(gt) in scorer._auth_concepts(answer))
+
+
+def test_an_alternate_widens_only_to_the_style_it_names():
+    gt = "PS-Auth API key header plus an established session from the sign-in call."
+    assert scorer.canonical_auth_flow(gt) == "session-token"
+    assert not scorer.auth_flow_matches(gt, "the PS-Auth API key header")
+    assert scorer.auth_flow_matches(gt, "the PS-Auth API key header", ["api-key"])
+    # and it does not become a free pass for an unrelated style
+    assert not scorer.auth_flow_matches(gt, "HTTP Basic auth", ["api-key"])
+
+
+# --- the four rules that keep a set from making any answer right ------------ #
+
+def _alt_task(**alt):
+    entry = {"style": "api-key",
+             "evidence": "https://docs.example-vendor.com/auth",
+             "note": "The vendor's authentication page documents the key header as a valid "
+                     "credential for this operation on its own."}
+    entry.update(alt)
+    return {"auth_flow": "PS-Auth API key header plus an established session from sign-in.",
+            "auth_flow_alternates": [entry]}
+
+
+def test_a_well_formed_alternate_has_no_problems():
+    assert scorer.alternate_problems(_alt_task()) == []
+    assert scorer.declared_alternates(_alt_task()) == ["api-key"]
+
+
+def test_an_unknown_style_blocks_rather_than_widening_nothing():
+    """Rule 1. A typo would otherwise read as honoured and score as if the key had never declared
+    anything — the declaration would look load-bearing while doing nothing."""
+    problems = scorer.alternate_problems(_alt_task(style="api-keys"))
+    assert any("not a login style the scorer knows" in p for p in problems)
+
+
+def test_declaring_the_style_the_prose_already_requires_blocks():
+    """Rule 2. A redundant declaration must never be mistakable for evidence that two styles were
+    weighed."""
+    problems = scorer.alternate_problems(_alt_task(style="session-token"))
+    assert any("already the style auth_flow requires" in p for p in problems)
+
+
+def test_an_alternate_on_a_rehosting_host_blocks():
+    """Rule 3. The claim is that the VENDOR documents this style. A copy of a document is not the
+    vendor's claim (ADR-0017), and an archive capture cannot be re-verified."""
+    problems = scorer.alternate_problems(
+        _alt_task(evidence="https://web.archive.org/web/2022/https://docs.example-vendor.com/auth"))
+    assert any("rehosts rather than publishes" in p for p in problems)
+    assert scorer.alternate_problems(_alt_task(evidence="not-a-url"))
+
+
+def test_an_alternate_the_prose_never_names_blocks():
+    """Rule 4, the one that keeps the widening honest. If `auth_flow` does not itself say both
+    styles are accepted, the acceptance lives in a field nobody reads beside prose that contradicts
+    it — and the answer key stops being the record of what is correct."""
+    gt = _alt_task(style="bearer-token")
+    gt["auth_flow_alternates"][0]["style"] = "bearer-token"
+    problems = scorer.alternate_problems(gt)
+    assert any("never names 'bearer-token'" in p for p in problems)
+
+
+def test_a_short_note_blocks():
+    problems = scorer.alternate_problems(_alt_task(note="documented"))
+    assert any("at least 40 characters" in p for p in problems)
+
+
+def test_accepting_every_style_blocks():
+    """Rule 5. The backstop: a dimension that accepts everything is applicable and unfalsifiable."""
+    gt = {"auth_flow": "hmac message signature, session, client credentials, bearer, basic auth, "
+                       "api key, access token — this key names them all",
+          "auth_flow_alternates": [
+              {"style": s, "evidence": "https://docs.example-vendor.com/auth",
+               "note": "Every style is documented for this operation, which is the point of the test."}
+              for s in scorer.KNOWN_AUTH_STYLES if s != "hmac-signature"]}
+    assert any("unfalsifiable" in p for p in scorer.alternate_problems(gt))
+
+
+def test_no_alternates_declared_is_never_a_problem():
+    assert scorer.alternate_problems({"auth_flow": "OAuth2 bearer token"}) == []
+    assert scorer.alternate_problems(None) == []
+    assert scorer.alternate_problems({"auth_flow": "x", "auth_flow_alternates": []})
+
+
+def test_every_known_style_has_a_mock_phrase_that_scores_itself():
+    """A style added to the scorer without a mock phrase would make `run --mock` report a failure
+    that says nothing about the plumbing it exists to prove."""
+    from core.roundtrip import _MOCK_AUTH_PHRASE
+    assert set(_MOCK_AUTH_PHRASE) == set(scorer.KNOWN_AUTH_STYLES)
+    for style, phrase in _MOCK_AUTH_PHRASE.items():
+        assert scorer.canonical_auth_flow(phrase) == style, (style, phrase)
