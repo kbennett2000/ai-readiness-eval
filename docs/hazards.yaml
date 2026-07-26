@@ -1199,3 +1199,48 @@ entries:
       Not queued as a code change. The mitigation is procedural and belongs to the cycle: stage
       first, then run the suite, and never read a pre-staging green as evidence about new files.
       A pre-commit hook is the obvious candidate if this recurs.
+
+  # ------------------------------------------------------------------------ ADR-0024 -----
+
+  - id: exact-name-matching-punishes-a-more-precise-answer
+    adr: adr-0024-parameter-ancestors.md
+    hazard: >
+      `key_parameters` compared names by exact string match, so ground truth naming a request-body
+      container (`amount`) scored 0 against an answer naming the field inside it
+      (`amount.total`) — an answer that is strictly more useful to a developer. One pack's
+      dimension read 7.3% while the model had named every required container on four runs of five.
+      Two already-published cards call required parameters their weakest dimension, and part of
+      that weakness was the instrument.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_naming_a_sub_field_names_its_parent
+      - core/tests/test_scorer.py::test_the_separator_must_be_a_real_dotted_path
+      - core/tests/test_scorer.py::test_a_sibling_field_does_not_satisfy_a_specific_requirement
+      - core/tests/test_scorer.py::test_flat_parameter_answers_are_unaffected
+
+  - id: parameter-ancestry-can-only-move-a-score-upward
+    adr: adr-0024-parameter-ancestors.md
+    hazard: >
+      Ancestry widens what counts as naming a parameter, so every score it can move, it moves UP.
+      Reversing the direction — crediting a container for a requirement on a field inside it —
+      would let a vague answer pass a specific requirement, and nothing about the resulting number
+      would look wrong. The asymmetry is the only thing preventing it and is invisible from the
+      call site.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_a_container_does_not_satisfy_a_requirement_for_a_field_inside_it
+
+  - id: key-parameters-measures-naming-not-understanding
+    adr: adr-0024-parameter-ancestors.md
+    hazard: >
+      The dimension compares parameter names. An answer naming `amount.total` scores identically
+      whether or not it knows `total` is a decimal in major units, and an answer may name every
+      required container while omitting a different required field entirely, since the dimension is
+      all-or-nothing per task.
+    status: ungated
+    ungated_reason: >
+      Inherent to deterministic scoring, which is the property that makes this method reproducible.
+      Judging whether an answer understands a parameter would require a model in the scoring loop —
+      the same limit already recorded for auth_flow.
+    fix_queued_to: >
+      Not queued, and not intended to be. Recorded so the dimension is not read as more than it is.
