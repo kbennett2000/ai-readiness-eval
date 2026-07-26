@@ -535,3 +535,70 @@ def test_every_known_style_has_a_mock_phrase_that_scores_itself():
     assert set(_MOCK_AUTH_PHRASE) == set(scorer.KNOWN_AUTH_STYLES)
     for style, phrase in _MOCK_AUTH_PHRASE.items():
         assert scorer.canonical_auth_flow(phrase) == style, (style, phrase)
+
+
+# --------------------------------------------------------------------------- #
+# key_parameters: a named sub-field names its parent (ADR-0024)
+# --------------------------------------------------------------------------- #
+
+def test_naming_a_sub_field_names_its_parent():
+    """The fault ADR-0024 fixes, taken from a real answer on a payments flagship.
+
+    Ground truth names the request-body containers the vendor's examples show — `amount`, `source`,
+    `merchantDetails`. The model named `amount.total`, `source.sourceType`,
+    `merchantDetails.merchantId`: the same containers plus which field inside each to fill. Exact
+    match scored that 0 on every run while crediting nothing more accurate.
+    """
+    task = _task(
+        [{"method": "POST", "path": "/payments/v1/charges", "api_version": "v1"}],
+        params=[{"name": "amount", "in": "body", "required": True},
+                {"name": "source", "in": "body", "required": True},
+                {"name": "merchantDetails", "in": "body", "required": True}],
+    )
+    ans = _ans([("POST", "/payments/v1/charges", "v1")],
+               params=["amount.total", "amount.currency", "source.sourceType",
+                       "source.card.cardData", "merchantDetails.merchantId",
+                       "merchantDetails.terminalId"])
+    assert scorer.score_task(task, ans).dim("key_parameters").score == 1.0
+
+
+def test_a_container_does_not_satisfy_a_requirement_for_a_field_inside_it():
+    """MUST NOT. The asymmetry is the design: this is the direction that manufactures a score.
+
+    Naming `amount` proves nothing about which field inside it the caller supplied, so a vague
+    answer must not pass a specific requirement. Deleting the asymmetry would make this pass.
+    """
+    task = _task(
+        [{"method": "POST", "path": "/payments/v1/charges", "api_version": "v1"}],
+        params=[{"name": "amount.total", "in": "body", "required": True}],
+    )
+    ans = _ans([("POST", "/payments/v1/charges", "v1")], params=["amount"])
+    assert scorer.score_task(task, ans).dim("key_parameters").score == 0.0
+
+
+def test_the_separator_must_be_a_real_dotted_path():
+    """A prefix is not a parent. `source_type` and `sourceDetails` share letters with `source` and
+    are different parameters; only a literal `.` boundary counts."""
+    assert scorer.names_parameter("source", {"source.sourcetype"})
+    assert scorer.names_parameter("source", {"source"})
+    assert not scorer.names_parameter("source", {"source_type"})
+    assert not scorer.names_parameter("source", {"sourcedetails"})
+    assert not scorer.names_parameter("source", {"paymentsource.card"})
+
+
+def test_a_sibling_field_does_not_satisfy_a_specific_requirement():
+    """Roots matching is not enough when ground truth asks for a specific leaf."""
+    assert not scorer.names_parameter("merchantdetails.merchantid", {"merchantdetails.terminalid"})
+    assert scorer.names_parameter("merchantdetails.merchantid", {"merchantdetails.merchantid"})
+
+
+def test_flat_parameter_answers_are_unaffected():
+    """Invariance: every pack whose answers name parameters flatly scores exactly as before."""
+    task = _task(
+        [{"method": "GET", "path": "/v3/accounts", "api_version": "v3"}],
+        params=[{"name": "limit", "in": "query", "required": True}],
+    )
+    assert scorer.score_task(task, _ans([("GET", "/v3/accounts", "v3")],
+                                        params=["limit"])).dim("key_parameters").score == 1.0
+    assert scorer.score_task(task, _ans([("GET", "/v3/accounts", "v3")],
+                                        params=["offset"])).dim("key_parameters").score == 0.0

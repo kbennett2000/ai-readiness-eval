@@ -303,6 +303,29 @@ def auth_flow_matches(gt_text: str | None, answer_text: str | None,
     return bool(({required} | set(alternates)) & _auth_concepts(answer_text))
 
 
+def names_parameter(required: str, answer_names: set[str]) -> bool:
+    """True if the answer names a required parameter, or a field inside it (ADR-0024).
+
+    Ground truth names a request-body field at whatever depth the vendor's own documentation
+    describes it — often a top-level container like `amount` or `source`. A model answering
+    `amount.total` and `source.sourceType` has named that container *and* said which field inside it
+    to fill, which is strictly more useful to a developer. Exact-match containment scored it 0.
+
+    The rule is deliberately **asymmetric**, and the asymmetry is the whole design:
+
+      - `amount.total` satisfies a requirement for `amount`. You cannot send `amount.total` without
+        sending `amount`; naming the child proves the parent.
+      - `amount` does NOT satisfy a requirement for `amount.total`. Naming a container proves
+        nothing about which field inside it the caller supplied, and crediting it would let a vague
+        answer pass a specific requirement. That direction is the one that manufactures a score, so
+        it is refused and pinned by a must-not test.
+
+    The separator must be a literal `.`, so `source_type` and `sourceDetails` do not satisfy
+    `source` — only a genuine dotted path does.
+    """
+    return any(a == required or a.startswith(required + ".") for a in answer_names)
+
+
 def bare_scope(scope: str | None) -> str:
     """Strip an inline `# comment` and whitespace; lowercase to the raw token."""
     if not scope:
@@ -473,7 +496,7 @@ def score_task(task: dict, answer: AnswerSummary,
             "key_parameters", None, "no required parameters in ground truth (n/a)",
         )
     else:
-        missing = gt_required - ans_params
+        missing = {g for g in gt_required if not names_parameter(g, ans_params)}
         result.dimensions["key_parameters"] = DimensionScore(
             "key_parameters", 1.0 if not missing else 0.0,
             f"missing {sorted(missing)}" if missing else f"all required present {sorted(gt_required)}",
