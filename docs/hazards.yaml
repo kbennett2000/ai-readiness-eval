@@ -1112,3 +1112,90 @@ entries:
       - core/tests/test_answer_block.py::test_a_quoted_scope_sentence_is_never_split
       - core/tests/test_answer_block.py::test_prose_items_are_not_repaired
       - core/tests/test_answer_block.py::test_an_unterminated_quote_abandons_the_repair
+
+  # ------------------------------------------------------------------------ ADR-0023 -----
+
+  - id: a-marker-for-one-style-lives-inside-another-styles-prose
+    adr: adr-0023-either-of-auth-styles.md
+    hazard: >
+      `api-key`'s marker appears verbatim inside HMAC request-signing prose, because the key is
+      what gets signed. Ground truth describing request signing therefore canonicalized to
+      `api-key` — not to `unknown` — so ADR-0011's blocking guard never fired, and the dimension
+      ran BACKWARDS: the answer correctly naming the signature scored 0 and "just send your API
+      key" scored 1. The same shape shipped on a published card, where ground truth naming both a
+      key header and a session credited only the session.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_request_signing_outranks_the_key_it_signs_with
+      - core/tests/test_scorer.py::test_bare_signed_is_not_an_hmac_marker
+      - core/tests/test_scorer.py::test_access_token_ranks_last_so_it_cannot_recanonicalize_oauth_prose
+
+  - id: an-acceptable-style-set-can-make-any-answer-right
+    adr: adr-0023-either-of-auth-styles.md
+    hazard: >
+      Once ground truth may accept more than one login style, the cheapest way to raise any auth
+      number is to declare another alternate. Nothing about a wider set fails loudly — the
+      dimension stays applicable and every answer starts passing — so the widening has to be
+      bounded where it is authored rather than noticed where it is published.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_an_unknown_style_blocks_rather_than_widening_nothing
+      - core/tests/test_scorer.py::test_declaring_the_style_the_prose_already_requires_blocks
+      - core/tests/test_scorer.py::test_an_alternate_on_a_rehosting_host_blocks
+      - core/tests/test_scorer.py::test_an_alternate_the_prose_never_names_blocks
+      - core/tests/test_scorer.py::test_accepting_every_style_blocks
+      - core/tests/test_roundtrip.py::test_a_bad_alternate_blocks_the_pack_before_any_grid
+
+  - id: an-alternate-is-only-as-true-as-its-evidence-link
+    adr: adr-0023-either-of-auth-styles.md
+    hazard: >
+      The rules check that an alternate names a real style, cites a first-party host, and is named
+      in the prose. None of them checks the thing that actually matters: that the vendor documents
+      the two styles as interchangeable FOR THAT OPERATION. A first-party URL to a page about a
+      different endpoint satisfies every rule on disk.
+    status: ungated
+    ungated_reason: >
+      Deciding whether a page supports a claim about a specific operation means reading it, which
+      is a different class of instrument than a deterministic scorer. The rules deliberately bound
+      what can be declared and make it legible; they do not adjudicate it.
+    fix_queued_to: >
+      Not queued as a gate. The honest mitigation is review: an alternate is a reviewable line in
+      a PR carrying its own link, which is why `evidence` and `note` are required rather than
+      optional. Revisit if a second pack ever declares one.
+
+  - id: a-hazard-found-after-its-adr-has-no-route-into-this-registry
+    adr: adr-0023-either-of-auth-styles.md
+    hazard: >
+      This registry is built from ADRs — every ADR must appear in an entry or be declared
+      hazard-free — so a hazard discovered LATER, and filed as a GitHub issue, never enters it. The
+      one-style limitation was filed as issue #20 in cycle 15 and sat outside all 68 entries for
+      four cycles while a card carrying its distortion was queued for outreach. The registry
+      reported full ADR coverage the entire time, which was true and beside the point.
+    status: ungated
+    ungated_reason: >
+      A test can check that every ADR is accounted for because ADRs live in this repo on disk. It
+      cannot enumerate the open issue tracker, and a gate that required every open issue to have a
+      registry entry would either be unenforceable offline or would convert the tracker into a
+      second registry with no owner.
+    fix_queued_to: >
+      Not queued. The candidate is a convention rather than a gate — an issue that describes an
+      instrument hazard gets a registry entry when it is filed, not when it is fixed — and it is
+      recorded here so the next cycle that files one can adopt it deliberately.
+
+  - id: a-new-file-is-unguarded-until-it-is-staged
+    adr: adr-0023-either-of-auth-styles.md
+    hazard: >
+      The leak guard scans `git ls-files`, so a file that has been written but not yet `git add`ed
+      is invisible to it. A green suite therefore proves nothing about the ADR the cycle just
+      wrote — which is precisely the file where a cycle narrates what it measured, and so the
+      likeliest place for a prospect name to appear. Hit live in this cycle: the draft of ADR-0023
+      named a measured prospect three times and the full suite passed 662 tests over it.
+    status: ungated
+    ungated_reason: >
+      Scanning the working tree instead of the index would flag scratch files, editor backups and
+      anything a reviewer is midway through, so the guard would cry wolf and be ignored. The index
+      is the right scope; the gap is one of timing, not of scope.
+    fix_queued_to: >
+      Not queued as a code change. The mitigation is procedural and belongs to the cycle: stage
+      first, then run the suite, and never read a pre-staging green as evidence about new files.
+      A pre-commit hook is the obvious candidate if this recurs.

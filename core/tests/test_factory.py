@@ -181,7 +181,7 @@ def test_roundtrip_gate_blocks_when_a_task_cannot_score_itself(monkeypatch):
     truth is documented prose — makes the dimension unwinnable for every pack. The gate stops it
     before a grid burns rather than reporting the resulting 0.00 as a finding about a vendor."""
     monkeypatch.setattr(scorer, "auth_flow_matches",
-                        lambda gt, ans: (ans or "").strip() == "canonical phrase")
+                        lambda gt, ans, alternates=(): (ans or "").strip() == "canonical phrase")
     ok, detail = factory.check_roundtrip(Pack.load(ACME))
     assert not ok
     assert "auth_flow scored 0.00" in detail
@@ -302,7 +302,7 @@ def test_pipeline_blocks_at_roundtrip_before_any_grid(tmp_path, monkeypatch):
     """The whole point of the gate: an unscoreable pack never reaches a paid condition. The stage
     name in `blocked_reason` is what tells an operator this is a harness fault, not a schema one."""
     monkeypatch.setattr(scorer, "auth_flow_matches",
-                        lambda gt, ans: (ans or "").strip() == "canonical phrase")
+                        lambda gt, ans, alternates=(): (ans or "").strip() == "canonical phrase")
     pack_dir = tmp_path / "pack-acme"
     shutil.copytree(ACME, pack_dir)
     entry = QueueEntry(id="pack-acme", display_name="Acme Widget Cloud", tier=1)

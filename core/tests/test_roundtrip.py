@@ -148,7 +148,7 @@ def test_an_asymmetric_scoring_rule_is_caught(monkeypatch):
     and look like a finding about vendors. The control fails immediately, before any spend.
     """
     monkeypatch.setattr(scorer, "auth_flow_matches",
-                        lambda gt, ans: (ans or "").strip() == "OAuth2 client-credentials")
+                        lambda gt, ans, alternates=(): (ans or "").strip() == "OAuth2 client-credentials")
     control = check_task(_task(auth_flow="Bearer token in the Authorization header"))
     assert not control.ok
     assert any("auth_flow scored 0.00" in p for p in control.problems)
@@ -221,3 +221,55 @@ def test_summarize_failures_is_short_enough_for_a_queue_field():
     assert "\n" not in line
     assert "(+3 more)" in line
     assert summarize_failures([check_task(_task())]) == ""
+
+
+# --------------------------------------------------------------------------- #
+# Either-of auth: a bad declaration blocks here, before any grid (ADR-0023)
+# --------------------------------------------------------------------------- #
+
+_GOOD_ALT = {"style": "api-key",
+             "evidence": "https://docs.example-vendor.com/auth",
+             "note": "The vendor's authentication page documents the key header as a valid "
+                     "credential for this operation on its own."}
+
+
+def _alt_task(**alt):
+    entry = dict(_GOOD_ALT)
+    entry.update(alt)
+    return _task(auth_flow="PS-Auth API key header plus an established session from sign-in.",
+                 auth_flow_alternates=[entry])
+
+
+def test_a_well_formed_alternate_passes_the_control():
+    control = check_task(_alt_task())
+    assert control.ok, control.problems
+
+
+@pytest.mark.parametrize("bad,expected", [
+    ({"style": "api-keys"}, "not a login style the scorer knows"),
+    ({"style": "session-token"}, "already the style auth_flow requires"),
+    ({"evidence": "https://web.archive.org/web/2022/https://docs.example-vendor.com/auth"},
+     "rehosts rather than publishes"),
+    ({"note": "short"}, "at least 40 characters"),
+])
+def test_a_bad_alternate_blocks_the_pack_before_any_grid(bad, expected):
+    """Each rule is blocking, not a note. A bad declaration never fails loudly at scoring time — it
+    silently changes what counts as a correct answer, which is the failure mode that has to be
+    caught before money is spent rather than after a card is published."""
+    control = check_task(_alt_task(**bad))
+    assert not control.ok
+    assert any(expected in p for p in control.problems), control.problems
+
+
+def test_an_alternate_the_prose_never_names_blocks_the_pack():
+    control = check_task(_task(
+        auth_flow="OAuth2 bearer token in the Authorization header.",
+        auth_flow_alternates=[dict(_GOOD_ALT, style="api-key")]))
+    assert not control.ok
+    assert any("never names 'api-key'" in p for p in control.problems), control.problems
+
+
+def test_a_task_declaring_no_alternates_is_unaffected():
+    """The invariance restated at the gate: every existing pack declares nothing, so nothing about
+    the control's verdict on them can change."""
+    assert check_task(_task()).ok

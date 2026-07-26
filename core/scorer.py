@@ -104,6 +104,13 @@ def normalize_version(version: str | None) -> str:
 # `client_credentials`, `Basic-auth` and `sessionId` all land. A style is added here, never worked
 # around in a pack's ground truth — the `roundtrip` gate blocks a pack whose style is not listed.
 _AUTH_STYLES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # hmac-signature ranks FIRST because prose describing request signing necessarily names the key
+    # it signs with ("the `Api-Key` header ... signed with an API secret"), so any lower slot is
+    # shadowed by `api-key` and the dimension inverts: the answer that correctly says "HMAC-SHA256
+    # request signature" scores 0 while "send your API key" scores 1. Markers are deliberately
+    # narrow — bare `signature`/`signed` would recapture "signed JWT client assertion", which is
+    # OAuth prose in two already-published packs (ADR-0023).
+    ("hmac-signature", ("hmac", "message signature", "request signature", "request signing")),
     # `session` and `logon` name the concept broadly on purpose. A first, narrower marker list of
     # exact phrases scored 0 for answers reading "session bearer token" and "session cookie via
     # authString login" — correct namings of the mechanism, failed on wording. That made the
@@ -114,9 +121,45 @@ _AUTH_STYLES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("bearer-token", ("bearer",)),
     ("basic-auth", ("basic auth", "basic authentication", "http basic")),
     ("api-key", ("api key", "apikey", "subscription key")),
+    # access-token ranks LAST on purpose. "access token" appears inside OAuth prose across the
+    # cohort ("send the returned value as `Authorization: Bearer <access_token>`"), so any higher
+    # slot would re-canonicalize published ground truth. Last, it can only fire where nothing else
+    # did, which makes its addition provably score-neutral for every archived pack (ADR-0023).
+    ("access-token", ("access token", "accesstoken")),
 )
 
 UNKNOWN_AUTH = "unknown"
+
+#: The style names a pack may declare in `ground_truth.auth_flow_alternates`.
+KNOWN_AUTH_STYLES: tuple[str, ...] = tuple(style for style, _markers in _AUTH_STYLES)
+
+# Hosts that rehost someone else's document rather than publish it. An alternate login style has to
+# carry first-party evidence that the vendor itself documents it (ADR-0023), and this is the same
+# bar ground-truth anchors already meet (ADR-0017). Kept as a denylist, not an allowlist: an
+# allowlist of vendor docs hosts fails OPEN for a host nobody has listed yet, which is the wrong
+# direction for a guard.
+NOT_FIRST_PARTY: tuple[str, ...] = (
+    "web.archive.org",
+    "archive.org",
+    "archive.is",
+    "archive.ph",
+    "archive.today",
+    "webcache.googleusercontent.com",
+    "cachedview.nl",
+    "r.jina.ai",
+    "12ft.io",
+)
+
+
+def rehosting_host(url: str | None) -> str | None:
+    """The `NOT_FIRST_PARTY` host this URL sits on, or None if it is first-party.
+
+    Returns None for a URL that is not http(s) at all; the caller reports that separately, because
+    "no scheme" and "an archive host" are different authoring mistakes and deserve different words.
+    """
+    from urllib.parse import urlsplit
+    host = (urlsplit(url or "").hostname or "").lower()
+    return next((bad for bad in NOT_FIRST_PARTY if host == bad or host.endswith("." + bad)), None)
 
 
 def _auth_concepts(text: str | None) -> set[str]:
@@ -134,13 +177,120 @@ def canonical_auth_flow(text: str | None) -> str:
     return UNKNOWN_AUTH
 
 
-def auth_flow_matches(gt_text: str | None, answer_text: str | None) -> bool:
-    """True if the answer names the login style the ground truth requires.
+def declared_alternates(ground_truth: dict | None) -> list[str]:
+    """The alternate login-style names a task declares, in file order (ADR-0023).
+
+    Reads only well-formed entries. A malformed declaration is not silently dropped — it is caught
+    by `alternate_problems`, which the `roundtrip` gate runs before any grid, so a typo blocks the
+    pack instead of quietly widening or quietly narrowing what counts as correct.
+    """
+    raw = (ground_truth or {}).get("auth_flow_alternates") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(a["style"]) for a in raw if isinstance(a, dict) and a.get("style")]
+
+
+def alternate_problems(ground_truth: dict | None) -> list[str]:
+    """Every reason a task's `auth_flow_alternates` declaration is not acceptable (ADR-0023).
+
+    A set of acceptable login styles is otherwise a way to make any answer right, so each of these
+    is blocking rather than a note. The rules, and why each one exists:
+
+      1. The style must be a name the scorer knows. A typo would otherwise widen nothing and read
+         as if it had widened something — the declaration would look honoured and score as if absent.
+      2. It must differ from the style the prose already requires, so a redundant declaration can
+         never be mistaken for evidence that two styles were considered.
+      3. It must carry a first-party evidence URL. The claim being made is that *the vendor*
+         documents this style as valid, and a copy of a document is not the vendor's claim (ADR-0017).
+      4. Its markers must appear in `auth_flow` itself. This is the rule that keeps the widening
+         honest: the answer key a human reads has to visibly say that both styles are accepted,
+         rather than the acceptance living in a field nobody reads next to prose that contradicts it.
+      5. The accepted set must stay a proper subset of the known styles, so no task can reach a
+         state where the dimension is applicable but unfalsifiable.
+    """
+    gt = ground_truth or {}
+    raw = gt.get("auth_flow_alternates")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        return ["auth_flow_alternates must be a non-empty list (omit the key entirely if there are none)"]
+
+    problems: list[str] = []
+    prose = gt.get("auth_flow")
+    required = canonical_auth_flow(prose)
+    seen: set[str] = set()
+    markers = dict(_AUTH_STYLES)
+
+    for i, entry in enumerate(raw):
+        where = f"auth_flow_alternates[{i}]"
+        if not isinstance(entry, dict):
+            problems.append(f"{where} is not a mapping with style/evidence/note")
+            continue
+        style = str(entry.get("style") or "").strip()
+        if style not in KNOWN_AUTH_STYLES:                                          # rule 1
+            problems.append(
+                f"{where}: '{style or '(missing)'}' is not a login style the scorer knows "
+                f"(known: {', '.join(KNOWN_AUTH_STYLES)})"
+            )
+            continue
+        if style == required:                                                       # rule 2
+            problems.append(
+                f"{where}: '{style}' is already the style auth_flow requires, so declaring it as an "
+                "alternate widens nothing and misrepresents the key as covering two styles"
+            )
+        if style in seen:
+            problems.append(f"{where}: '{style}' is declared more than once")
+        seen.add(style)
+
+        evidence = str(entry.get("evidence") or "").strip()
+        if not evidence.startswith(("http://", "https://")):                        # rule 3
+            problems.append(
+                f"{where}: needs an `evidence:` URL on the vendor's own documentation showing that "
+                "it documents this style as valid for this operation"
+            )
+        else:
+            bad = rehosting_host(evidence)
+            if bad is not None:
+                problems.append(
+                    f"{where}: evidence is on {bad}, which rehosts rather than publishes. An "
+                    "alternate rests on the vendor's own claim (ADR-0017), never on a copy of it"
+                )
+        note = str(entry.get("note") or "").strip()
+        if len(note) < 40:
+            problems.append(
+                f"{where}: needs a `note:` of at least 40 characters saying why the vendor treats "
+                f"this style as valid here (got {len(note)})"
+            )
+        if not any(m in (prose or "").lower().replace("-", " ").replace("_", " ")
+                   for m in markers.get(style, ())):                                # rule 4
+            problems.append(
+                f"{where}: auth_flow never names '{style}', so the answer key a reader sees does "
+                "not say both styles are accepted. State it in the prose, not only in this field"
+            )
+
+    accepted = {required} | seen
+    if required != UNKNOWN_AUTH and accepted >= set(KNOWN_AUTH_STYLES):              # rule 5
+        problems.append(
+            "auth_flow_alternates accepts every login style the scorer knows, so the dimension "
+            "would be applicable but unfalsifiable"
+        )
+    return problems
+
+
+def auth_flow_matches(gt_text: str | None, answer_text: str | None,
+                      alternates: tuple[str, ...] | list[str] = ()) -> bool:
+    """True if the answer names a login style this ground truth accepts.
 
     Ground-truth prose routinely mentions more than one style — the grant task describes obtaining a
     *bearer* token via *client-credentials*; a session-token product's prose says it is not OAuth —
     so the requirement is the most specific style present, per `_AUTH_STYLES` order. The answer
     matches if it names that style; naming additional styles as well does not hurt.
+
+    `alternates` (ADR-0023) is the authored, evidenced set of *additional* styles the vendor
+    documents as valid for this operation. It is never inferred from the prose: prose mentions a
+    style for many reasons, including to deny it, and reading intent out of a substring is what
+    made this dimension wrong in the first place. Default empty, so a single-style key scores
+    exactly as it did before ADR-0023 — the accepted set is then `{required}` and nothing else.
 
     A ground truth naming no listed style falls back to comparing labels, which means `unknown`
     matches `unknown` — an answer scores as long as it too names nothing recognizable. That is why
@@ -150,7 +300,7 @@ def auth_flow_matches(gt_text: str | None, answer_text: str | None) -> bool:
     required = canonical_auth_flow(gt_text)
     if required == UNKNOWN_AUTH:
         return canonical_auth_flow(answer_text) == UNKNOWN_AUTH
-    return required in _auth_concepts(answer_text)
+    return bool(({required} | set(alternates)) & _auth_concepts(answer_text))
 
 
 def bare_scope(scope: str | None) -> str:
@@ -286,13 +436,15 @@ def score_task(task: dict, answer: AnswerSummary,
         f"{sum(1 for r in records if r['version_ok'])}/{total} api_versions correct",
     )
 
-    # --- auth_flow (concept containment; ADR-0004) --------------------------
+    # --- auth_flow (concept containment; ADR-0004, ADR-0023) ----------------
     gt_auth = canonical_auth_flow(gt.get("auth_flow"))
     ans_auth = canonical_auth_flow(answer.auth_flow)
-    matched = auth_flow_matches(gt.get("auth_flow"), answer.auth_flow)
+    alternates = declared_alternates(gt)
+    matched = auth_flow_matches(gt.get("auth_flow"), answer.auth_flow, alternates)
+    accepted = f"{gt_auth} or {' or '.join(alternates)}" if alternates else gt_auth
     result.dimensions["auth_flow"] = DimensionScore(
         "auth_flow", 1.0 if matched else 0.0,
-        f"required {gt_auth}, got {ans_auth}",
+        f"required {accepted}, got {ans_auth}",
     )
 
     # --- required_scopes (any-of overlap; ADR-0004 judgment call) -----------
