@@ -63,6 +63,14 @@ class Pack:
     # points at a spec REPOSITORY for several packs, not at an API base.
     endpoint_base_prefix: str | None = None
 
+    # Named task groups a pack declares as a reporting axis (ADR-0026), e.g. surface age. Shape:
+    # `{key: {label, rationale, tasks: [...]}}`. Optional and empty for every pack that does not
+    # declare it, so no published number moves by adding this field. It is a PACK-level analysis
+    # axis rather than a property of a task, which is why it lives here and not in the (closed) task
+    # schema: the same tasks can be grouped more than one way, and the grouping is an argument the
+    # card makes, not a fact the task file carries.
+    task_groups: dict | None = None
+
     @classmethod
     def load(cls, pack_dir: str | Path) -> "Pack":
         root = Path(pack_dir).resolve()
@@ -105,7 +113,16 @@ class Pack:
             expected_task_ids=(list(cfg["expected_task_ids"]) if cfg.get("expected_task_ids") else None),
             na_categories=(dict(cfg["na_categories"]) if cfg.get("na_categories") else None),
             endpoint_base_prefix=cfg.get("endpoint_base_prefix") or None,
+            task_groups=(dict(cfg["task_groups"]) if cfg.get("task_groups") else None),
         )
+
+    def task_to_group(self) -> dict:
+        """`{task_id: group_key}` from the declared `task_groups`; empty when none are declared."""
+        out: dict[str, str] = {}
+        for key, block in (self.task_groups or {}).items():
+            for tid in (block or {}).get("tasks", []) or []:
+                out[tid] = key
+        return out
 
     @property
     def base_prefix_segments(self) -> list[str]:

@@ -21,6 +21,19 @@ DIMENSIONS = ("endpoint", "method", "api_version", "auth_flow", "required_scopes
 _VERSION_SEG_RE = re.compile(r"^(v\d+|beta|oauth|v20\d\d)$", re.IGNORECASE)
 _BRACE_SEG_RE = re.compile(r"^\{.*\}$")
 
+# A DOTTED numeric version, with the `v` optional: `2.0`, `2.1`, `v2.0` (ADR-0025). Deliberately a
+# SECOND pattern rather than a widening of `_VERSION_SEG_RE`, because that one is what
+# `normalize_path` strips out of an address. Widening it would delete `2.0` from
+# `/api/2.0/jobs/create`, which would make the 404-ing `/api/v2.0/jobs/create` compare EQUAL to the
+# real path — manufacturing an endpoint score out of a notation rule. This pattern is used only by
+# `normalize_version`, and `test_dotted_version_never_leaks_into_path_comparison` pins that.
+#
+# The dot is required on purpose. Folding a bare `v1` to `1` is a different question with a
+# different risk profile — `v1` appears 694 times across the archived cohort, so that fold could
+# move published numbers, and no measured vendor needs it. Narrow now; the residue is a recorded
+# hazard rather than a silent choice.
+_DOTTED_VERSION_RE = re.compile(r"^v?(\d+(?:\.\d+)+)$", re.IGNORECASE)
+
 
 # --------------------------------------------------------------------------- #
 # Normalization helpers (each mirrors a rule in ADR-0004).
@@ -85,8 +98,18 @@ def normalize_version(version: str | None) -> str:
     # one. It cannot credit the wrong service: `api_version` is scored only on an endpoint whose
     # PATH already matched, and the path is where the service segment lives.
     head, sep, tail = v.rpartition("/")
-    if sep and head and _VERSION_SEG_RE.match(tail) and "/" not in head:
+    if sep and head and "/" not in head and (
+            _VERSION_SEG_RE.match(tail) or _DOTTED_VERSION_RE.match(tail)):
         v = tail
+    # A dotted numeric version means the same thing with or without a leading `v` (ADR-0025). Some
+    # vendors number their paths `/api/2.0/...` with no `v` anywhere, while the prompt contract's own
+    # example demonstrates `v1` — so a model following our contract answers `v2.0` for an API that
+    # is genuinely `2.0` and loses the dimension on notation. Applied symmetrically to ground truth
+    # and answer alike, so it can only collapse a difference, never create a match between two
+    # different versions: `2.0` and `2.1` still compare unequal.
+    dotted = _DOTTED_VERSION_RE.match(v)
+    if dotted:
+        v = dotted.group(1)
     return "" if v in _NO_VERSION else v
 
 

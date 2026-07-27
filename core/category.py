@@ -25,6 +25,56 @@ def _fmt_cell(value) -> str:
     return f"{value * 100:.0f}%"
 
 
+def rollup_by_group(aggregate: dict, task_to_group: dict, groups,
+                    na_groups: dict | None = None) -> dict:
+    """Roll one condition's per-task aggregate up to per-GROUP numbers (ADR-0026).
+
+    The grouping is a parameter, not a fixed taxonomy: `groups` is the ordered set of group keys to
+    emit and `task_to_group` maps each task id into one of them. `job_category` is one such grouping
+    (see `rollup_by_category`); a pack's declared `task_groups` — e.g. surface age — is another.
+
+    Each dimension is the mean of the group's tasks' per-dimension means — a coarse rollup, the raw
+    runs are not re-pooled. `na_groups` (optional `{group: reason}`) marks groups the pack declares
+    not-applicable: they render `n/a` and carry the reason.
+
+    Returns `{group: {dimensions{6}, overall, tasks:[...], na:bool, na_reason}}` in `groups` order.
+    """
+    na = dict(na_groups or {})
+    per_task = aggregate.get("per_task", {})
+
+    by_group: dict[str, list[str]] = {g: [] for g in groups}
+    for tid, group in task_to_group.items():
+        if group in by_group and tid in per_task:
+            by_group[group].append(tid)
+
+    out: dict[str, dict] = {}
+    for group in groups:
+        tids = by_group[group]
+        if group in na:
+            out[group] = {
+                "dimensions": {d: None for d in DIMENSIONS},
+                "overall": None,
+                "tasks": tids,
+                "na": True,
+                "na_reason": na[group],
+            }
+            continue
+        dims: dict[str, float | None] = {}
+        for d in DIMENSIONS:
+            vals = [per_task[t]["dimensions"].get(d) for t in tids]
+            vals = [v for v in vals if v is not None]
+            dims[d] = mean(vals) if vals else None
+        applicable = [v for v in dims.values() if v is not None]
+        out[group] = {
+            "dimensions": dims,
+            "overall": mean(applicable) if applicable else None,
+            "tasks": tids,
+            "na": False,
+            "na_reason": None,
+        }
+    return out
+
+
 def rollup_by_category(aggregate: dict, task_to_category: dict,
                        na_categories: dict | None = None) -> dict:
     """Roll one condition's per-task aggregate up to per-category numbers.
@@ -37,41 +87,12 @@ def rollup_by_category(aggregate: dict, task_to_category: dict,
 
     Returns `{category: {dimensions{6}, overall, tasks:[...], na:bool, na_reason}}` for every canonical
     category, in taxonomy order.
+
+    A thin wrapper over `rollup_by_group` with the taxonomy as the grouping (ADR-0026) — the
+    arithmetic lives in exactly one place, so a pack's own task groups and the shared job-category
+    rollup can never drift into computing "the mean of a group" two different ways.
     """
-    na = dict(na_categories or {})
-    per_task = aggregate.get("per_task", {})
-
-    by_cat: dict[str, list[str]] = {c: [] for c in CATEGORIES}
-    for tid, cat in task_to_category.items():
-        if cat in by_cat and tid in per_task:
-            by_cat[cat].append(tid)
-
-    out: dict[str, dict] = {}
-    for cat in CATEGORIES:
-        tids = by_cat[cat]
-        if cat in na:
-            out[cat] = {
-                "dimensions": {d: None for d in DIMENSIONS},
-                "overall": None,
-                "tasks": tids,
-                "na": True,
-                "na_reason": na[cat],
-            }
-            continue
-        dims: dict[str, float | None] = {}
-        for d in DIMENSIONS:
-            vals = [per_task[t]["dimensions"].get(d) for t in tids]
-            vals = [v for v in vals if v is not None]
-            dims[d] = mean(vals) if vals else None
-        applicable = [v for v in dims.values() if v is not None]
-        out[cat] = {
-            "dimensions": dims,
-            "overall": mean(applicable) if applicable else None,
-            "tasks": tids,
-            "na": False,
-            "na_reason": None,
-        }
-    return out
+    return rollup_by_group(aggregate, task_to_category, CATEGORIES, na_categories)
 
 
 def render_cross_vendor_category_md(sources: list[tuple[str, dict]],

@@ -464,6 +464,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="label for the current run in the delta table")
     cmp.add_argument("--base-label", default="baseline",
                      help="label for the baseline in the delta table")
+    cmp.add_argument("--by-group", action="store_true",
+                     help="render the pack's declared task_groups split instead of the per-task "
+                          "tables (ADR-0026); requires exactly 2 results dirs and --pack")
     cmp.set_defaults(func=cmd_compare)
 
     inv = sub.add_parser("invented",
@@ -581,6 +584,29 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return EXIT_ERROR
     entries = [(meta.get("condition", chr(65 + i)), agg, meta)
                for i, (agg, meta) in enumerate(loaded)]
+    if getattr(args, "by_group", False):
+        from .category import rollup_by_group
+        from .report import render_group_comparison_md
+        if len(entries) != 2:
+            print("ERROR: --by-group needs exactly 2 results dirs", file=sys.stderr)
+            return EXIT_ERROR
+        pack = _load_pack(args)
+        if not pack.task_groups:
+            print(f"ERROR: pack '{pack.vendor_id}' declares no task_groups in pack.yaml",
+                  file=sys.stderr)
+            return EXIT_ERROR
+        mapping = pack.task_to_group()
+        keys = list(pack.task_groups)
+        (la, aa, _), (lb, ab, _) = entries
+        md = render_group_comparison_md(la, rollup_by_group(aa, mapping, keys),
+                                        lb, rollup_by_group(ab, mapping, keys),
+                                        pack.task_groups, note=args.note)
+        if args.out:
+            Path(args.out).write_text(md)
+            print(f"Wrote {args.out}")
+        else:
+            print(md)
+        return EXIT_OK
     if len(entries) == 2 and not args.note and not baseline:
         (la, aa, ma), (lb, ab, mb) = entries
         md = render_comparison_md(la, aa, ma, lb, ab, mb)
