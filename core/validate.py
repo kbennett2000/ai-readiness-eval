@@ -196,9 +196,52 @@ def validate_pack(pack: Pack) -> dict[str, list[str]]:
         if unexpected:
             suite.append(f"unexpected tasks: {', '.join(sorted(unexpected))}")
 
+    suite.extend(validate_task_groups(pack.task_groups, seen_ids.keys()))
+
     if suite:
         results["(suite)"] = suite
     return results
+
+
+def validate_task_groups(task_groups: dict | None, task_ids) -> list[str]:
+    """Check a pack's declared `task_groups` (ADR-0026). Returns errors; [] when none are declared.
+
+    Groups are a reporting axis, so the bar is that the axis PARTITIONS the pack: every task in
+    exactly one group, every named task real, no empty group, and a written rationale on each. A
+    group split that silently dropped or double-counted a task would publish a per-group mean that
+    no reader could reconstruct from the per-task table beside it.
+    """
+    if not task_groups:
+        return []
+    errors: list[str] = []
+    known = set(task_ids)
+    assigned: dict[str, list[str]] = {}
+
+    for key, block in task_groups.items():
+        block = block or {}
+        tasks = list(block.get("tasks") or [])
+        if not tasks:
+            errors.append(f"task_groups['{key}'] lists no tasks")
+        if not str(block.get("rationale") or "").strip():
+            errors.append(
+                f"task_groups['{key}'] has no rationale — a group is an argument the card makes, "
+                f"and nothing else in this repo can check that the grouping is true of the world")
+        for tid in tasks:
+            assigned.setdefault(tid, []).append(key)
+            if known and tid not in known:
+                errors.append(f"task_groups['{key}'] names unknown task '{tid}'")
+
+    for tid, keys in sorted(assigned.items()):
+        if len(keys) > 1:
+            errors.append(f"task '{tid}' is in more than one group: {', '.join(sorted(keys))}")
+
+    ungrouped = sorted(known - assigned.keys())
+    if known and ungrouped:
+        errors.append(
+            "task_groups is declared but does not cover every task; ungrouped: "
+            + ", ".join(ungrouped))
+
+    return errors
 
 
 def format_report(results: dict[str, list[str]]) -> tuple[str, int]:

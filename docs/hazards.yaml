@@ -1244,3 +1244,87 @@ entries:
       the same limit already recorded for auth_flow.
     fix_queued_to: >
       Not queued, and not intended to be. Recorded so the dimension is not read as more than it is.
+
+  - id: the-version-rule-must-never-reach-the-path-stripper
+    adr: adr-0025-dotted-numeric-version.md
+    hazard: >
+      `normalize_version` and `normalize_path` shared one regex, `_VERSION_SEG_RE`, and that regex is
+      what the path stripper DELETES from an address. Widening it to accept dotted numerics — the
+      obvious one-line way to implement ADR-0025 — would delete `2.0` from `/api/2.0/jobs/create`,
+      making the 404-ing `/api/v2.0/jobs/create` compare EQUAL to the real path. A notation rule
+      would manufacture an ENDPOINT score, which is the only direction in which this change can
+      inflate a result. Nothing at either call site makes the coupling visible.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_dotted_version_never_leaks_into_path_comparison
+      - core/tests/test_scorer.py::test_dotted_version_end_to_end_scores_both_dimensions_independently
+
+  - id: api-version-still-requires-exactly-one-spelling
+    adr: adr-0025-dotted-numeric-version.md
+    hazard: >
+      ADR-0025 collapses a notation difference; it does not let ground truth accept two DIFFERENT
+      versions. Where a vendor's own current documentation publishes two versions for one operation
+      — the next measured target shows `/api/2.1/jobs/create` on one live page and `/api/2.2/jobs/get`
+      on another — the answer key must pick one, and a model naming the other scores 0 on a dimension
+      where it is quoting the vendor verbatim. This is exactly the hazard ADR-0023 fixed for
+      `auth_flow`, in a different dimension, and it is not fixed here.
+    status: ungated
+    ungated_reason: >
+      The fix is an `api_version_alternates` block mirroring ADR-0023 — authored, evidenced against a
+      first-party page, and blocked at the roundtrip gate — not a scorer widening. Building it inside
+      a vendor cycle would mean designing a scoring mechanism and the pack that motivates it in the
+      same change, which is how a mechanism ends up shaped to flatter one result.
+    fix_queued_to: >
+      Filed as a core issue this cycle. The pack that forced it discloses the disagreement in
+      `specs.yaml` and counts, on its card, how many runs answered the version the vendor also
+      publishes — so the size of the residue is measured rather than argued.
+
+  - id: the-dotted-fold-stops-at-the-dot
+    adr: adr-0025-dotted-numeric-version.md
+    hazard: >
+      `v1` and `1` remain different strings. A vendor numbering its paths `/api/1/...` with no `v`
+      would hit the identical fault ADR-0025 exists to fix, and would not be caught by it.
+    status: ungated
+    ungated_reason: >
+      Deliberate and load-bearing. `v1` occurs 694 times across the archived cohort, so folding it
+      could move published numbers; requiring the dot is precisely what makes ADR-0025 provably inert
+      on every archive (0 of 666 pairs flip). Widening it is a decision that should be forced by a
+      real vendor and paid for with a re-score, not taken speculatively.
+    fix_queued_to: >
+      Not queued. No measured or queued vendor uses that notation. Recorded so that the next one is
+      recognised as this hazard rather than rediscovered as a surprise.
+
+  - id: a-task-group-is-authored-not-derived
+    adr: adr-0026-pack-task-groups.md
+    hazard: >
+      Nothing in this repo can check that a declared group is TRUE of the world — that "long-stable"
+      describes the Jobs API, or that a surface shipped when the card says it did. The validator
+      proves only that the grouping partitions the pack. A pack could therefore assemble two groups
+      that make its headline read as a finding, and every gate would pass.
+    status: ungated
+    ungated_reason: >
+      Not checkable from inside the repo: the claim is about the world, not about the files. The
+      required `rationale` field is the mitigation — it blocks rather than warns, so the argument a
+      reviewer must disagree with is always present — together with the grouping being committed
+      before the grid runs and the per-task table being published beside the group table.
+    fix_queued_to: >
+      Not queued. The reviewable-argument requirement is the intended end state; a stronger check
+      would have to encode vendor release history, which this project has no first-party source for.
+
+  - id: two-groups-can-differ-in-task-mix-rather-than-in-the-property-tested
+    adr: adr-0026-pack-task-groups.md
+    hazard: >
+      A group split reports a difference between two sets of tasks; it does not establish WHAT
+      differs. If one group happens to hold the harder tasks, the table measures difficulty and the
+      card reports it as the declared property. The validator cannot see this: both groupings
+      partition the pack identically.
+    status: ungated
+    ungated_reason: >
+      The mitigation belongs to the pack, not to core — groups must be matched on task `category`
+      and as far as possible on `job_category`, and the card must state the matching. Core cannot
+      enforce a balance rule without deciding for every future pack what "balanced" means on an axis
+      it has never seen.
+    fix_queued_to: >
+      Not queued as a core check. The first pack to use groups matches its two groups on difficulty
+      tier and job category and says so on the card; if a later pack cannot match, that is a reason
+      for it to decline the split rather than for core to grow a rule.

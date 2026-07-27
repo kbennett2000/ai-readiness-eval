@@ -74,6 +74,56 @@ def test_unversioned_endpoint_still_fails_an_invented_version():
     assert score.dim("api_version").score == 0.0
 
 
+# --- dotted numeric versions (ADR-0025) ------------------------------------ #
+
+@pytest.mark.parametrize("spelling", ["2.0", "v2.0", "V2.0", " 2.0 ", "/2.0", "api/2.0", "api/v2.0"])
+def test_a_dotted_numeric_version_reads_the_same_with_or_without_the_v(spelling):
+    """A vendor numbering its paths `/api/2.0/...` has no `v` anywhere, while the prompt contract's
+    own example demonstrates `v1` — so a model following our contract answers `v2.0` and would lose
+    the dimension on notation alone. Symmetric: it applies to ground truth and answer alike."""
+    assert scorer.normalize_version(spelling) == "2.0"
+
+
+def test_the_dotted_rule_does_not_merge_two_different_versions():
+    """The whole point is collapsing a notation difference, never a real one."""
+    assert scorer.normalize_version("2.0") != scorer.normalize_version("2.1")
+    assert scorer.normalize_version("v2.1") != scorer.normalize_version("2.2")
+    assert scorer.normalize_version("2.0") != scorer.normalize_version("")
+
+
+@pytest.mark.parametrize("undotted", ["v1", "v3", "v2025", "beta", "oauth", "nano", "1", "2"])
+def test_the_dotted_rule_requires_a_dot_and_so_cannot_touch_the_archived_cohort(undotted):
+    """Folding a bare `v1` to `1` is a DIFFERENT question with a different risk profile: `v1` occurs
+    694 times across the archived cohort, so that fold could move published numbers, and no measured
+    vendor needs it. Requiring the dot is what makes ADR-0025 provably inert on every archive."""
+    assert scorer.normalize_version(undotted) == undotted
+    assert scorer.normalize_version("v1") != scorer.normalize_version("1")
+
+
+def test_dotted_version_never_leaks_into_path_comparison():
+    """THE MUST-NOT. `_DOTTED_VERSION_RE` is a second pattern rather than a widening of
+    `_VERSION_SEG_RE` precisely because that one is what `normalize_path` STRIPS. If the version
+    rule reached the path stripper, `2.0` would vanish from `/api/2.0/jobs/create` and the 404-ing
+    `/api/v2.0/jobs/create` would compare EQUAL to the real address — a notation rule manufacturing
+    an endpoint score. That direction is the only one that can inflate a result, so it is pinned."""
+    real = scorer.normalize_path("/api/2.0/jobs/create")
+    assert real == ["api", "2.0", "jobs", "create"], "the version segment stays in the path"
+    assert scorer.normalize_path("/api/v2.0/jobs/create") != real
+    assert scorer.normalize_path("/api/2.1/jobs/create") != real
+
+
+def test_dotted_version_end_to_end_scores_both_dimensions_independently():
+    """Ground truth `2.0` against an answer of `v2.0`: the VERSION is credited (notation), and the
+    ENDPOINT still fails, because `/api/v2.0/...` is an address that does not exist."""
+    task = _task([{"method": "POST", "path": "/api/2.0/clusters/create", "api_version": "2.0"}])
+    same_path = scorer.score_task(task, _ans([("POST", "/api/2.0/clusters/create", "v2.0")]))
+    assert same_path.dim("api_version").score == 1.0
+    assert same_path.dim("endpoint").score == 1.0
+
+    wrong_path = scorer.score_task(task, _ans([("POST", "/api/v2.0/clusters/create", "2.0")]))
+    assert wrong_path.dim("endpoint").score == 0.0
+
+
 def test_canonical_auth_flow():
     assert scorer.canonical_auth_flow("OAuth2 client-credentials grant") == "oauth2-client-credentials"
     assert scorer.canonical_auth_flow("grant_type=client_credentials") == "oauth2-client-credentials"

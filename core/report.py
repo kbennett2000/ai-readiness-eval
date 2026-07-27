@@ -221,6 +221,52 @@ def render_comparison_md(label_a: str, agg_a: dict, meta_a: dict,
     return "\n".join(lines)
 
 
+def render_group_comparison_md(label_a: str, roll_a: dict, label_b: str, roll_b: dict,
+                               groups: dict, note: str | None = None) -> str:
+    """Two conditions × a pack's declared task groups, dimension by dimension (ADR-0026).
+
+    `roll_a`/`roll_b` are `category.rollup_by_group` outputs for the same grouping; `groups` is the
+    pack's `task_groups` block, which supplies each group's label, rationale and task list.
+
+    This renderer exists so a group split is GENERATED rather than typed. Cycle 19's whole finding
+    was that hand-maintained derived numbers go stale silently while the gated ones stay right.
+    """
+    lines = [f"# Task-group comparison — {label_a} vs {label_b}", ""]
+    if note:
+        lines += [f"> {note}", ""]
+    lines += [
+        "## Overall accuracy by group",
+        "",
+        f"| group | tasks | {label_a} | {label_b} | delta |",
+        "|---|---|---|---|---|",
+    ]
+    for key in groups:
+        a, b = roll_a.get(key, {}), roll_b.get(key, {})
+        label = groups[key].get("label", key)
+        oa, ob = a.get("overall"), b.get("overall")
+        lines.append(f"| **{label}** | {len(a.get('tasks', []))} | "
+                     f"{_fmt_cell(oa)} | {_fmt_cell(ob)} | {_delta_cell(oa, ob)} |")
+
+    for key in groups:
+        a, b = roll_a.get(key, {}), roll_b.get(key, {})
+        label = groups[key].get("label", key)
+        lines += ["", f"### {label}", ""]
+        rationale = groups[key].get("rationale")
+        if rationale:
+            lines += [f"{str(rationale).strip()}", ""]
+        lines += [f"| dimension | {label_a} | {label_b} | delta |", "|---|---|---|---|"]
+        for d in DIMENSIONS:
+            va, vb = a.get("dimensions", {}).get(d), b.get("dimensions", {}).get(d)
+            lines.append(f"| {_DIM_LABELS[d]} | {_fmt_cell(va)} | {_fmt_cell(vb)} | "
+                         f"{_delta_cell(va, vb)} |")
+        oa, ob = a.get("overall"), b.get("overall")
+        lines.append(f"| **overall** | {_fmt_cell(oa)} | {_fmt_cell(ob)} | {_delta_cell(oa, ob)} |")
+        lines += ["", "Tasks: " + ", ".join(f"`{t}`" for t in a.get("tasks", [])) + "."]
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_multi_comparison_md(entries: list[tuple[str, dict, dict]], note: str | None = None) -> str:
     """N-condition side-by-side (e.g. no-context vs public-docs vs mcp). `entries` is an ordered list
     of (label, aggregate, metadata); the LAST entry is treated as the 'after' and gets deltas vs each
