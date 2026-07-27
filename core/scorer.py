@@ -99,7 +99,7 @@ def normalize_version(version: str | None) -> str:
         v = v[1:-1].strip()
     # A service-qualified version is the same version (ADR-0020). The prompt contract offers
     # `<service>/v1` as a legal answer in its own right, so an API documented as versioned per
-    # service — `record/v1`, `query/v1` — gets answered in that form by a model that has read the
+    # service — `ledger/v1`, `report/v1` — gets answered in that form by a model that has read the
     # documentation, and would otherwise compare unequal to a ground truth written `v1`. Applied
     # symmetrically, so it can only ever collapse a difference the contract already said was not
     # one. It cannot credit the wrong service: `api_version` is scored only on an endpoint whose

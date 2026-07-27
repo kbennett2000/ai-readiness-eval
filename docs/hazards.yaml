@@ -1363,3 +1363,83 @@ entries:
       Not queued as a core check. The first pack to use groups matches its two groups on difficulty
       tier and job category and says so on the card; if a later pack cannot match, that is a reason
       for it to decline the split rather than for core to grow a rule.
+
+  - id: the-guard-matched-what-a-vendor-is-called-not-what-it-sells
+    adr: adr-0028-product-name-guard.md
+    hazard: >
+      Every field the leak guard derived its tokens from — id, display_name, guard_tokens,
+      guard_tokens_cased — answers one question: what is this vendor CALLED. A public file naming
+      four of a target's distinctive product names identifies it exactly as surely, and no token
+      derived from an id can ever match one, so the guard stayed green over it. Found by a human
+      reading the file, which is not a control that scales. Products are now declared explicitly and
+      scanned alongside the name.
+    status: gated
+    gated_by:
+      - core/tests/test_factory.py::test_product_tokens_are_returned_apart_from_the_name_tokens
+      - core/tests/test_factory.py::test_narrowing_the_name_does_not_disarm_the_products
+      - core/tests/test_core_no_vendor.py::test_the_product_token_list_is_not_empty
+
+  - id: an-unbounded-product-token-makes-the-guard-unusable-rather-than-noisy
+    adr: adr-0028-product-name-guard.md
+    hazard: >
+      Vendor tokens are matched as substrings, which is free for a distinctive company name. A
+      product name is frequently ordinary technical English, and matched the same way it fires on
+      every longer word containing it: the first run of the widened guard reported EIGHT false
+      positives against one true one. The hazard is not the noise, it is what noise does to a guard
+      — an instrument that cries wolf at that ratio is one somebody switches off or routes around,
+      which is a worse state than the gap it was built to close. Product tokens are `\b`-bounded,
+      and a name made of ordinary English must be declared cased so the lowercase words stay silent.
+    status: gated
+    gated_by:
+      - core/tests/test_core_no_vendor.py::test_a_product_token_does_not_fire_inside_a_longer_word
+      - core/tests/test_core_no_vendor.py::test_cased_product_regex_fires_on_the_proper_noun_only
+      - core/tests/test_core_no_vendor.py::test_product_regex_fires_on_the_product_name
+
+  - id: prose-about-the-guard-is-where-the-leak-wants-to-live
+    adr: adr-0028-product-name-guard.md
+    hazard: >
+      Building this guard produced TWO fresh leaks in one cycle, neither noticed while writing: the
+      code comment explaining the boundary rule quoted the two offending product tokens and named a
+      real vendor, and the first draft of ADR-0028 illustrated the new YAML field with a real
+      target's actual products. The natural way to document a token list is to show real tokens, so
+      this is the DEFAULT behaviour when explaining the rule rather than one author's slip. Both
+      were caught only because the scan exempts nothing, including the files that discuss it —
+      the ADR-0018 no-exemption property, now load-bearing for a second reason.
+    status: gated
+    gated_by:
+      - core/tests/test_core_no_vendor.py::test_the_guard_does_not_exempt_its_own_file
+      - core/tests/test_core_no_vendor.py::test_public_repo_names_no_prospect
+
+  - id: the-product-token-list-is-an-authors-judgement-and-cannot-be-complete
+    adr: adr-0028-product-name-guard.md
+    hazard: >
+      A product the queue does not name is a product the guard does not know. 143 tokens across 19
+      targets were written by hand from recon, and nothing checks that a target's list covers its
+      catalogue — a vendor that renames a product, or ships a new one, silently loses that token.
+      The non-vacuity gate proves the list is non-EMPTY; nothing can prove it is COMPLETE.
+    status: ungated
+    ungated_reason: >
+      Completeness is not checkable without an oracle for what a vendor sells, which is the same
+      class of problem as the recon it would be checking. A stale or partial list still guards more
+      than the zero product tokens that existed before it.
+    fix_queued_to: >
+      Not queued. The procedural cover is that product tokens are written when a target is added to
+      the queue, and reviewed in the private repo where naming products is safe.
+
+  - id: an-unqueued-target-contributes-no-tokens-at-all
+    adr: adr-0028-product-name-guard.md
+    hazard: >
+      The guard matches a list, so it can only match a name it has been told. A target with no queue
+      entry yet contributes ZERO tokens — the guard is not weak about it, it is silent — and cycles
+      naturally draft an ADR or a plan before the entry exists. That is precisely how the near-miss
+      behind issue #40 happened: the prose came first, and there was nothing to match it against.
+      No list-based guard can close this.
+    status: ungated
+    ungated_reason: >
+      Structural. Only ordering closes it: add the queue entry, with its name and product tokens,
+      BEFORE writing any public prose about a target. A test cannot enforce an ordering between an
+      edit in this repository and an edit in a private one.
+    fix_queued_to: >
+      Not queued as a test. The rule is now written in the guard's module docstring and the private
+      queue's header — both tracked, both visible in a PR diff — because it previously lived only in
+      a gitignored handoff note, invisible to the review that is the actual control.
