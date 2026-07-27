@@ -10,6 +10,18 @@
    itself asserted below.
 3. Nor may any git ref. Branch names are published as surely as file contents, and `git ls-files`
    cannot see them — a gap found only after a `cycle-NN-<vendor>` branch had already been pushed.
+4. A prospect is named by what it SELLS as well as by what it is called. Naming a handful of a
+   vendor's distinctive products identifies it exactly as well as naming the vendor, and no token
+   derived from an id can ever match one, so product names are declared explicitly (ADR-0028).
+
+**What this guard structurally cannot do, and the rule that covers it.** It matches a list, so it can
+only ever match a name it has been told. A target with no queue entry yet contributes ZERO tokens —
+the guard is not weak about it, it is silent — and cycles naturally write prose (an ADR, a plan)
+before the queue entry exists. No list-based guard can close that; only ordering can. **The standing
+rule is therefore: add the queue entry, with its name and product tokens, BEFORE writing any public
+prose about a target.** That rule is recorded here, in a tracked file that appears in a PR diff,
+because it previously lived only in a gitignored handoff note — invisible to review, which is where
+this class of mistake is actually caught.
 
 **This file used to be the leak.** A plaintext matcher must spell the literals it matches, so the
 guard listed every prospect and then exempted itself from its own rule — making the one tracked file
@@ -49,12 +61,27 @@ class _Prospects:
     cased_tokens: list[str] = field(default_factory=list)    # matched exactly as written
     pattern: re.Pattern | None = None
     cased_pattern: re.Pattern | None = None
+    # Product names are matched WHOLE-WORD; vendor names are matched as substrings. The asymmetry is
+    # deliberate and was forced by evidence (ADR-0028). A vendor name is distinctive, so over-matching
+    # it is free and catches `<name>-api` and `<name>'s`. A product name is frequently ordinary
+    # technical English, and unbounded it is not merely noisy but unusable: on the first run of this
+    # widened guard, one product token matched a longer English word in six ADR headers and another
+    # matched a substring of an unrelated camelCase identifier in a fixture — eight false positives
+    # against one true one. A guard that cries wolf at that ratio is a guard someone switches off.
+    # (The offending tokens are not quoted here. Spelling them would reintroduce the leak into the
+    # very comment explaining the fix — which is exactly what the first draft of it did.)
+    product_tokens: list[str] = field(default_factory=list)
+    product_cased_tokens: list[str] = field(default_factory=list)
+    product_pattern: re.Pattern | None = None
+    product_cased_pattern: re.Pattern | None = None
     skip: str = ""      # set => the private repo is not configured; skipping is correct
     error: str = ""     # set => it IS configured and is broken; that must be loud, never a skip
 
     def search(self, text: str) -> bool:
         return bool((self.pattern and self.pattern.search(text))
-                    or (self.cased_pattern and self.cased_pattern.search(text)))
+                    or (self.cased_pattern and self.cased_pattern.search(text))
+                    or (self.product_pattern and self.product_pattern.search(text))
+                    or (self.product_cased_pattern and self.product_cased_pattern.search(text)))
 
 
 def _load_prospects() -> _Prospects:
@@ -98,10 +125,15 @@ def _load_prospects() -> _Prospects:
 
     tokens: list[str] = []
     cased: list[str] = []
+    products: list[str] = []
+    products_cased: list[str] = []
     for entry in entries:
         ins, cas = entry.leak_guard_tokens()
         tokens += ins
         cased += cas
+        p_ins, p_cas = entry.leak_guard_product_tokens()
+        products += p_ins
+        products_cased += p_cas
     queue_ids = {e.id for e in entries}
     for pack_yaml in sorted(root.glob("*/pack.yaml")):
         name = pack_yaml.parent.name
@@ -112,13 +144,27 @@ def _load_prospects() -> _Prospects:
 
     tokens = list(dict.fromkeys(t for t in tokens if t.strip()))
     cased = list(dict.fromkeys(c for c in cased if c.strip()))
+    products = list(dict.fromkeys(t for t in products if t.strip()))
+    products_cased = list(dict.fromkeys(c for c in products_cased if c.strip()))
     if not tokens and not cased:
         return broken("it yielded no names at all, so the guard would match nothing and pass green")
+
+    def bounded(items: list[str], flags: int = 0) -> re.Pattern | None:
+        """Whole-word alternation. `\\b` is correct at both ends for every token shape used here —
+        products are named in word characters, including multi-word names like `Data Fabric`."""
+        if not items:
+            return None
+        return re.compile(r"\b(?:" + "|".join(re.escape(t) for t in items) + r")\b", flags)
+
     return _Prospects(
         tokens=tokens,
         cased_tokens=cased,
         pattern=re.compile("|".join(re.escape(t) for t in tokens), re.IGNORECASE) if tokens else None,
         cased_pattern=re.compile("|".join(re.escape(c) for c in cased)) if cased else None,
+        product_tokens=products,
+        product_cased_tokens=products_cased,
+        product_pattern=bounded(products, re.IGNORECASE),
+        product_cased_pattern=bounded(products_cased),
     )
 
 
@@ -374,6 +420,59 @@ def test_cased_prospect_regex_fires_on_the_proper_noun_only(index):
         f"cased token #{index} is listed but never fires"
     assert not prospects.cased_pattern.search(f"prefix {token.lower()} suffix"), \
         f"cased token #{index} is cased-only precisely so the lowercase word does not fire"
+
+
+def test_the_product_token_list_is_not_empty():
+    """Non-vacuity, the cycle-18 standing rule: a gate that measures nothing is worse than none.
+
+    Every declared target sells something, so an empty product list means the queue was never
+    annotated (or the fields were dropped in a save) and this whole guard passes green while matching
+    nothing. It must fail loudly instead, because the failure it is meant to catch — a public file
+    naming a vendor by its products (issue #40) — looks exactly the same as success from here.
+    """
+    prospects = _require_prospects()
+    assert prospects.tokens, "no name tokens loaded"
+    assert prospects.cased_tokens or prospects.tokens, "no name tokens loaded"
+    assert prospects.product_pattern or prospects.product_cased_pattern, (
+        "no product tokens loaded from the queue, so the product half of this guard matches nothing "
+        "and would pass green over a file naming every product of every target"
+    )
+
+
+@pytest.mark.parametrize("index", _token_indices(len(PROSPECTS.product_tokens)))
+def test_product_regex_fires_on_the_product_name(index):
+    prospects = _require_prospects()
+    token = prospects.product_tokens[index]
+    assert prospects.product_pattern.search(f"the {token} surface"), \
+        f"product token #{index} is listed but never fires"
+    assert prospects.product_pattern.search(f"the {token.upper()} surface"), \
+        f"product token #{index} is case-sensitive but was not declared cased"
+
+
+@pytest.mark.parametrize("index", _token_indices(len(PROSPECTS.product_cased_tokens)))
+def test_cased_product_regex_fires_on_the_proper_noun_only(index):
+    """Same bargain the cased NAME tokens strike, and it matters more here: a product is far more
+    likely than a company to be named with ordinary technical English."""
+    prospects = _require_prospects()
+    token = prospects.product_cased_tokens[index]
+    assert prospects.product_cased_pattern.search(f"the {token} surface"), \
+        f"cased product token #{index} is listed but never fires"
+    assert not prospects.product_cased_pattern.search(f"the {token.lower()} surface"), \
+        f"cased product token #{index} is cased-only precisely so the lowercase words do not fire"
+
+
+@pytest.mark.parametrize("index", _token_indices(len(PROSPECTS.product_tokens)))
+def test_a_product_token_does_not_fire_inside_a_longer_word(index):
+    """The boundary rule that makes product tokens usable at all, pinned per token.
+
+    Without it this guard is not merely noisy, it is unusable — its first run reported eight false
+    positives against one true one, every false one a product token sitting inside a longer ordinary
+    word. Suffixing a letter is the cheapest expression of that, and it must stay silent.
+    """
+    prospects = _require_prospects()
+    token = prospects.product_tokens[index]
+    assert not prospects.product_pattern.search(f"the {token}ing surface"), \
+        f"product token #{index} matched inside a longer word; the \\b boundary is gone"
 
 
 def test_the_prospect_matcher_does_not_fire_on_unrelated_text():

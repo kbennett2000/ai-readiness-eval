@@ -119,6 +119,47 @@ def test_guard_tokens_round_trip_through_save(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# Product tokens (ADR-0028) — a vendor is identifiable by what it sells
+# --------------------------------------------------------------------------- #
+
+def test_product_tokens_are_returned_apart_from_the_name_tokens():
+    """The guard compares the two differently, so nothing may hand back one merged list."""
+    entry = QueueEntry(id="alpha",
+                       guard_product_tokens=["Widgetron"],
+                       guard_product_tokens_cased=["Data Fabric"])
+    assert entry.leak_guard_tokens() == (["alpha"], [])
+    assert entry.leak_guard_product_tokens() == (["Widgetron"], ["Data Fabric"])
+
+
+def test_narrowing_the_name_does_not_disarm_the_products():
+    """`guard_tokens` REPLACES, and that replacement must not reach the product declaration.
+
+    An id that is an ordinary English word is declared with `guard_tokens: []`. If product tokens
+    rode on the same list, that one narrowing would silently switch off a second, unrelated guard —
+    and it would do so invisibly, because the entry would still LOOK like it declared products.
+    """
+    entry = QueueEntry(id="apple", guard_tokens=[], guard_product_tokens=["Orchardctl"])
+    assert entry.leak_guard_tokens() == ([], [])
+    assert entry.leak_guard_product_tokens() == (["Orchardctl"], [])
+
+
+def test_product_tokens_are_absent_by_default_and_are_never_invented():
+    """No product name is derivable from an id, so there is no default to fall back on."""
+    assert QueueEntry(id="alpha").leak_guard_product_tokens() == ([], [])
+
+
+def test_product_tokens_round_trip_through_save(tmp_path):
+    src = tmp_path / "q.yaml"
+    src.write_text("targets:\n  - id: alpha\n"
+                   "    guard_product_tokens: [Widgetron]\n"
+                   "    guard_product_tokens_cased: ['Data Fabric']\n")
+    out = tmp_path / "out.yaml"
+    factory.save_queue(out, factory.load_queue(src))
+    reloaded = factory.load_queue(out)[0]
+    assert reloaded.leak_guard_product_tokens() == (["Widgetron"], ["Data Fabric"])
+
+
+# --------------------------------------------------------------------------- #
 # Gates
 # --------------------------------------------------------------------------- #
 

@@ -73,11 +73,23 @@ class QueueEntry:
     #   guard_tokens_cased is matched as written, for names that are ordinary words capitalized.
     guard_tokens: list | None = None
     guard_tokens_cased: list = field(default_factory=list)
+    # What the target SELLS, as opposed to what it is called. A vendor is identifiable by its
+    # distinctive product names alone — naming four of them identifies it as surely as naming it —
+    # and nothing above can match one, because a product name is not derivable from an id (ADR-0028).
+    # Both fields EXTEND; neither replaces, because there is no default to replace.
+    #   guard_product_tokens        case-insensitive, for coined names that are never ordinary prose.
+    #   guard_product_tokens_cased  as written, for products named with ordinary technical English.
+    #                               The distinction is not cosmetic: matching such a name
+    #                               case-insensitively fires on every unrelated use of the words, and
+    #                               a guard that cries wolf is a guard someone turns off.
+    guard_product_tokens: list = field(default_factory=list)
+    guard_product_tokens_cased: list = field(default_factory=list)
     extra: dict = field(default_factory=dict)
 
     _KNOWN = ("id", "display_name", "tier", "status", "spec_state", "notes",
               "blocked_reason", "spend_usd", "wall_seconds", "last_run",
-              "guard_tokens", "guard_tokens_cased")
+              "guard_tokens", "guard_tokens_cased",
+              "guard_product_tokens", "guard_product_tokens_cased")
 
     @classmethod
     def from_dict(cls, d: dict) -> "QueueEntry":
@@ -104,6 +116,10 @@ class QueueEntry:
             out["guard_tokens"] = list(self.guard_tokens)
         if self.guard_tokens_cased:
             out["guard_tokens_cased"] = list(self.guard_tokens_cased)
+        if self.guard_product_tokens:
+            out["guard_product_tokens"] = list(self.guard_product_tokens)
+        if self.guard_product_tokens_cased:
+            out["guard_product_tokens_cased"] = list(self.guard_product_tokens_cased)
         out.update(self.extra)
         return out
 
@@ -114,6 +130,10 @@ class QueueEntry:
         containing it. `guard_tokens: []` is meaningful and is NOT the same as omitting the field: it
         says "my id must never be matched case-insensitively", which is the only way to declare an id
         that is also an ordinary English word.
+
+        Returns NAME tokens only. Product names are a separate declaration returned by
+        `leak_guard_product_tokens`, because the guard compares the two differently (ADR-0028) and a
+        caller that merged them would apply one kind's boundary rule to the other.
         """
         if self.guard_tokens is None:
             collapsed = re.sub(r"[-_\s]+", "", self.id)
@@ -122,6 +142,18 @@ class QueueEntry:
             default = list(self.guard_tokens)
         return ([str(t) for t in default if str(t).strip()],
                 [str(t) for t in self.guard_tokens_cased if str(t).strip()])
+
+    def leak_guard_product_tokens(self) -> tuple[list[str], list[str]]:
+        """(case-insensitive, case-sensitive) names of what this target SELLS (ADR-0028).
+
+        Kept apart from the name tokens for two reasons. The guard matches these WHOLE-WORD, because
+        a product name is often ordinary technical English and an unbounded match is unusable. And
+        `guard_tokens` REPLACES its default — the way an id that is also an English word opts out of
+        case-insensitive matching — which must never reach across and disarm a target's products,
+        since that would switch off a second guard invisibly while the entry still declared products.
+        """
+        return ([str(t) for t in self.guard_product_tokens if str(t).strip()],
+                [str(t) for t in self.guard_product_tokens_cased if str(t).strip()])
 
 
 def load_queue(path: str | Path) -> list[QueueEntry]:

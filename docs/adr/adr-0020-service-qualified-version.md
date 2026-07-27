@@ -9,6 +9,16 @@ the *version*.
 
 ## Context
 
+> **Amended 2026-07-27 (ADR-0028), for the privacy rule only.** As first written, this ADR and its
+> tests illustrated the problem with the measured vendor's *real* service names and the *real* name of
+> its query language — enough for any reader in the space to identify it, in a public repository whose
+> standing rule is that it names no measured prospect. Those literals are now neutral stand-ins
+> (`ledger/v1`, `report/v1`, `ledgerquery`). The strings were only ever synthetic fixture inputs, so
+> **no assertion, decision, measurement or published number changes** — including the 55-of-55 and 1%
+> figures below, which come from the private pack's archives and never depended on these spellings.
+> Recorded rather than done quietly: silently editing a merged ADR is the move this project's own
+> conventions forbid.
+
 The prompt contract has always offered the model two spellings of an API version. Verbatim, from
 [core/prompt.py](../../core/prompt.py):
 
@@ -18,10 +28,10 @@ The prompt contract has always offered the model two spellings of an API version
 
 `<service>/v1` is not a model invention. It is an option this project put in front of the model in
 writing, and it exists because it is how several real APIs are versioned — per service rather than per
-product, so `record/v1` and `query/v1` are independent v1s that can move apart.
+product, so `ledger/v1` and `report/v1` are independent v1s that can move apart.
 
 `normalize_version` never accepted the form it offered. It lowercased, stripped a leading slash and
-collapsed the "no version" sentinels, and otherwise compared the string as given — so `record/v1` and
+collapsed the "no version" sentinels, and otherwise compared the string as given — so `ledger/v1` and
 `v1` compared unequal.
 
 `normalize_path` had already solved the same problem on the path side, and says so in a comment that
@@ -37,7 +47,7 @@ the place the difference is captured, did not.
 ### How it surfaced
 
 A vendor whose documentation states plainly that the version is per-service, and where the model had
-read that documentation. Under `public-docs` the model answered `record/v1` and `query/v1` — the
+read that documentation. Under `public-docs` the model answered `ledger/v1` and `report/v1` — the
 contract's own second form, and the vendor's own notation — on **55 of 55** endpoints. Ground truth was
 written `v1`. The dimension reported **1%**.
 
@@ -59,7 +69,7 @@ Three properties make this a correction rather than a loosening:
   either form and neither is privileged. This is the ADR-0013 principle: ground truth has to be free to
   follow the vendor's own notation, because that is what the measured model has read.
 - **It cannot credit the wrong service.** `api_version` is scored only on an endpoint whose **path**
-  already matched, and the path is where the service segment lives. An answer that named `query/v1` for
+  already matched, and the path is where the service segment lives. An answer that named `report/v1` for
   a record-service endpoint fails the endpoint dimension first and is never reached here.
 - **It cannot move a vendor that does not use the form.** A per-product-versioned API answers `v3`, and
   `v3` normalizes to `v3` exactly as before.
