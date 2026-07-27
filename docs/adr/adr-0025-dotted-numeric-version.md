@@ -1,6 +1,6 @@
 # ADR-0025 — A dotted numeric version is the same version with or without the `v`
 
-**Status:** Accepted
+**Status:** Accepted, **amended by ADR-0027**
 **Date:** 2026-07-27
 **Extends:** ADR-0004 (`api_version` normalization), ADR-0008 (unversioned spellings), ADR-0020
 (service-qualified versions).
@@ -60,6 +60,15 @@ vendor needs it. Requiring the dot is what makes this rule provably inert on eve
 evidence below. Narrow now; the residue is recorded as a hazard rather than taken silently.
 
 ### The rule is kept out of path comparison, deliberately
+
+> **AMENDED BY ADR-0027, later the same cycle.** The exception argued for in this section was
+> removed. Its reasoning is locally true and globally wrong: `/v99/accounts` compares equal to
+> `/v3/accounts` today, so "the 404-ing path would compare equal" describes the design everywhere
+> else on purpose. Keeping the exception meant a vendor spelling its version `2.1` rather than `v2`
+> paid for one mistake in TWO dimensions while every other measured vendor paid in one — an
+> incomparable headline in a study whose output is the comparison. The section is left standing
+> rather than rewritten, because the argument reads as convincing and was wrong, and that is worth
+> being able to re-read. See ADR-0027.
 
 `_DOTTED_VERSION_RE` is a **second pattern**, not a widening of `_VERSION_SEG_RE`. That matters
 because `_VERSION_SEG_RE` is what `normalize_path` **strips out of an address**. Widening it would

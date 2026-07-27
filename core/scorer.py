@@ -21,17 +21,23 @@ DIMENSIONS = ("endpoint", "method", "api_version", "auth_flow", "required_scopes
 _VERSION_SEG_RE = re.compile(r"^(v\d+|beta|oauth|v20\d\d)$", re.IGNORECASE)
 _BRACE_SEG_RE = re.compile(r"^\{.*\}$")
 
-# A DOTTED numeric version, with the `v` optional: `2.0`, `2.1`, `v2.0` (ADR-0025). Deliberately a
-# SECOND pattern rather than a widening of `_VERSION_SEG_RE`, because that one is what
-# `normalize_path` strips out of an address. Widening it would delete `2.0` from
-# `/api/2.0/jobs/create`, which would make the 404-ing `/api/v2.0/jobs/create` compare EQUAL to the
-# real path — manufacturing an endpoint score out of a notation rule. This pattern is used only by
-# `normalize_version`, and `test_dotted_version_never_leaks_into_path_comparison` pins that.
+# A DOTTED numeric version, with the `v` optional: `2.0`, `2.1`, `v2.0` (ADR-0025, AMENDED by
+# ADR-0027). Used by `normalize_version` to fold the `v`, and by `normalize_path` to strip the
+# segment — the same treatment `_VERSION_SEG_RE` already gets, which is the whole point of ADR-0027.
 #
-# The dot is required on purpose. Folding a bare `v1` to `1` is a different question with a
-# different risk profile — `v1` appears 694 times across the archived cohort, so that fold could
-# move published numbers, and no measured vendor needs it. Narrow now; the residue is a recorded
-# hazard rather than a silent choice.
+# ADR-0025 originally kept this OUT of `normalize_path`, reasoning that stripping `2.0` would make
+# the 404-ing `/api/v2.0/jobs/create` compare equal to the real path. That reasoning was true and
+# beside the point: it is equally true of `/v99/accounts` against `/v3/accounts`, which this scorer
+# has always compared EQUAL on purpose — see the `_VERSION_SEG_RE` comment above, which states the
+# design in as many words. The effect of the exception was that a vendor spelling its version `2.1`
+# rather than `v2` paid for ONE mistake in TWO dimensions while every other measured vendor paid in
+# one, which makes its headline incomparable to theirs. See ADR-0027.
+#
+# The dot is required on purpose, and now does double duty. Folding a bare `v1` to `1` is a
+# different question with a different risk profile — `v1` appears 694 times across the archived
+# cohort, so that fold could move published numbers, and no measured vendor needs it. The dot is
+# ALSO what keeps identifier segments out of the path stripper: `/accounts/123` keeps its `123`,
+# because `123` has no dot and is not a version.
 _DOTTED_VERSION_RE = re.compile(r"^v?(\d+(?:\.\d+)+)$", re.IGNORECASE)
 
 
@@ -62,7 +68,8 @@ def normalize_path(path: str | None) -> list[str]:
     p = p.split("?", 1)[0].split("#", 1)[0]
     # drop version-marker segments wherever they appear (leading /v3, /beta, /oauth,
     # or a trailing per-service /v1), leaving the resource path for comparison
-    segments = [s for s in p.split("/") if s != "" and not _VERSION_SEG_RE.match(s)]
+    segments = [s for s in p.split("/")
+                if s != "" and not _VERSION_SEG_RE.match(s) and not _DOTTED_VERSION_RE.match(s)]
     out: list[str] = []
     for seg in segments:
         seg = seg.strip()

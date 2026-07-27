@@ -1245,19 +1245,54 @@ entries:
     fix_queued_to: >
       Not queued, and not intended to be. Recorded so the dimension is not read as more than it is.
 
-  - id: the-version-rule-must-never-reach-the-path-stripper
-    adr: adr-0025-dotted-numeric-version.md
+  - id: a-scoring-exception-for-one-vendor-makes-its-headline-incomparable
+    adr: adr-0027-path-version-parity.md
     hazard: >
-      `normalize_version` and `normalize_path` shared one regex, `_VERSION_SEG_RE`, and that regex is
-      what the path stripper DELETES from an address. Widening it to accept dotted numerics — the
-      obvious one-line way to implement ADR-0025 — would delete `2.0` from `/api/2.0/jobs/create`,
-      making the 404-ing `/api/v2.0/jobs/create` compare EQUAL to the real path. A notation rule
-      would manufacture an ENDPOINT score, which is the only direction in which this change can
-      inflate a result. Nothing at either call site makes the coupling visible.
+      ADR-0025 carved out an exception: dotted numeric versions were folded for the api_version
+      dimension but NOT stripped from the path, while `vN` versions were stripped for both. The
+      argument for the exception was locally sound and globally wrong — it meant a vendor spelling
+      its version `2.1` rather than `v2` paid for ONE mistake in TWO dimensions, and its headline
+      was therefore produced by a harsher rule than the ten packs beside it. In a study whose entire
+      output is the comparison between vendors, a per-vendor scoring rule is the failure that
+      invalidates the product rather than one number. It was invisible for exactly one cycle,
+      because no measured vendor had used that notation before.
     status: gated
     gated_by:
-      - core/tests/test_scorer.py::test_dotted_version_never_leaks_into_path_comparison
-      - core/tests/test_scorer.py::test_dotted_version_end_to_end_scores_both_dimensions_independently
+      - core/tests/test_scorer.py::test_a_dotted_version_segment_is_stripped_from_a_path_like_any_other
+      - core/tests/test_scorer.py::test_the_version_dimension_still_has_teeth_after_the_path_stops_carrying_it
+
+  - id: stripping-a-version-segment-must-never-reach-an-identifier
+    adr: adr-0027-path-version-parity.md
+    hazard: >
+      `normalize_path` now deletes a dotted numeric segment. The dot is the only thing separating a
+      version from an identifier: if a bare integer were ever stripped, `/jobs/123/reset` and
+      `/jobs/456/reset` would compare equal, and an endpoint score would be manufactured out of an
+      id. That is the one direction this rule can inflate a result, and the guard is a regex detail
+      invisible from either call site.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_stripping_a_version_segment_never_reaches_an_identifier
+
+  - id: the-fix-moved-a-headline-toward-the-hypothesis-under-test
+    adr: adr-0027-path-version-parity.md
+    hazard: >
+      ADR-0027 was written in the cycle whose grid it re-scores, by the same author, and it moves
+      that pack's numbers in the direction of the hypothesis the cycle set out to test. Nothing
+      about the resulting table looks wrong, which is precisely the problem: a scoring change made
+      after seeing a result is the hardest kind of bias to detect from the artifact.
+    status: ungated
+    ungated_reason: >
+      Not checkable by a test — it is a claim about why a change was made, not about what it does.
+      The mitigations are on the record instead: the rule is vendor-agnostic and restores parity
+      with ten existing packs rather than being fitted to one; it is argued from the scorer's own
+      pre-existing design comment, written many cycles earlier; it is provably inert on every
+      archived pack (666 pairs, 0 flips); the affected dimension still scores 0 on the same tasks,
+      so the finding it was accused of rescuing does not actually change sign; and the card
+      publishes BOTH the corrected split and the split under the superseded rule.
+    fix_queued_to: >
+      Not queued as a check. The durable fix is procedural and already the standing rule — decide a
+      scoring question BEFORE the grid, which is what ADR-0025 did and what let this one be caught
+      as an instrument suspect rather than published as a finding.
 
   - id: api-version-still-requires-exactly-one-spelling
     adr: adr-0025-dotted-numeric-version.md

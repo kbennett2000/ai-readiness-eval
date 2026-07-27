@@ -100,28 +100,47 @@ def test_the_dotted_rule_requires_a_dot_and_so_cannot_touch_the_archived_cohort(
     assert scorer.normalize_version("v1") != scorer.normalize_version("1")
 
 
-def test_dotted_version_never_leaks_into_path_comparison():
-    """THE MUST-NOT. `_DOTTED_VERSION_RE` is a second pattern rather than a widening of
-    `_VERSION_SEG_RE` precisely because that one is what `normalize_path` STRIPS. If the version
-    rule reached the path stripper, `2.0` would vanish from `/api/2.0/jobs/create` and the 404-ing
-    `/api/v2.0/jobs/create` would compare EQUAL to the real address — a notation rule manufacturing
-    an endpoint score. That direction is the only one that can inflate a result, so it is pinned."""
-    real = scorer.normalize_path("/api/2.0/jobs/create")
-    assert real == ["api", "2.0", "jobs", "create"], "the version segment stays in the path"
-    assert scorer.normalize_path("/api/v2.0/jobs/create") != real
-    assert scorer.normalize_path("/api/2.1/jobs/create") != real
+def test_a_dotted_version_segment_is_stripped_from_a_path_like_any_other(   # ADR-0027
+):
+    """A dotted numeric version is a version segment, so `normalize_path` strips it — exactly as it
+    has always stripped `v3`, `beta` and `oauth`.
+
+    ADR-0025 originally made an exception here and ADR-0027 removed it. The exception meant a vendor
+    numbering its paths `/api/2.1/...` had its version compared TWICE — once as the api_version
+    dimension and again as a path segment — so one mistake cost two dimensions, while for every
+    other measured vendor `/v99/accounts` and `/v3/accounts` compare equal on the path and the
+    difference is caught by api_version alone. That asymmetry made one pack's headline
+    incomparable to the ten beside it, which is the one thing a cross-vendor study cannot tolerate.
+    """
+    assert scorer.normalize_path("/api/2.0/jobs/create") == ["api", "jobs", "create"]
+    assert scorer.normalize_path("/api/2.1/jobs/create") == scorer.normalize_path(
+        "/api/2.2/jobs/create")
+    # ...which is the same rule that has always applied to the `vN` spelling:
+    assert scorer.normalize_path("/v3/accounts") == scorer.normalize_path("/v99/accounts")
 
 
-def test_dotted_version_end_to_end_scores_both_dimensions_independently():
-    """Ground truth `2.0` against an answer of `v2.0`: the VERSION is credited (notation), and the
-    ENDPOINT still fails, because `/api/v2.0/...` is an address that does not exist."""
-    task = _task([{"method": "POST", "path": "/api/2.0/clusters/create", "api_version": "2.0"}])
-    same_path = scorer.score_task(task, _ans([("POST", "/api/2.0/clusters/create", "v2.0")]))
-    assert same_path.dim("api_version").score == 1.0
-    assert same_path.dim("endpoint").score == 1.0
+def test_stripping_a_version_segment_never_reaches_an_identifier():
+    """THE MUST-NOT that survives ADR-0027. The dot is what separates a version from an id. If a
+    bare integer were stripped, `/jobs/123/reset` and `/jobs/456/reset` would compare equal — and
+    worse, `/accounts/{id}` collapses to a `{}` sentinel, so a numeric id segment silently matching
+    anything is the direction that manufactures endpoint scores. Pinned."""
+    assert scorer.normalize_path("/api/2.0/jobs/123/reset") == ["api", "jobs", "123", "reset"]
+    assert scorer.normalize_path("/jobs/123") != scorer.normalize_path("/jobs/456")
 
-    wrong_path = scorer.score_task(task, _ans([("POST", "/api/v2.0/clusters/create", "2.0")]))
-    assert wrong_path.dim("endpoint").score == 0.0
+
+def test_the_version_dimension_still_has_teeth_after_the_path_stops_carrying_it():
+    """The two dimensions are now genuinely independent, which is the point of ADR-0027 — NOT that
+    a version mistake becomes free. The endpoint is credited for finding the right resource; the
+    version dimension is where answering 2.1 against a ground truth of 2.2 is still scored 0."""
+    task = _task([{"method": "POST", "path": "/api/2.2/jobs/create", "api_version": "2.2"}])
+
+    wrong_version = scorer.score_task(task, _ans([("POST", "/api/2.1/jobs/create", "2.1")]))
+    assert wrong_version.dim("endpoint").score == 1.0, "the right resource was named"
+    assert wrong_version.dim("api_version").score == 0.0, "at the wrong version — still scored 0"
+
+    notation_only = scorer.score_task(task, _ans([("POST", "/api/v2.2/jobs/create", "v2.2")]))
+    assert notation_only.dim("endpoint").score == 1.0
+    assert notation_only.dim("api_version").score == 1.0, "ADR-0025: `v2.2` is `2.2`"
 
 
 def test_canonical_auth_flow():
