@@ -251,35 +251,145 @@ def _index_operations(spec: dict) -> dict[str, tuple[str, list[str]]]:
     return idx
 
 
-def check_recon(pack: Pack) -> tuple[bool, str]:
-    """Recon gate (step zero): can the method anchor this vendor at all?
+#: The two recon findings as a pack may write them. `partial` is meaningful only for availability —
+#: vendorability is a yes/no question about a licence, and "partly permitted" is a question no vendor
+#: has posed. It is accepted by the normalizer and rejected by the caller, so the refusal carries a
+#: message about vendorability rather than a shrug about parsing (ADR-0029).
+_AVAILABILITY: tuple[str, ...] = ("yes", "partial", "no")
+_RULINGS: tuple[str, ...] = ("yes", "partial", "no")
 
-    A pack whose spec is available (yes/partial) must carry a vendored spec + license so ground truth
-    can be anchored offline forever. A pack with no machine-readable spec is not blocked — it runs in
-    doc-anchored mode, and the spec-availability finding leads its card (ADR-0005). The one hard failure
-    is an *incoherent* pack: it claims a spec but did not vendor one.
+
+def _ruling(value: object) -> str:
+    """One of `yes` / `partial` / `no` as pack authors actually write it — or `''`, meaning unreadable.
+
+    Packs on disk write these findings three ways, all legitimate and all already committed. A bare
+    `yes`/`no`, which YAML hands back as a **bool**. A quoted string. And a folded paragraph whose
+    FIRST WORD is the ruling and whose remainder is the argument for it — one pack rules both ways in
+    a single field, yes for the copy it vendors and no for a second published copy carrying no licence
+    file. Reading the leading token is therefore not a shortcut; it is the convention these packs were
+    written in, and forbidding prose to get a clean flag would discard the argument that makes the
+    finding worth reading while moving packs that are already published.
+
+    Everything else returns `''`, and every caller treats `''` as a block. The direction is the point:
+    a value the gate cannot read is not a weaker assertion than a false one, it is *no* assertion, and
+    the whole purpose of this gate is that the pack has to say. The previous code did the opposite by
+    accident — it compared availability literally after `.lower()`, so `unknown`, a typo or a trailing
+    space fell through to the doc-anchored PASS. The one value that most needed to block was the only
+    one that passed silently, and the pack then ran a full grid in a mode nobody had chosen for it.
+    """
+    if isinstance(value, bool):  # YAML unquotes bare yes/no to booleans
+        return "yes" if value else "no"
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return ""
+    word = text.split()[0].strip(".,;:—–-()\"'").lower()
+    return word if word in _RULINGS else ""
+
+
+def check_recon(pack: Pack) -> tuple[bool, str]:
+    """Recon gate (step zero): can the method anchor this vendor at all, and on what terms?
+
+    TWO FINDINGS, ASSERTED SEPARATELY, because they are two different facts about a vendor. Does a
+    machine-readable description of this API **exist** (`machine_readable_spec_available`), and are we
+    **permitted to keep a copy** of it (`permits_vendoring`)? ADR-0001 scores those as separate
+    dimensions, and this gate used to collapse them: it read availability, never once read
+    `permits_vendoring` — a field every pack in the cohort records — and demanded a vendored file from
+    any pack that said `yes` or `partial`.
+
+    A vendor publishing a real, first-party, machine-readable spec under an all-rights-reserved licence
+    therefore had **no passable honest encoding**. The two ways through were to write
+    `machine_readable_spec_available: no`, which puts a false claim on a published report card and
+    destroys the very finding the card exists to report, or to commit a copyrighted document, which
+    breaks both a standing rule and the licence. Packs already in the cohort took the first, and say so
+    in a comment directly above the flag explaining that the value does not mean what it says. When a
+    gate's own inputs have to be written wrong to pass it, the gate is measuring itself (ADR-0029).
+
+    So the branches are now the four the two facts actually make:
+
+    * **available + permitted** — vendor it. Unchanged, *including its failure text*: this is the
+      pipeline's one original hard failure, the INCOHERENT pack that claims a spec and ships nothing,
+      and nothing below may offer a way around it.
+    * **available + NOT permitted** — the new branch, and it is not a waiver. See the exchange below.
+    * **unavailable, either way** — doc-anchored mode, as before. Not a block: "no spec is published"
+      is a finding this method exists to report, and it leads the card (ADR-0005).
+    * **either finding unreadable** — a block, in both directions. Defaulting an unreadable
+      `permits_vendoring` to yes would re-create the trap this ruling removes; defaulting it to no
+      would hand every pack the exemption for free.
+
+    WHAT `permits_vendoring: no` COSTS, so that it cannot be written to skip work:
+
+      1. **The pack must NOT carry a vendored spec.** Mirror-image incoherence to the original failure,
+         and the only clause here a machine can genuinely check. A pack declaring it may not
+         redistribute this document and redistributing it anyway has either mis-stated the licence or
+         breached it, and both are worse than a missing file. Checked regardless of availability,
+         because it is a fact about a licence and not about a finding.
+      2. **The pack must say WHERE the document it may not copy is** (`where` or `where_now`; both
+         spellings are in use across the cohort and neither is going to be renamed by a gate). A claim
+         that a spec exists which no reviewer can follow is the "no unlinked claims" working agreement
+         failing at the level of a whole scored finding.
+      3. **Everything else follows from (1) with no new rule anywhere.** `validate` already requires
+         every endpoint to carry EITHER a `spec_ref` OR `coverage: doc-only` + a `doc_ref`, and
+         `check_anchoring` resolves every `spec_ref` against the vendored spec — of which, by (1),
+         there is none, so any `spec_ref` fails there. Every endpoint in such a pack is therefore
+         FORCED to be doc_ref-anchored into a docs-manifest that pins each page by URL, byte size and
+         hash. That is the substitute for vendoring: not the bytes, which the licence forbids, but a
+         committed fingerprint of them. Writing that out a second time here would duplicate a rule two
+         gates already enforce, and duplicated rules drift (ADR-0013/0017 paid for that once).
+
+    The net cost of writing `no` is one manifest entry and one hand-authored `doc_ref` per endpoint,
+    forever, instead of one file copied once. **The escape hatch is the long way round**, which is
+    precisely why it is safe to open. What this cannot do is check whether the licence claim is *true*;
+    no test here can read a vendor's terms of use, and that is recorded as a hazard rather than dressed
+    up as a guard.
     """
     try:
         specs = yaml.safe_load(pack.specs_path.read_text()) or {}
     except (OSError, yaml.YAMLError) as exc:
         return False, f"specs.yaml unreadable: {exc}"
     finding = specs.get("spec_finding") or {}
-    avail = finding.get("machine_readable_spec_available")
-    if avail is None:
+
+    # --- both findings must be present and readable ------------------------------------------- #
+    raw_avail = finding.get("machine_readable_spec_available")
+    if raw_avail is None:
         return False, "specs.yaml has no spec_finding.machine_readable_spec_available (recon incomplete)"
-    # YAML unquotes `yes`/`no` to booleans — normalize so a pack can write either form.
-    avail = {True: "yes", False: "no"}.get(avail, str(avail)).lower()
+    avail = _ruling(raw_avail)
+    if avail not in _AVAILABILITY:
+        return False, (f"spec_finding.machine_readable_spec_available reads {str(raw_avail)[:40]!r}, "
+                       "which is not yes, partial or no")
     if not finding.get("license"):
         return False, "spec_finding names no license (license is a scored dimension)"
+    raw_permits = finding.get("permits_vendoring")
+    if raw_permits is None:
+        return False, ("spec_finding has no permits_vendoring — whether the licence lets us keep a copy "
+                       "is a finding in its own right, not a consequence of availability")
+    permits = _ruling(raw_permits)
+    if permits not in ("yes", "no"):
+        return False, (f"spec_finding.permits_vendoring reads {str(raw_permits)[:40]!r}; it must resolve "
+                       "to yes or no (prose is fine — lead with the ruling, then argue it)")
+
     vendored = pack.root / "vendored-spec"
     spec_files = [p for p in sorted(vendored.glob("*")) if p.suffix in (".json", ".yaml", ".yml")] \
         if vendored.is_dir() else []
+
+    # A licence fact, so it is checked before and independently of the availability finding: a pack may
+    # not redistribute a document it has just declared it may not redistribute.
+    if permits == "no" and spec_files:
+        return False, (f"spec_finding says permits_vendoring is no, but vendored-spec/ carries "
+                       f"{len(spec_files)} spec file(s) — the pack redistributes what it says it may not")
+
     if avail in ("yes", "partial"):
-        if not spec_files:
-            return False, f"spec_finding says spec is '{avail}' but vendored-spec/ has no spec file"
-        if not (vendored / "LICENSE").exists():
-            return False, "vendored spec present but no vendored-spec/LICENSE"
-        return True, f"spec available ({avail}); vendored + licensed ({finding['license']})"
+        if permits == "yes":
+            if not spec_files:
+                return False, f"spec_finding says spec is '{avail}' but vendored-spec/ has no spec file"
+            if not (vendored / "LICENSE").exists():
+                return False, "vendored spec present but no vendored-spec/LICENSE"
+            return True, f"spec available ({avail}); vendored + licensed ({finding['license']})"
+        if not (finding.get("where") or finding.get("where_now")):
+            return False, ("spec is available but not vendorable, so spec_finding must record `where` "
+                           "(or `where_now`) the document is — nothing else in the pack points at it")
+        return True, (f"spec available ({avail}) but not vendorable "
+                      f"({str(finding['license']).strip()[:60]}) — doc-anchored by force; "
+                      "every endpoint anchors to the docs-manifest")
     return True, f"no machine-readable spec ({avail!r}) — doc-anchored mode; availability leads the card"
 
 

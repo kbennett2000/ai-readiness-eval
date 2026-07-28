@@ -154,6 +154,14 @@ class PublicDocsCondition(Condition):
             "Use them to answer accurately.\n" + joined
         )
 
+    def full_text(self, task_id: str) -> str:
+        """Every cached page for a task, concatenated, with NO budget applied.
+
+        The unbudgeted counterpart to `build_context`, and it exists only so the two can be compared.
+        See `audit_docs_truncation`.
+        """
+        return "\n".join(self._load_text(task_id, page) for page in self._pages_for(task_id))
+
     def build_messages(self, task: dict) -> list[dict]:
         context = self.build_context(task["id"])
         content = context + "\n\n" + build_prompt(task["prompt"])
@@ -239,3 +247,81 @@ def get_condition(name: str, pack: Pack) -> Condition:
 def available_conditions() -> list[str]:
     """The condition names core can build (help text); a pack may expose a subset."""
     return list(KNOWN_CONDITIONS)
+
+
+# --------------------------------------------------------------------------------------------- #
+# Truncation audit — the docs condition must not measure our own budget
+# --------------------------------------------------------------------------------------------- #
+
+def _path_spellings(path: str, base_prefix: str | None) -> list[str]:
+    """The literal forms a documentation page might use for one ground-truth path.
+
+    Only the base-prefix pair, because that is the one rewriting a vendor is entitled to do and this
+    project already models it (ADR-0013/0017): a spec may write the whole address while a guide writes
+    the fragment after the base URL. No normalization beyond that, deliberately — see the docstring of
+    `audit_docs_truncation` for why an approximate matcher is safe here and a clever one would not be.
+    """
+    out = [path]
+    if base_prefix:
+        pre = "/" + base_prefix.strip("/")
+        if path.startswith(pre):
+            out.append(path[len(pre):] or "/")
+        else:
+            out.append(pre.rstrip("/") + path)
+    return [s for s in dict.fromkeys(out) if s]
+
+
+def audit_docs_truncation(pack: Pack) -> list[dict]:
+    """Where did the token budget delete an answer the cached page actually contained?
+
+    `public-docs` drops low-priority pages and then truncates the tail of the last one it keeps. When
+    the page it crops is the page carrying the operation a task asks about, the resulting number is a
+    measurement of OUR budget rather than of the vendor's documentation — the same class of instrument
+    fault as ADR-0013, where a dimension read 13.7% while the model was right 98% of the time. Nothing
+    downstream can tell the two apart: a truncated-away endpoint and an undocumented endpoint produce
+    the identical transcript.
+
+    What this deliberately does NOT do is require the docs to contain the answer. A vendor whose
+    documentation omits an endpoint is a finding this method exists to report, and turning that into a
+    gate failure would quietly forbid the very result the cohort most wants to publish. So the check is
+    strictly RELATIVE — present in the full cached text, absent from the injected text — and a path
+    absent from both is reported as `documented: False` and is nobody's fault.
+
+    Because it is relative, the matcher does not have to be clever, and that is the point: both sides
+    are the same bytes from the same page, so any consistent substring test answers the only question
+    asked. A normalizing matcher would be strictly worse — it could differ between the two sides and
+    manufacture a loss, and a false truncation report would send a cycle hunting a budget bug that does
+    not exist.
+
+    Returns one record per (task, endpoint). A caller treats `truncated: True` as the defect.
+    """
+    condition = PublicDocsCondition(pack)
+    prefix = getattr(pack, "endpoint_base_prefix", None)
+    records: list[dict] = []
+    for task in pack.load_tasks():
+        task_id = task["id"]
+        try:
+            full = condition.full_text(task_id)
+            injected = condition.build_context(task_id)
+        except (KeyError, FileNotFoundError) as exc:
+            records.append({"task_id": task_id, "path": None, "documented": False,
+                            "injected": False, "truncated": False, "error": str(exc)})
+            continue
+        for ep in task["ground_truth"]["endpoints"]:
+            path = ep.get("path")
+            if not path:
+                continue
+            spellings = _path_spellings(path, prefix)
+            in_full = any(s in full for s in spellings)
+            in_injected = any(s in injected for s in spellings)
+            records.append({
+                "task_id": task_id, "path": path,
+                "documented": in_full, "injected": in_injected,
+                "truncated": bool(in_full and not in_injected),
+            })
+    return records
+
+
+def truncation_losses(pack: Pack) -> list[dict]:
+    """Just the defects from `audit_docs_truncation` — paths the budget deleted."""
+    return [r for r in audit_docs_truncation(pack) if r.get("truncated")]
