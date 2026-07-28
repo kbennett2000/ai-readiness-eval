@@ -50,6 +50,10 @@ _MOCK_AUTH_PHRASE = {
     "hmac-signature": "HMAC message signature",
     "session-token": "Session token from the login call",
     "oauth2-client-credentials": "OAuth2 client-credentials",
+    # Deliberately does NOT mention the bearer token the grant produces: this phrase has to
+    # canonicalize to itself, and a realistic sentence about this flow would also say "Bearer"
+    # (ADR-0030). That it cannot be written realistically is the point of the ordering it tests.
+    "oauth2-authorization-code": "OAuth2 authorization code grant with PKCE",
     "bearer-token": "OAuth2 bearer token",
     "basic-auth": "HTTP Basic auth",
     "api-key": "API key",

@@ -1569,3 +1569,64 @@ entries:
       decision, not a bug fix.
     drift_pin:
       - core/tests/test_factory.py::test_the_reference_pack_recon_state_is_pinned
+
+  # ------------------------------------------------------------------ ADR-0030 -----
+  - id: a-grant-is-shadowed-by-the-credential-it-produces
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      Prose describing an OAuth grant necessarily names the credential the grant produces — an
+      authorization-code flow cannot be documented without saying that the result is sent as
+      `Authorization: Bearer`. With `bearer-token` ranked above the grant, such a ground truth
+      canonicalized to bearer-token while a model answering the precise "OAuth2 authorization code
+      with PKCE" canonicalized to `unknown`, so the dimension INVERTED: the exact answer scored 0 and
+      a vaguer one scored 1. Two packs read 0.0 on both conditions, one of them already published.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_the_authorization_code_grant_outranks_bearer_or_the_dimension_inverts
+      - core/tests/test_scorer.py::test_the_authorization_code_grant_is_a_style_of_its_own
+      - core/tests/test_scorer.py::test_the_authorization_code_grant_does_not_outrank_an_explicit_client_credentials_grant
+
+  - id: widening-the-grant-markers-would-fire-on-ordinary-code-prose
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      The markers for the authorization-code style are phrases (`authorization code`, `auth code`,
+      `pkce`). The obvious next edit is to add the bare word `code`, which would fire on every
+      `code_verifier`, `status code` and HTTP-code mention in the cohort and silently reclassify
+      unrelated ground truth.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_the_authorization_code_markers_do_not_fire_on_ordinary_code_prose
+
+  - id: the-round-trip-control-cannot-see-a-wrong-but-listed-style
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      ADR-0011 blocks a pack whose ground-truth auth style canonicalizes to `unknown`, and ADR-0010's
+      control scores each key against itself. Neither can see a key that canonicalizes to the WRONG
+      listed style: the guard fires on silence, not on being wrong, and an answer key always matches
+      itself. This is the fourth recorded instance of that limit being the reason a defect survived
+      (after ADR-0013, ADR-0017 and ADR-0020).
+    status: ungated
+    ungated_reason: >
+      Structurally unclosable by the control itself. Detecting a wrong-but-listed style needs an
+      oracle for what the vendor's documentation actually says, which is the recon judgement the key
+      encodes in the first place. What caught it was the standing suspect-instrument rule plus
+      reading transcripts, and that is a practice rather than a test.
+    fix_queued_to: >
+      Not queued as a test, and recorded as not closable. The practice it depends on — a dimension
+      reading uniformly zero is a suspect before it is a finding — is now stated in four ADRs and is
+      the actual control.
+
+  - id: auth-flow-still-forces-one-style-on-a-multi-credential-api
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      `auth_flow` picks exactly one style. A real API often accepts several credentials for the same
+      call, and adding an eighth style widens the vocabulary without changing that. A vendor
+      documenting two equally valid flows still has one of them scored 0 unless the pack declares an
+      alternate.
+    status: ungated
+    ungated_reason: >
+      Making the dimension multi-label changes what every published number means and would make the
+      cohort incomparable across the change. `auth_flow_alternates` (ADR-0023) is the deliberate
+      narrow mitigation.
+    fix_queued_to: >
+      Filed as core issue #20, which predates this ADR and is the standing home for the limitation.
