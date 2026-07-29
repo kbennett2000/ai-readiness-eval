@@ -1630,3 +1630,177 @@ entries:
       narrow mitigation.
     fix_queued_to: >
       Filed as core issue #20, which predates this ADR and is the standing home for the limitation.
+
+  # ------------------------------------------------------------------------ ADR-0031 ---
+
+  - id: every-gate-read-the-answer-key-and-none-read-the-question
+    adr: adr-0031-a-prompt-must-name-its-target.md
+    hazard: >
+      Until this ADR, `recon`, `validate`, `roundtrip`, `anchoring` and the truncation audit all
+      read the ANSWER KEY. Nothing read the question. A prompt that was answerable but
+      under-specified — naming no vendor and no product — passed every gate, and a whole grid was
+      run, read and discarded at a cost of $9.16 before a human reading one transcript found it.
+      45 of 60 cold runs were the measured model correctly refusing to guess.
+    status: gated
+    gated_by:
+      - core/tests/test_prompt_gate.py::test_the_prompt_that_started_this_fails_on_both_counts
+      - core/tests/test_run_guard.py::test_a_grid_whose_prompts_name_nobody_is_blocked
+      - core/tests/test_factory.py::test_prompts_gate_blocks_a_pack_whose_prompt_names_nobody
+      - core/tests/test_factory.py::test_the_prompt_gate_runs_before_the_answer_key_gates
+
+  - id: a-pack-that-declares-no-naming-rule-would-be-unmeasurable-silently
+    adr: adr-0031-a-prompt-must-name-its-target.md
+    hazard: >
+      The gate can only match names a pack declares. A pack that declared neither list would have
+      nothing to check against, and any default — deriving tokens from `display_name`, or skipping
+      the gate — would report a pass on a pack the gate never actually read.
+    status: gated
+    gated_by:
+      - core/tests/test_prompt_gate.py::test_a_pack_declaring_neither_list_fails_closed
+      - core/tests/test_prompt_gate.py::test_a_blank_name_is_refused_because_it_would_match_every_prompt
+      - core/tests/test_prompt_gate.py::test_every_pack_on_disk_declares_what_naming_it_means
+      - core/tests/test_factory.py::test_prompts_gate_blocks_a_pack_that_declares_nothing
+
+  - id: a-substring-matcher-would-find-a-short-product-mark-inside-an-ordinary-word
+    adr: adr-0031-a-prompt-must-name-its-target.md
+    hazard: >
+      Several real product marks are three-letter abbreviations. Matched as plain substrings they
+      occur inside ordinary English words, so a pack whose prompts never name the target would be
+      reported as fully compliant — a green check on a false claim, which is worse than no gate.
+    status: gated
+    gated_by:
+      - core/tests/test_prompt_gate.py::test_a_name_buried_inside_a_longer_word_does_NOT_match
+      - core/tests/test_prompt_gate.py::test_the_matcher_still_finds_a_name_that_is_really_there
+
+  - id: core-cannot-tell-a-product-mark-from-a-bare-corporate-parent
+    adr: adr-0031-a-prompt-must-name-its-target.md
+    hazard: >
+      A name may be declared as both a vendor name and a product name, which ADR-0031 permits for a
+      product mark distinctive enough to identify its vendor and forbids for a bare corporate
+      parent. Both are strings. Listing a parent as its own product name would turn every
+      under-specified prompt green while changing nothing true about it, and core cannot see the
+      difference.
+    status: ungated
+    ungated_reason: >
+      Deciding whether a name identifies one vendor requires knowing the world, not the repository.
+      Core reports every dual-listing by name in `validate`, in `prompts` and in the factory's gate
+      detail, so the claim is visible in ordinary output; the judgement is a review item. A check
+      that guessed would either block a legitimate product mark or wave through a parent, and both
+      would read as coverage this has not got.
+    fix_queued_to: >
+      Not queued in core, and recorded as not closable there. The reviewed list of permitted
+      dual-listings is asserted pack-side in the packs repo's own suite, so adding one is a visible
+      act rather than a config edit nobody reads.
+
+  - id: reference-pack-prompts-name-an-ambiguous-abbreviation
+    adr: adr-0031-a-prompt-must-name-its-target.md
+    hazard: >
+      10 of the 11 prompts in the in-repo reference pack identify their target only by a
+      three-letter abbreviation that belongs to several unrelated real organizations. The pack
+      therefore FAILS its own prompt gate. Its absolute numbers are bounded by that ambiguity —
+      but its FINDING is not: every condition was run with identical prompts, so the gap between
+      conditions, which is what this method measures, is unaffected.
+    status: ungated
+    ungated_reason: >
+      Not fixable without rewriting the questions that produced the frozen 73/68/93 regression
+      anchor, which would silently re-baseline the one table this repo checks itself against. The
+      gate is not weakened to accommodate it and no exemption mechanism exists: the pack simply
+      fails, and the failure is pinned by exact task id.
+    drift_pin:
+      - core/tests/test_prompt_gate.py::test_the_reference_pack_prompt_state_is_pinned
+      - core/tests/test_prompt_gate.py::test_the_one_reference_prompt_that_names_the_vendor_still_does
+      - core/tests/test_prompt_gate.py::test_the_ambiguous_abbreviation_is_not_declared_as_a_vendor_name
+    fix_queued_to: >
+      Filed as issue #50. Deliberately NOT taken: a re-baseline of the frozen anchor is not a change
+      a cycle makes inside the review that would authorize it.
+
+  - id: naming-a-target-does-not-make-a-question-good
+    adr: adr-0031-a-prompt-must-name-its-target.md
+    hazard: >
+      The gate closes exactly one failure mode. A prompt can name its vendor and its product and
+      still be leading, ambiguous, or asking for something the vendor does not have — and it passes.
+      It also cannot judge a declared name: a pack that declares a misleading one gets a green check
+      on a false claim.
+    status: ungated
+    ungated_reason: >
+      Judging whether a question is well posed is the authoring judgement the whole method rests on.
+      No mechanical check substitutes for it, and one that pretended to would be worse than the
+      honest absence.
+    fix_queued_to: >
+      Not queued, and recorded as not closable mechanically. ADR-0032's circuit breaker is the
+      partial empirical cover: it catches an unanswerable question after 20 runs, at real cost.
+
+  # ------------------------------------------------------------------------ ADR-0032 ---
+
+  - id: a-grid-whose-question-is-broken-used-to-run-to-completion-and-publish
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      A condition with a 75% format-failure rate against a 0% sibling ran to completion, wrote its
+      reports and printed a headline better than the truth. The signal was in the run's own output
+      and nothing acted on it.
+    status: gated
+    gated_by:
+      - core/tests/test_run_guard.py::test_the_breaker_fires_at_the_floor_on_a_broken_question
+      - core/tests/test_run_guard.py::test_a_synthetic_broken_grid_would_have_been_caught
+      - core/tests/test_run_guard.py::test_the_threshold_in_force_is_recorded_in_the_artifact
+
+  - id: a-mis-set-threshold-would-abort-healthy-published-work
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      A threshold or floor tightened without evidence would abort grids this project has already
+      published — a guard that destroys good work is switched off, and then guards nothing. At a
+      10-run floor the worst real prefix in the archive is 20.0%, exactly on a 20% threshold: no
+      headroom at all.
+    status: gated
+    gated_by:
+      - core/tests/test_run_guard.py::test_the_breaker_fires_on_no_archived_grid_this_project_published
+      - core/tests/test_run_guard.py::test_the_floor_is_where_the_headroom_is
+      - core/tests/test_run_guard.py::test_the_replay_above_is_not_vacuous
+
+  - id: the-breaker-cannot-tell-a-broken-question-from-a-genuine-refusal
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      A model can legitimately refuse when it genuinely does not know an obscure API, so a high
+      cold-condition failure rate is evidence about the question, not proof. A breaker that RULED on
+      it would suppress a real finding about a vendor.
+    status: ungated
+    ungated_reason: >
+      Structurally undecidable from the rate alone. The mitigation is design rather than a test: the
+      breaker stops the spend and demands a human ruling, deletes nothing, re-scores nothing, leaves
+      the grid resumable, and records the threshold in force in `scores.json` so proceeding past a
+      high rate is a decision on the permanent record.
+    fix_queued_to: >
+      Not queued, and recorded as not closable. Reading a failing transcript is the actual control,
+      which is a practice rather than a test.
+
+  - id: a-misleading-question-produces-confident-parseable-wrong-answers
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      The breaker only sees UNPARSEABLE answers. A prompt that is misleading rather than
+      unanswerable yields well-formed, confident, wrong answers at a 0% failure rate, and both this
+      guard and ADR-0031's are blind to it. The breaker also sees one condition at a time, so the
+      75%-to-0% ASYMMETRY that was the clearest signal is not what fires — only the absolute rate is.
+    status: ungated
+    ungated_reason: >
+      Detecting it needs an oracle for what the right answer is, which is the ground truth the grid
+      exists to test against. A cross-condition rule would need both conditions finished, which is
+      after the spend the breaker exists to prevent.
+    fix_queued_to: >
+      Not queued. Recorded so the guard is not read as broader than it is.
+
+  - id: archived-run-records-go-stale-after-a-rebuild
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      `rebuild-report` rewrites `scores.json` and `summary.md` but not `runs/*.json`, so a grid
+      re-scored offline keeps per-run `format_failure` flags the published number no longer counts.
+      Three archived conditions on disk carry 8 such flags. Any tool reading run records — including
+      this breaker's own replay — sees a different answer than the published one.
+    status: ungated
+    ungated_reason: >
+      Rewriting archived run records to match a rebuild would edit the raw evidence a published
+      number rests on, which is a worse trade than the inconsistency. For the breaker specifically
+      the direction is safe: the replay reads a WORSE failure record than was published, so it is
+      pessimistic rather than flattering, and it still never fires.
+    fix_queued_to: >
+      Filed as issue #51. Related to #46 (archived results do not rebuild identically) but distinct:
+      this is the run record disagreeing with the report built from it.

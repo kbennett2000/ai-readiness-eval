@@ -222,6 +222,65 @@ def cmd_canary(args: argparse.Namespace) -> int:
     return EXIT_OK if verdict["passed"] else EXIT_BLOCKED
 
 
+def _prompt_gate(pack: Pack) -> int:
+    """Refuse to start a grid whose prompts do not name what they are asking about (ADR-0031).
+
+    Called here rather than left to the factory because grids are run through this command far more
+    often than they are dispatched by the factory, and the requirement is that NO grid spends money
+    on an under-specified question. The rule itself is not duplicated — `prompt_gate.check_pack` is
+    the single implementation, and `factory.check_prompts` is the other caller.
+    """
+    from .prompt_gate import check_pack, format_report
+
+    report = check_pack(pack)
+    if report.ok:
+        return EXIT_OK
+    text, total = format_report(report)
+    print(
+        f"BLOCKED: {total} prompt problem(s) — a grid against these would measure the question, not "
+        "the vendor.\n"
+        "A prompt that does not name its target is answerable-but-under-specified: it passes every "
+        "other gate,\nbecause every other gate reads the answer key (ADR-0031).\n\n"
+        f"{text}",
+        file=sys.stderr,
+    )
+    return EXIT_BLOCKED
+
+
+# The format-failure circuit breaker (ADR-0032). Both numbers are derived from the cohort's own
+# history, not chosen — see the ADR for the derivation and for what this cannot do.
+FORMAT_FAILURE_THRESHOLD = 0.20
+FORMAT_FAILURE_FLOOR = 20
+
+
+def format_failure_breaker(records: list[dict], threshold: float,
+                           floor: int = FORMAT_FAILURE_FLOOR) -> str:
+    """A written reason to stop this condition, or "" to keep going.
+
+    Pure over the records so the decision can be replayed against any archived grid — which is how
+    the claim "this fires on none of the cohort's published conditions" is actually checked rather
+    than asserted.
+
+    Reused archived runs are counted like fresh ones. A resume that ignored them could work through
+    a grid that already had a broken question and never trip, which is laundering, not resuming.
+    """
+    n = len(records)
+    if threshold >= 1.0 or n < floor:
+        return ""
+    n_fail = sum(1 for r in records if r.get("format_failure"))
+    rate = n_fail / n
+    if rate <= threshold:
+        return ""
+    by_task: dict[str, int] = {}
+    for r in records:
+        if r.get("format_failure"):
+            key = r.get("task_id", "?")
+            by_task[key] = by_task.get(key, 0) + 1
+    worst = ", ".join(f"{t}×{c}" for t, c in sorted(by_task.items(), key=lambda kv: -kv[1])[:5])
+    return (f"{n_fail}/{n} runs ({rate:.0%}) failed to produce a parseable answer block, over the "
+            f"{threshold:.0%} threshold; worst tasks: {worst}")
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     pack = _load_pack(args)
     condition = conditions.get_condition(args.condition, pack)
@@ -230,6 +289,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not tasks:
         print("ERROR: no tasks matched", file=sys.stderr)
         return EXIT_ERROR
+
+    # Before the transport is even constructed: the cheapest gate runs first, and a mock run is
+    # exempt because it spends nothing and exists to prove plumbing.
+    if not args.mock:
+        rc = _prompt_gate(pack)
+        if rc != EXIT_OK:
+            return rc
 
     api_key, default_model = get_config()
     explicit_model = args.model or load_env().get("EVAL_MODEL")  # None => let transport default
@@ -324,7 +390,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     total_cost, total_ms = 0.0, 0
     reused = 0
     violations: list[dict] = []
+    # A mock grid answers from a fixed phrase table, so its failure rate says nothing about a
+    # question; the breaker is off for it, exactly as the pre-grid gate is.
+    ff_threshold = 1.0 if args.mock else float(args.format_failure_threshold)
+    stopped_early = ""
     for task in tasks:
+        if stopped_early:
+            break
         for run_index in range(args.n):
             run_path = runs_dir / f"{task['id']}-run{run_index}.json"
             # Resumable: reuse an archived run only if it is still a valid stand-in for the run we
@@ -339,6 +411,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                     total_ms += prev.get("duration_ms", 0)
                     reused += 1
                     print(f"  {task['id']} run {run_index + 1}/{args.n}: reused (archived)")
+                    stopped_early = format_failure_breaker(records, ff_threshold)
+                    if stopped_early:
+                        break
                     continue
                 print(f"  {task['id']} run {run_index + 1}/{args.n}: re-running ({why_not})")
 
@@ -380,12 +455,21 @@ def cmd_run(args: argparse.Namespace) -> int:
             disc = "" if discipline["ok"] else " [DISCIPLINE-FAIL]"
             print(f"  {task['id']} run {run_index + 1}/{args.n}: {status}{disc} "
                   f"({discipline['detail']})")
+            stopped_early = format_failure_breaker(records, ff_threshold)
+            if stopped_early:
+                break
 
     if reported_models:
         metadata["model_reported"] = sorted(reported_models)
     metadata["total_cost_usd"] = round(total_cost, 4)
     metadata["total_duration_ms"] = total_ms
     metadata["reused_runs"] = reused
+    # Recorded whether or not it fired, and whether or not it was overridden. A grid published past a
+    # high failure rate is a deliberate decision, and the decision belongs in the artifact rather
+    # than in someone's memory of the terminal (ADR-0032).
+    metadata["format_failure_threshold"] = ff_threshold
+    if stopped_early:
+        metadata["stopped_early"] = stopped_early
     metadata["tool_discipline_summary"] = {
         "runs_asserted": sum(1 for r in records if "tool_discipline" in r),
         "violations_logged": len(violations),
@@ -402,6 +486,20 @@ def cmd_run(args: argparse.Namespace) -> int:
     if total_cost or total_ms:
         print(f"Subscription usage: ${total_cost:.4f}  |  wall (sum of call durations): "
               f"{total_ms / 1000:.0f}s")
+    if stopped_early:
+        # Everything already run is written and archived; nothing is deleted and the run dir stays
+        # resumable. The breaker stops the spend and asks for a ruling — it does not make one.
+        print(
+            f"BLOCKED: stopped this condition early — {stopped_early}\n"
+            "A refusal rate this far above anything the cohort has legitimately produced is evidence "
+            "that the\nQUESTION is broken, not that the vendor is (ADR-0032). Read a failing "
+            "transcript before re-running.\n"
+            "Nothing was deleted; the archived runs above are intact and the grid resumes. To "
+            "proceed deliberately,\nre-run with --format-failure-threshold (1.0 disables it); the "
+            "value in force is recorded in scores.json.",
+            file=sys.stderr,
+        )
+        return EXIT_BLOCKED
     return EXIT_OK
 
 
@@ -433,6 +531,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--allow-unpinned-model", action="store_true",
                      help="permit a cli run with no --model (uses the session-default model); "
                           "off by default so an unpinned run can't silently confound the comparison")
+    run.add_argument("--format-failure-threshold", type=float, default=FORMAT_FAILURE_THRESHOLD,
+                     help=f"stop the condition when the running format-failure rate exceeds this "
+                          f"(default {FORMAT_FAILURE_THRESHOLD:.2f}, after "
+                          f"{FORMAT_FAILURE_FLOOR} runs; 1.0 disables). A rate far above anything "
+                          "the cohort produces means the question is broken, not the vendor")
     run.set_defaults(func=cmd_run)
 
     ping = sub.add_parser("ping", help="confirm the Claude subscription (CLI) transport works")
@@ -494,9 +597,15 @@ def build_parser() -> argparse.ArgumentParser:
                              "(proves each task is scoreable; cannot detect a wrong answer key)")
     rt.set_defaults(func=cmd_roundtrip)
 
+    pg = sub.add_parser("prompts",
+                        help="prompt-sanity gate: every task prompt must name the pack's declared "
+                             "vendor AND product (the one gate that reads the question, not the "
+                             "answer key)")
+    pg.set_defaults(func=cmd_prompts)
+
     fac = sub.add_parser("factory",
-                         help="dispatcher: work a ranked queue through recon→validate→roundtrip→"
-                              "anchoring→…→card (next|run|status)")
+                         help="dispatcher: work a ranked queue through recon→validate→prompts→"
+                              "roundtrip→anchoring→…→card (next|run|status)")
     fac.add_argument("mode", choices=["next", "run", "status"],
                      help="next: drive the next non-blocked target once; run: loop until all "
                           "carded/blocked; status: print the queue")
@@ -511,10 +620,31 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
+    from .prompt_gate import dual_listed
     from .validate import format_report, validate_pack
     pack = _load_pack(args)
     results = validate_pack(pack)
     text, total = format_report(results)
+    print(text)
+    # A NOTE, never an error: ADR-0031 permits a name in both the vendor and product lists when the
+    # product is distinctive enough to identify its vendor, and forbids it for a bare corporate
+    # parent. Core cannot tell those apart, so the overlap is surfaced for a human to check. It is
+    # printed here rather than folded into `validate_pack`'s results, because those are counted as
+    # problems and a note that blocked the validate gate would be a rule this project never made.
+    overlap = dual_listed(pack)
+    if overlap:
+        print(f"\nnote: declared as BOTH vendor and product — {', '.join(overlap)}\n"
+              "      Permitted for a product distinctive enough to identify its vendor; never for a "
+              "bare\n      corporate parent (ADR-0031). Not an error — a review item.")
+    return EXIT_OK if total == 0 else EXIT_ERROR
+
+
+def cmd_prompts(args: argparse.Namespace) -> int:
+    """The prompt-sanity gate standalone, so an author can run it while writing the tasks rather
+    than discovering it at dispatch. Same gate `cmd_run` and the factory run (ADR-0031)."""
+    from .prompt_gate import check_pack, format_report
+    pack = _load_pack(args)
+    text, total = format_report(check_pack(pack))
     print(text)
     return EXIT_OK if total == 0 else EXIT_ERROR
 

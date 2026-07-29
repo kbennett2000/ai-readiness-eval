@@ -420,7 +420,57 @@ def test_gates_are_declared_in_pipeline_order():
     """STAGES is documentation; GATES is what runs. They must not drift — the old code inlined the
     order inside run_pipeline, which is exactly how a stage lands in one and not the other."""
     assert [name for name, _ in factory.GATES] == factory.STAGES[:len(factory.GATES)]
-    assert [name for name, _ in factory.GATES] == ["recon", "validate", "roundtrip", "anchoring"]
+    assert [name for name, _ in factory.GATES] == [
+        "recon", "validate", "prompts", "roundtrip", "anchoring"]
+
+
+def test_the_prompt_gate_runs_before_the_answer_key_gates():
+    """The order is the argument (ADR-0031).
+
+    `validate` says a prompt exists; `prompts` says the prompt identifies what it is asking about;
+    only then is it worth proving the answer key scores itself and resolves. Every gate after this
+    one reads the ANSWER KEY, which is why a question naming nobody passed all of them and burned a
+    grid. Pinned so a later edit cannot quietly demote it below the gates it has to precede.
+    """
+    names = [name for name, _ in factory.GATES]
+    assert names.index("validate") < names.index("prompts") < names.index("roundtrip")
+    assert names.index("prompts") < names.index("anchoring")
+
+
+def test_prompts_gate_passes_for_the_fixture_pack():
+    ok, detail = factory.check_prompts(Pack.load(ACME))
+    assert ok, detail
+    assert "3 prompt(s)" in detail
+
+
+def test_prompts_gate_blocks_a_pack_whose_prompt_names_nobody(tmp_path):
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    victim = pack_dir / "tasks" / "widget-list.yaml"
+    text = victim.read_text()
+    old = "How do I list widgets in Acme Widget Cloud?"
+    assert old in text, f"fixture no longer contains {old!r} — this substitution is a no-op"
+    victim.write_text(text.replace(old, "How do I list the things over this vendor's API?"))
+
+    ok, detail = factory.check_prompts(Pack.load(pack_dir))
+    assert not ok
+    assert "widget-list" in detail and "names no vendor" in detail
+
+
+def test_prompts_gate_blocks_a_pack_that_declares_nothing(tmp_path):
+    """Fail-closed. There is no default and no grandfather clause: a pack that never says what
+    counts as naming its target cannot be measured."""
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    cfg = pack_dir / "pack.yaml"
+    text = cfg.read_text()
+    for old in ("  vendor_names: [Acme]\n", "  product_names: [Widget Cloud]\n"):
+        assert old in text, f"fixture no longer contains {old!r} — this substitution is a no-op"
+        text = text.replace(old, "")
+    cfg.write_text(text)
+
+    ok, detail = factory.check_prompts(Pack.load(pack_dir))
+    assert not ok and "vendor_names" in detail
 
 
 def test_validate_gate_passes_for_the_fixture_pack():
