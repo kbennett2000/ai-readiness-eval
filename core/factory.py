@@ -461,11 +461,11 @@ def check_anchoring(pack: Pack) -> tuple[bool, str]:
         manifest = pack.docs_manifest()
     except (OSError, yaml.YAMLError):
         manifest = {}
-    manifest_urls = {
-        page["url"]
-        for entry in (manifest.get("tasks") or {}).values()
-        for page in entry.get("pages", [])
-    }
+    # ADR-0034: an endpoint may be cited to a first-party artifact the model is never shown, so
+    # anchoring resolves against `anchors` as well as `pages`. The injected list is unchanged.
+    from .docs_fetch import manifest_urls as _manifest_urls
+
+    manifest_urls = _manifest_urls(manifest)
 
     problems: list[str] = []
     n_spec, n_doc = 0, 0

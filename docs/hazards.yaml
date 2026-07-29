@@ -1791,16 +1791,127 @@ entries:
   - id: archived-run-records-go-stale-after-a-rebuild
     adr: adr-0032-format-failure-circuit-breaker.md
     hazard: >
-      `rebuild-report` rewrites `scores.json` and `summary.md` but not `runs/*.json`, so a grid
-      re-scored offline keeps per-run `format_failure` flags the published number no longer counts.
-      Three archived conditions on disk carry 8 such flags. Any tool reading run records — including
-      this breaker's own replay — sees a different answer than the published one.
+      `rebuild-report` rewrote `scores.json` and `summary.md` but not `runs/*.json`, so every grid it
+      re-scored kept the per-run scores the published number no longer counted. CLOSED by ADR-0033,
+      which syncs the derived fields out of the committed report and into the records, and makes
+      `rebuild-report` do the same going forward.
+
+      THIS ENTRY UNDERSTATED THE HAZARD BY TWO ORDERS OF MAGNITUDE AND THE CORRECTION IS LEFT ON THE
+      RECORD. It said "three archived conditions carry 8 such flags", counting only `format_failure`
+      and only the `*/results/*` glob. Measured across all six derived fields and both globs: 24 of
+      the 24 directories that had ever been rebuilt disagreed with their own report — 638 run records,
+      929 fields. `format_failure` was 1% of it; stale `dimensions` (473 runs) and `endpoint_matches`
+      (420 runs) were the rest.
+
+      The claim that the direction was safe was also true only of this breaker. `cmd_run` resumes a
+      grid by appending an archived record verbatim, so a stale record is re-published into a NEW
+      scores.json — a live path to a wrong published number, not an inconsistency.
+    status: gated
+    gated_by:
+      - core/tests/test_archive_consistency.py::test_every_run_record_agrees_with_its_own_report
+      - core/tests/test_archive_consistency.py::test_the_check_above_actually_read_the_records
+      - core/tests/test_archive_sync.py::test_scores_json_is_never_written
+      - core/tests/test_archive_sync.py::test_the_sync_is_idempotent
+
+  # ------------------------------------------------------------------------------ ADR-0033 ---
+
+  - id: a-derived-field-nobody-classified-is-neither-protected-nor-synced
+    adr: adr-0033-a-run-record-is-a-scored-record.md
+    hazard: >
+      The sync writes `DERIVED_FIELDS` and refuses to touch `TRANSPORT_FIELDS`. A field added to a run
+      record and to neither list is silently outside both promises: it is not verified as evidence and
+      it is never brought into agreement with the report.
+    status: gated
+    gated_by:
+      - core/tests/test_archive_sync.py::test_every_field_a_live_run_writes_is_classified
+      - core/tests/test_archive_sync.py::test_the_two_field_lists_do_not_overlap
+
+  - id: reconciling-propagates-a-wrong-score-faithfully
+    adr: adr-0033-a-run-record-is-a-scored-record.md
+    hazard: >
+      The sync makes a run record agree with the report built from it. It has no opinion about whether
+      the report is right. If a scorer ruling was wrong, the reconciliation copies the wrong value into
+      one more file and makes the archive internally consistent about it — which is harder to notice
+      than a disagreement, because disagreement is a signal and agreement is not.
     status: ungated
     ungated_reason: >
-      Rewriting archived run records to match a rebuild would edit the raw evidence a published
-      number rests on, which is a worse trade than the inconsistency. For the breaker specifically
-      the direction is safe: the replay reads a WORSE failure record than was published, so it is
-      pessimistic rather than flattering, and it still never fires.
+      Detecting it requires knowing the correct score, which is the thing the scorer is for. The
+      round-trip control (ADR-0010) has the same structural limit and states it in the same terms: an
+      answer key always matches itself.
     fix_queued_to: >
-      Filed as issue #52. Related to #46 (archived results do not rebuild identically) but distinct:
-      this is the run record disagreeing with the report built from it.
+      Not queued, and recorded as not closable by a test. The control is that a scorer ruling is
+      re-applied to archives in the open, with the ADR that argued it.
+
+  - id: the-older-scorers-per-run-opinion-survives-only-in-git-history
+    adr: adr-0033-a-run-record-is-a-scored-record.md
+    hazard: >
+      Before ADR-0033 a rebuilt directory carried two independent per-run opinions — the report's
+      current one and the record's older one — and the difference was recoverable by reading them
+      against each other. After the sync only the current one is on disk. That second opinion is what
+      made this hazard findable at all.
+    status: ungated
+    ungated_reason: >
+      Keeping both would mean the archive states two different scores for one run with nothing saying
+      which is published, which is the ambiguity the ruling exists to remove. The history is preserved
+      in git rather than in the working tree.
+    fix_queued_to: >
+      Not queued. Recorded so the loss is deliberate rather than discovered later.
+
+  - id: the-frozen-import-is-no-longer-byte-identical-to-its-source
+    adr: adr-0033-a-run-record-is-a-scored-record.md
+    hazard: >
+      `packs/sailpoint/fixtures/imported/` was a byte-for-byte import from the frozen upstream repo,
+      and PROVENANCE.md asserted it. One record's scorer-derived fields were regenerated, so that
+      assertion is now narrower: the EVIDENCE is as imported, the record's copy of the score is not.
+      A reader who takes the original claim at face value would be wrong.
+    status: gated
+    gated_by:
+      - packs/sailpoint/tests/test_frozen_fixture_diff.py::test_the_regenerated_record_is_exactly_as_pinned
+      - packs/sailpoint/tests/test_frozen_fixture_diff.py::test_the_raw_evidence_was_not_touched
+      - packs/sailpoint/tests/test_frozen_fixture_diff.py::test_no_other_imported_record_was_regenerated
+      - packs/sailpoint/tests/test_frozen_fixture_diff.py::test_the_provenance_note_records_the_regeneration
+
+  - id: the-archive-sweep-is-silent-when-the-packs-dir-is-unset
+    adr: adr-0033-a-run-record-is-a-scored-record.md
+    hazard: >
+      The consistency sweep enumerates `packs/` plus `$AIRE_PACKS_DIR`. With the variable unset it
+      finds only the three in-repo fixtures and passes, having checked 3 of 32 directories — the same
+      quiet-skip shape as the leak guard (ADR-0018) and the truncation sweep.
+    status: gated
+    gated_by:
+      - core/tests/test_archive_consistency.py::test_the_sweep_below_is_not_vacuous
+
+  # ------------------------------------------------------------------------------ ADR-0034 ---
+
+  - id: an-anchor-is-checked-for-declaration-not-for-being-a-good-citation
+    adr: adr-0034-an-anchor-is-not-an-injection.md
+    hazard: >
+      `check_anchoring` verifies that a cited URL was declared in the manifest and, via `fetch-docs`,
+      that it was retrievable. It cannot tell whether the document at that URL actually documents the
+      endpoint, is current, or describes the surface being measured. A pack anchored to a plausible
+      but wrong first-party document passes the gate on a bad citation.
+    status: ungated
+    ungated_reason: >
+      Verifying that a document supports a key means parsing arbitrary vendor documents and deciding
+      whether they say what the key says — the judgement the whole method exists to make manually. The
+      docs truncation audit does a narrow version of this for INJECTED pages only, and it deliberately
+      does not require the docs to contain the answer.
+    fix_queued_to: >
+      Not queued. Review is the control, and each pack's specs.yaml records how its anchors were
+      verified.
+
+  - id: a-pack-may-cite-what-its-docs-condition-never-shows
+    adr: adr-0034-an-anchor-is-not-an-injection.md
+    hazard: >
+      Splitting `anchors` from `pages` means a pack's ground truth can rest on an artifact the measured
+      model is never given. That is the intended behaviour, and it is also a way to read a card wrongly:
+      the `public-docs` column measures the vendor's REACHABLE documentation, not the corpus the answer
+      key came from, and nothing in the numbers says so.
+    status: ungated
+    ungated_reason: >
+      The disclosure is a sentence on a card, which no test can assert the meaning of. A test could
+      require that a pack declaring `anchors` also carries some string in its report, which would check
+      that a sentence exists rather than that it is true — coverage this registry exists to refuse.
+    fix_queued_to: >
+      Not queued. The ADR requires the disclosure and each affected pack's card carries it.
+

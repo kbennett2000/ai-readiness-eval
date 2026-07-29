@@ -5,6 +5,11 @@ re-scored from its stored `raw_response` with the CURRENT scorer and the pack's 
 then `summary.md` + `scores.json` are rewritten. Only the top-level run-provenance metadata changes on
 a rebuild (it gains `rebuilt_from_runs: true` and does not reconstruct the live-run `cli_policy` /
 `tool_discipline_summary`); every score-bearing figure recomputes identically (ADR-0002).
+
+Since ADR-0033 a rebuild also writes the recomputed **scorer-derived** fields back into `runs/*.json`,
+because a run record that disagrees with the report built from it is re-published verbatim by the next
+resumed grid. The raw evidence — `raw_response`, `transcript`, and every transport-derived field — is
+still never rewritten, and that is enforced rather than asserted (see `core/archive.py`).
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ import json
 from pathlib import Path
 
 from . import answer_block
+from .archive import reconcile_runs
 from .pack import Pack
 from .report import write_reports
 from .scorer import DIMENSIONS, format_failure_score, score_task
@@ -98,4 +104,17 @@ def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = No
     }
     if note:
         metadata["rebuild_note"] = note
-    return write_reports(d, records, metadata)
+    agg = write_reports(d, records, metadata)
+
+    # ADR-0033. Every value this function just recomputed is now in scores.json and nowhere else; the
+    # run records still carry whatever the scorer said the day the grid ran. `cmd_run` resumes a grid
+    # by appending an archived record verbatim, so leaving them stale is a live path to a wrong
+    # published number, not an untidy archive. Syncing here rather than writing the records inline is
+    # deliberate: it is the same code the standing consistency sweep checks with, so the fix and the
+    # test cannot disagree about what "agrees" means. It re-reads what was just written and refuses to
+    # touch anything if a transport-derived field does not match — the raw evidence is never rewritten.
+    report = reconcile_runs(d, write=True)
+    if not report.ok:
+        raise RuntimeError("rebuilt reports, but the run records could not be reconciled with them: "
+                           + "; ".join(report.problems))
+    return agg
