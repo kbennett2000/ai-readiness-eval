@@ -102,6 +102,15 @@ def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = No
                                        sum(r.get("duration_ms", 0) for r in records)),
         "rebuilt_from_runs": True,
     }
+    # ADR-0032 promises the threshold in force is in `scores.json` "whether or not it fired", because
+    # publishing past a high failure rate is a deliberate decision that belongs in the artifact rather
+    # than in someone's memory of the terminal. This metadata block is a whitelist, so a rebuild was
+    # silently deleting that disclosure — and `stopped_early` with it, which is the record that a grid
+    # is deliberately partial. Neither is recomputable from the run records, so they are carried
+    # forward when present and never invented when absent.
+    for carried in ("format_failure_threshold", "stopped_early"):
+        if carried in prior:
+            metadata[carried] = prior[carried]
     if note:
         metadata["rebuild_note"] = note
     agg = write_reports(d, records, metadata)
