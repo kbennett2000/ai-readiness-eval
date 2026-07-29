@@ -137,6 +137,33 @@ def _short_text_reason(page: dict) -> str | None:
     return reason.strip()
 
 
+# ADR-0034. A manifest task entry carries two lists, and the difference between them is the whole
+# ruling: `pages` is what the model is SHOWN, `anchors` is what the answer key is CITED to. They were
+# one list until a vendor turned up whose only citable first-party artifact could not be injected
+# without handing the model the answer key's own source.
+INJECTED_KEY = "pages"
+ANCHOR_KEY = "anchors"
+
+
+def _entry_lists(entry: dict) -> list[list[dict]]:
+    return [entry.get(INJECTED_KEY, []) or [], entry.get(ANCHOR_KEY, []) or []]
+
+
+def manifest_urls(manifest: dict, *, include_anchors: bool = True) -> set[str]:
+    """Every URL the manifest names. Anchoring resolves against all of them; nothing else should.
+
+    Lives here rather than in `factory` so the anchoring gate and the fetcher read the manifest
+    through one accessor — `PublicDocsCondition` deliberately does NOT use it, and reads `pages`
+    directly, so no change here can widen what reaches a prompt.
+    """
+    urls: set[str] = set()
+    for entry in (manifest.get("tasks") or {}).values():
+        lists = _entry_lists(entry) if include_anchors else [entry.get(INJECTED_KEY, []) or []]
+        for pages in lists:
+            urls |= {p["url"] for p in pages if p.get("url")}
+    return urls
+
+
 def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None,
               user_agent: str | None = None, delay_seconds: float = 0.0,
               retries: int = DEFAULT_RETRIES, sleep=time.sleep) -> dict:
@@ -160,7 +187,10 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
     first = True
     for task_id, entry in (manifest.get("tasks") or {}).items():
         summary[task_id] = []
-        for page in entry.get("pages", []):
+        # Anchors are fetched too (ADR-0034): their existence, byte size and hash are the evidence a
+        # ground-truth citation rests on, and an anchor that has never been retrieved is an
+        # unverified claim. What they are NOT is injected — `PublicDocsCondition` reads `pages` only.
+        for page in [p for pages in _entry_lists(entry) for p in pages]:
             url = page["url"]
             dest = cache_path_for(cache_dir, task_id, url)
             if delay_seconds and not first:

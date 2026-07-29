@@ -589,6 +589,14 @@ def build_parser() -> argparse.ArgumentParser:
     rb.add_argument("--note", help="disclosure note recorded in metadata + summary (e.g. why re-scored)")
     rb.set_defaults(func=cmd_rebuild_report)
 
+    rc = sub.add_parser("reconcile-runs",
+                        help="sync scorer-derived fields from a results dir's scores.json into its "
+                             "runs/*.json (never re-scores; scores.json is read-only)")
+    rc.add_argument("results_dirs", nargs="+", help="one or more results dirs with a runs/ subdir")
+    rc.add_argument("--check", action="store_true",
+                    help="report what is stale and change nothing")
+    rc.set_defaults(func=cmd_reconcile_runs)
+
     val = sub.add_parser("validate", help="validate a pack's task files against the shared schema")
     val.set_defaults(func=cmd_validate)
 
@@ -672,6 +680,29 @@ def cmd_rebuild_report(args: argparse.Namespace) -> int:
     print(f"Rebuilt {d}/summary.md + scores.json "
           f"(overall {'n/a' if agg['overall_accuracy'] is None else f'{agg['overall_accuracy']*100:.0f}%'}, "
           f"{agg['format_failures']} format failures)")
+    return EXIT_OK
+
+
+def cmd_reconcile_runs(args: argparse.Namespace) -> int:
+    """ADR-0033. Needs no pack: the corrected scores are already in the directory's own scores.json,
+    so this reads one archive against itself and never consults ground truth."""
+    from .archive import format_report, reconcile_runs
+
+    results = [reconcile_runs(d, write=not args.check) for d in args.results_dirs]
+    text, problems = format_report(results)
+    if text:
+        print(text)
+    if problems:
+        print(f"\n{problems} problem(s) — nothing was written for the affected directory(ies)",
+              file=sys.stderr)
+        return EXIT_BLOCKED
+    stale = sum(r.total_fields for r in results)
+    if args.check:
+        print(f"\n{stale} stale field(s) across {len(results)} directory(ies)"
+              + ("" if stale else " — every run record agrees with its report"))
+        return EXIT_ERROR if stale else EXIT_OK
+    print(f"\nSynced {stale} field(s) across {len(results)} directory(ies); "
+          "scores.json and summary.md untouched")
     return EXIT_OK
 
 
