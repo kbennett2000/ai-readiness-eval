@@ -148,6 +148,21 @@ _AUTH_STYLES: tuple[tuple[str, tuple[str, ...]], ...] = (
     # OAuth-shaped ground truth ("Basic-auth login ... POST /api/login") and would reclassify it.
     ("session-token", ("session", "logon")),
     ("oauth2-client-credentials", ("client credentials",)),
+    # oauth2-authorization-code ranks ABOVE bearer-token for exactly the reason hmac-signature ranks
+    # first: prose describing an authorization-code grant NECESSARILY names the bearer token the
+    # grant produces ("exchange the code at the token endpoint; the resulting access token is
+    # presented as `Authorization: Bearer …`"). With `bearer` above it, that ground truth
+    # canonicalizes to bearer-token while a model answering the precise and correct "OAuth2
+    # authorization code with PKCE" canonicalized to `unknown` — so the dimension INVERTED, scoring
+    # the exact answer 0 and a vaguer one 1. Two packs read 0.0 on both conditions for that reason,
+    # one of them already published (ADR-0030).
+    #
+    # It ranks BELOW oauth2-client-credentials on purpose, and that order is the conservative one: a
+    # ground truth that states client-credentials explicitly keeps it even if its prose also mentions
+    # the authorization-code grant it is contrasting itself with. Markers are deliberately narrow —
+    # `code` alone would fire on every `code_verifier`, `status code` and HTTP-code mention in the
+    # cohort.
+    ("oauth2-authorization-code", ("authorization code", "auth code", "pkce")),
     ("bearer-token", ("bearer",)),
     ("basic-auth", ("basic auth", "basic authentication", "http basic")),
     ("api-key", ("api key", "apikey", "subscription key")),

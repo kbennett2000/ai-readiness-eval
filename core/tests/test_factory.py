@@ -4,6 +4,7 @@ All model-free — the pipeline runs with `provider="mock"`, so the whole spine 
 roundtrip → anchoring → mock → grid → compare → card → advance) is exercised offline against the
 synthetic `pack-acme` fixture. The guard (`test_core_no_vendor`) proves the factory names no vendor.
 """
+import os
 import shutil
 from pathlib import Path
 
@@ -187,6 +188,232 @@ def test_recon_allows_doc_anchored_pack_with_no_spec(tmp_path):
     ok, detail = factory.check_recon(Pack.load(pack_dir))
     assert ok                                            # no spec is not a block — doc-anchored mode
     assert "doc-anchored" in detail
+
+
+# ----------------------------------------------------------------------------------- #
+# Availability and vendorability are two findings (ADR-0029)
+# ----------------------------------------------------------------------------------- #
+
+def _acme(tmp_path, *repl: tuple[str, str]):
+    """A throwaway copy of the fixture pack with substitutions applied to specs.yaml.
+
+    Each substitution is ASSERTED to have matched. A helper that silently no-ops when the fixture is
+    reworded would leave every test below passing against an unmodified pack — green, vacuous, and
+    indistinguishable from a real result. That is the failure mode this repo keeps re-learning, so it
+    is closed here rather than trusted.
+    """
+    pack_dir = tmp_path / "pack-acme"
+    if not pack_dir.exists():
+        shutil.copytree(ACME, pack_dir)
+    text = (pack_dir / "specs.yaml").read_text()
+    for old, new in repl:
+        assert old in text, f"fixture no longer contains {old!r} — this substitution is a no-op"
+        text = text.replace(old, new)
+    (pack_dir / "specs.yaml").write_text(text)
+    return pack_dir
+
+
+_PERMITS_YES = "permits_vendoring: yes"
+_AVAIL_YES = "machine_readable_spec_available: yes"
+
+#: The exact refusal the pipeline's one original hard failure has always produced. Pinned as a literal
+#: so the new branches cannot quietly re-word or re-route it.
+_ORIGINAL_INCOHERENCE = "spec_finding says spec is 'yes' but vendored-spec/ has no spec file"
+
+
+def test_recon_still_blocks_a_pack_that_claims_a_vendorable_spec_and_vendored_nothing(tmp_path):
+    """THE MUST-NOT-WEAKEN TEST. ADR-0029 opens a branch that excuses a pack from vendoring, and the
+    one thing it may not do is soften the original failure: a pack that claims an available spec it is
+    permitted to keep, and keeps nothing, is incoherent and must still block with the same words.
+
+    The fixture's `permits_vendoring: yes` is load-bearing here, not incidental. Flip it and this pack
+    stops being incoherent and becomes the new, legitimate not-vendorable case — so a later edit to the
+    fixture could silently convert the pipeline's oldest hard failure into a pass. Asserting the detail
+    string character for character is what makes that conversion impossible to do by accident.
+    """
+    pack_dir = tmp_path / "pack-acme"
+    shutil.copytree(ACME, pack_dir)
+    assert _PERMITS_YES in (pack_dir / "specs.yaml").read_text()
+    shutil.rmtree(pack_dir / "vendored-spec")
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok
+    assert detail == _ORIGINAL_INCOHERENCE
+
+
+def test_permits_vendoring_no_is_not_a_shortcut_past_the_vendoring_requirement(tmp_path):
+    """THE ESCAPE-HATCH TEST. Writing `no` must buy nothing on its own.
+
+    Three steps in sequence, because the danger is not that the branch exists but that reaching it is
+    cheaper than vendoring. Step 1: the flag alone, spec still committed — blocked, because a pack may
+    not redistribute what it says it may not. Step 2: flag plus the file removed, but no locator —
+    still blocked, because a spec nobody can follow is an unlinked claim. Only the complete exchange
+    passes, and by then the pack has taken on a hand-authored doc_ref per endpoint instead of one file.
+    """
+    pack_dir = _acme(tmp_path, (_PERMITS_YES, "permits_vendoring: no"))
+
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok and "redistributes what it says it may not" in detail
+
+    shutil.rmtree(pack_dir / "vendored-spec")
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok and "`where`" in detail
+
+    (pack_dir / "specs.yaml").write_text(
+        (pack_dir / "specs.yaml").read_text() + "  where: https://example.invalid/docs/openapi\n")
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert ok, detail
+    assert "not vendorable" in detail
+
+
+def test_recon_blocks_an_unvendorable_pack_that_vendored_the_spec_anyway(tmp_path):
+    """Clause 1 in isolation, and on an *unavailable* pack, proving the rule is a fact about the
+    licence rather than a consequence of the availability finding."""
+    pack_dir = _acme(tmp_path,
+                    (_PERMITS_YES, "permits_vendoring: no"),
+                    (_AVAIL_YES, "machine_readable_spec_available: no"))
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok
+    assert "redistributes what it says it may not" in detail
+
+
+def test_recon_blocks_an_unvendorable_pack_that_does_not_say_where_the_spec_is(tmp_path):
+    pack_dir = _acme(tmp_path, (_PERMITS_YES, "permits_vendoring: no"))
+    shutil.rmtree(pack_dir / "vendored-spec")
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok
+    assert "`where`" in detail and "`where_now`" in detail
+
+
+def test_recon_accepts_either_spelling_of_the_locator(tmp_path):
+    """Five packs on disk write `where` and five write `where_now`. A gate that knew one spelling
+    would move five packs; unifying the names is a filed cleanup, not a thing a gate may impose."""
+    for i, key in enumerate(("where", "where_now")):
+        pack_dir = _acme(tmp_path / str(i), (_PERMITS_YES, "permits_vendoring: no"))
+        shutil.rmtree(pack_dir / "vendored-spec")
+        (pack_dir / "specs.yaml").write_text(
+            (pack_dir / "specs.yaml").read_text() + f"  {key}: https://example.invalid/spec\n")
+        ok, detail = factory.check_recon(Pack.load(pack_dir))
+        assert ok, f"{key}: {detail}"
+
+
+def test_recon_blocks_a_pack_that_never_states_whether_vendoring_is_permitted(tmp_path):
+    """Absent is not the same as no. Whether the licence lets us keep a copy is its own finding, so
+    silence blocks rather than defaulting either way."""
+    pack_dir = _acme(tmp_path, (_PERMITS_YES, "license_note: none"))
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok
+    assert "no permits_vendoring" in detail
+
+
+@pytest.mark.parametrize("value", ["unclear", '"under review"', '""', "[]", "maybe"])
+def test_recon_blocks_an_unreadable_permits_vendoring(tmp_path, value):
+    """Fail closed, and in BOTH directions. Reading an unreadable value as yes would re-create the
+    trap ADR-0029 removes; reading it as no would hand every pack the exemption for free."""
+    pack_dir = _acme(tmp_path / (value.strip('"[]') or "x"),
+                     (_PERMITS_YES, f"permits_vendoring: {value}"))
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok
+    assert "permits_vendoring reads" in detail
+
+
+@pytest.mark.parametrize("value", ["unknown", "maybe", "partially"])
+def test_recon_blocks_an_unreadable_availability(tmp_path, value):
+    """Closes a hole that predates ADR-0029: availability was compared literally, so anything outside
+    yes/partial — a typo, a hedge — fell through to the doc-anchored PASS and the pack ran a full grid
+    in a mode nobody chose for it. The value that most needed to block was the only one that passed."""
+    pack_dir = _acme(tmp_path / value,
+                     (_AVAIL_YES, f"machine_readable_spec_available: {value}"))
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert not ok
+    assert "machine_readable_spec_available reads" in detail
+
+
+def test_recon_passes_a_spec_that_exists_but_may_not_be_vendored(tmp_path):
+    """The new branch end to end — the combination that had no honest encoding before ADR-0029."""
+    pack_dir = _acme(tmp_path,
+                     (_AVAIL_YES, "machine_readable_spec_available: partial"),
+                     (_PERMITS_YES, "permits_vendoring: no"),
+                     ("license: Apache-2.0", "license: All rights reserved (site terms of use)"))
+    shutil.rmtree(pack_dir / "vendored-spec")
+    (pack_dir / "specs.yaml").write_text(
+        (pack_dir / "specs.yaml").read_text() + "  where: https://example.invalid/reference\n")
+    ok, detail = factory.check_recon(Pack.load(pack_dir))
+    assert ok, detail
+    assert "not vendorable" in detail and "docs-manifest" in detail
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (True, "yes"), (False, "no"), ("yes", "yes"), ("no", "no"), ("partial", "partial"),
+    ("  Partial  ", "partial"),
+    # The two prose shapes that are already committed across the cohort, paraphrased so this file
+    # carries no vendor's words: lead with the ruling, then argue it — including one that rules both
+    # ways in a single field, about two different copies of one document.
+    ("Yes, for the copy this pack vendors; NOT for the vendor-hosted copy.", "yes"),
+    ("No. The documentation is published as prose and carries no licence grant.", "no"),
+    # Unreadable -> '' -> every caller blocks.
+    ("unclear", ""), ("", ""), ("   ", ""), (None, ""), ([], ""), (42, ""),
+])
+def test_a_prose_permits_vendoring_is_read_from_its_leading_ruling(raw, expected):
+    """DRIFT PIN for the leading-word parse. `_ruling` reads the first token and ignores the argument
+    after it, which is the convention the packs were written in — and is also the hazard: a pack whose
+    prose opens with the wrong ruling is read backwards. Editing that behaviour must fail here."""
+    assert factory._ruling(raw) == expected
+
+
+def test_an_unvendorable_pack_cannot_have_a_spec_anchored_endpoint(tmp_path):
+    """THE CROSS-GATE THEOREM PIN. ADR-0029 deliberately does NOT re-state "every endpoint must be
+    doc_ref-anchored" inside check_recon, because it is already a consequence of two other gates:
+    `validate` requires each endpoint to carry a spec_ref OR a doc_ref, and `check_anchoring` resolves
+    every spec_ref against the vendored spec — of which, once recon forbids the file, there is none.
+
+    A property that holds across three gates and is asserted in none is the archetype of a hazard that
+    decays, so it is asserted here: recon passes, and anchoring is what refuses.
+    """
+    pack_dir = _acme(tmp_path, (_PERMITS_YES, "permits_vendoring: no"))
+    shutil.rmtree(pack_dir / "vendored-spec")
+    (pack_dir / "specs.yaml").write_text(
+        (pack_dir / "specs.yaml").read_text() + "  where: https://example.invalid/spec\n")
+    pack = Pack.load(pack_dir)
+    ok, detail = factory.check_recon(pack)
+    assert ok, detail                                   # recon is satisfied ...
+    anchored, why = factory.check_anchoring(pack)
+    assert not anchored                                 # ... and anchoring is what refuses
+    assert "spec" in why.lower()
+
+
+def test_every_external_pack_on_disk_still_passes_recon():
+    """Backward compatibility for ADR-0029, over the real cohort rather than the fixture.
+
+    Deliberately EXCLUDES this repo's own `packs/` tree. The reference pack there declares an available
+    permissive spec and deliberately vendors nothing — a frozen upstream repository holds the closure —
+    which is a third honest combination this gate still cannot express. It has failed recon since
+    ADR-0006 and nobody noticed, because recon runs only when the factory dispatches a target and the
+    reference pack is never dispatched. That is a pre-existing, separately filed defect, and a sweep
+    that pretended otherwise would either fail on day one or have to be written to hide it.
+    """
+    packs_dir = os.environ.get("AIRE_PACKS_DIR")
+    if not packs_dir or not Path(packs_dir).is_dir():
+        pytest.skip("AIRE_PACKS_DIR not set — external packs unavailable")
+    roots = [d for d in sorted(Path(packs_dir).iterdir()) if (d / "pack.yaml").exists()]
+    assert roots, f"AIRE_PACKS_DIR={packs_dir} contains no packs — this gate must not pass vacuously"
+    for d in roots:
+        ok, detail = factory.check_recon(Pack.load(d))
+        assert ok, f"{d.name}: {detail}"
+
+
+def test_the_reference_pack_recon_state_is_pinned():
+    """DRIFT PIN on a live, pre-existing defect (ADR-0015 vocabulary).
+
+    This asserts a defect, which is unusual and deliberate. It proves ADR-0029 neither caused the
+    reference pack's recon failure nor papered over it, and the day someone resolves it this test
+    fails and forces the resolution to be a decision rather than a side effect.
+    """
+    ref = Path(__file__).resolve().parents[2] / "packs" / "sailpoint"
+    if not (ref / "pack.yaml").exists():
+        pytest.skip("reference pack not present")
+    ok, detail = factory.check_recon(Pack.load(ref))
+    assert not ok
+    assert detail == "spec_finding says spec is 'yes' but vendored-spec/ has no spec file"
 
 
 def test_gates_are_declared_in_pipeline_order():

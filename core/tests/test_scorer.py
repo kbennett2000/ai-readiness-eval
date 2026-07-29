@@ -152,6 +152,56 @@ def test_canonical_auth_flow():
     assert scorer.canonical_auth_flow("magic") == "unknown"
 
 
+# --- the authorization-code grant ADR-0030 added ---------------------------- #
+
+def test_the_authorization_code_grant_is_a_style_of_its_own():
+    cf = scorer.canonical_auth_flow
+    assert cf("OAuth2 authorization code with PKCE") == "oauth2-authorization-code"
+    assert cf("OAuth2 Authorization Code") == "oauth2-authorization-code"
+    assert cf("OAuth 2.0 auth code grant") == "oauth2-authorization-code"
+    assert cf("authorization_code grant") == "oauth2-authorization-code"      # separator-insensitive
+    assert cf("PKCE is required for public clients") == "oauth2-authorization-code"
+
+
+def test_the_authorization_code_grant_outranks_bearer_or_the_dimension_inverts():
+    """THE COUNTEREXAMPLE THAT MADE THIS A CORRECTION RATHER THAN A NEW STYLE (ADR-0030).
+
+    Prose describing an authorization-code grant necessarily names the bearer token the grant
+    produces — you cannot document the flow without saying what you get at the end of it. With
+    `bearer` ranked above, such a ground truth canonicalized to bearer-token while a model answering
+    the precise, correct "OAuth2 authorization code with PKCE" canonicalized to `unknown`. The
+    dimension inverted: the exact answer scored 0 and a vaguer one scored 1, on both conditions, in
+    two packs — one of them already published.
+
+    This is the same argument that puts hmac-signature first, and it is asserted here because the
+    order is the ruling: reverse these two rows and the assertion below fails.
+    """
+    gt = ("OAuth 2.0 authorization code grant with PKCE: redirect the user to the authorization "
+          "endpoint, then exchange the returned code at the token endpoint. The resulting access "
+          "token is presented as `Authorization: Bearer <token>`.")
+    assert scorer.canonical_auth_flow(gt) == "oauth2-authorization-code"
+    assert scorer.canonical_auth_flow("OAuth2 authorization code with PKCE") == \
+        scorer.canonical_auth_flow(gt), "the correct answer must match the key it describes"
+
+
+def test_the_authorization_code_grant_does_not_outrank_an_explicit_client_credentials_grant():
+    """The conservative half of the ordering. A ground truth that states client-credentials keeps it
+    even when its prose also mentions the authorization-code grant it is distinguishing itself from,
+    because the explicit statement is the stronger signal."""
+    cf = scorer.canonical_auth_flow
+    assert cf("OAuth 2.0 client credentials grant (machine-to-machine), not the authorization "
+              "code grant") == "oauth2-client-credentials"
+
+
+def test_the_authorization_code_markers_do_not_fire_on_ordinary_code_prose():
+    """`code` alone would fire on every status code, response code and code_verifier in the cohort,
+    so the markers are phrases. Pinned because widening them is the obvious, wrong next edit."""
+    cf = scorer.canonical_auth_flow
+    assert cf("POST a status code lookup; the response code is returned") == "unknown"
+    assert cf("send the code_verifier with the request") == "unknown"
+    assert cf("a 401 status code means the token expired") == "unknown"
+
+
 # --- the three login styles ADR-0011 added ---------------------------------- #
 
 def test_canonical_auth_flow_names_the_styles_added_by_adr_0011():

@@ -1443,3 +1443,190 @@ entries:
       Not queued as a test. The rule is now written in the guard's module docstring and the private
       queue's header — both tracked, both visible in a PR diff — because it previously lived only in
       a gitignored handoff note, invisible to the review that is the actual control.
+
+  # ------------------------------------------------------------------ ADR-0029 -----
+  - id: an-unvendorable-spec-had-no-honest-encoding
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      The recon gate read spec AVAILABILITY and never read `permits_vendoring`, a field every pack
+      in the cohort records. A vendor publishing a real first-party machine-readable spec under an
+      all-rights-reserved licence therefore had exactly two passable encodings and both were wrong:
+      write `machine_readable_spec_available: no`, putting a false claim on a published card and
+      destroying the finding the card exists to report, or commit a copyrighted document. A gate
+      that forces its own input to be false is measuring itself.
+    status: gated
+    gated_by:
+      - core/tests/test_factory.py::test_recon_passes_a_spec_that_exists_but_may_not_be_vendored
+      - core/tests/test_factory.py::test_recon_blocks_an_unvendorable_pack_that_vendored_the_spec_anyway
+      - core/tests/test_factory.py::test_permits_vendoring_no_is_not_a_shortcut_past_the_vendoring_requirement
+
+  - id: an-unreadable-availability-value-passed-as-doc-anchored
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      `machine_readable_spec_available` was compared literally after `.lower()`, so every value
+      outside yes/partial — a typo, a trailing space, a hedge such as `unknown` — fell through to
+      the doc-anchored PASS. The one value that most needed to block, an availability the gate
+      cannot read, was the only one that passed silently, and the pack then ran a full grid in a
+      mode nobody had chosen for it.
+    status: gated
+    gated_by:
+      - core/tests/test_factory.py::test_recon_blocks_an_unreadable_availability
+      - core/tests/test_factory.py::test_recon_blocks_an_unreadable_permits_vendoring
+      - core/tests/test_factory.py::test_recon_blocks_a_pack_that_never_states_whether_vendoring_is_permitted
+
+  - id: the-context-budget-can-delete-the-answer-and-look-like-a-docs-gap
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      public-docs enforces its token budget by cropping the tail of the last page it keeps. When the
+      cropped page carries the operation a task asks about, the score measures OUR budget rather than
+      the vendor's documentation — and nothing downstream can tell them apart, because a
+      truncated-away endpoint and an undocumented endpoint produce an identical transcript. This is
+      the ADR-0013 fault class, which once reported a dimension at 13.7% while the model was right in
+      98% of runs.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_truncation.py::test_the_budget_never_deletes_a_documented_ground_truth_path
+      - core/tests/test_docs_truncation.py::test_the_matcher_finds_paths_that_are_really_there
+      - core/tests/test_docs_truncation.py::test_the_sweep_enumerates_packs
+
+  - id: a-licence-claim-is-unfalsifiable-by-this-harness
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      `permits_vendoring: no` opens the branch that excuses a pack from vendoring, and nothing in
+      this repository can check whether it is true. The gate can prove the pack did not redistribute
+      the document and did record where it is; it cannot read a vendor's terms of use. A pack that
+      would rather write one line than vendor a file can say `no` and be believed.
+    status: ungated
+    ungated_reason: >
+      Verifying a licence means reading a vendor's terms and forming a legal judgement, which no
+      test can do and no fetch can settle. The mitigation is structural rather than detective: the
+      branch is deliberately the MORE laborious one — it forbids the spec file outright, so every
+      endpoint must be hand-anchored to its own docs-manifest page instead of resolving by
+      operationId — so a false claim buys work rather than saving it.
+    fix_queued_to: >
+      Not queued, and not closable by a test. `license` and `where`/`where_now` are required
+      precisely so a human reviewer can check the claim in the one place it can be checked, which
+      is the vendor's own site.
+
+  - id: the-vendorability-ruling-is-read-from-the-first-word-of-prose
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      Some packs write `permits_vendoring` as a paragraph rather than a flag, and one rules BOTH
+      WAYS in a single field — yes for the copy it vendors, no for a second published copy that
+      carries no licence file. `_ruling` reads the leading token and ignores the argument after it,
+      so a pack whose prose opens with the wrong ruling is read backwards, and one that opens with a
+      hedge is blocked for a reason that reads like a typo.
+    status: ungated
+    ungated_reason: >
+      The alternative is to forbid prose and demand a bare flag, which would discard the argument
+      that makes the finding worth reading and would move packs that are already published. Reading
+      the leading word is the convention those packs were written in, not a new one imposed on them.
+    fix_queued_to: >
+      Not queued as a parser change. The field's contract — lead with the ruling, then argue it — is
+      stated in ADR-0029 and repeated in the gate's own error text, which is where an author who
+      gets it wrong will read it.
+    drift_pin:
+      - core/tests/test_factory.py::test_a_prose_permits_vendoring_is_read_from_its_leading_ruling
+
+  - id: packs-published-under-the-overloaded-availability-flag
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      Because the gate had no passable encoding for "a real machine-readable spec exists and its
+      licence forbids keeping a copy", packs already in the cohort wrote
+      `machine_readable_spec_available: no` with a comment above the flag explaining that it does not
+      mean what it says. Those cards are published. Until they are re-encoded, the cohort's
+      availability finding is NOT comparable across vendors: one value means "nothing exists" for
+      some packs and "something exists that we may not keep" for others, and a cross-vendor reading
+      of that dimension silently mixes them.
+    status: ungated
+    ungated_reason: >
+      Re-encoding edits a private pack in a way that changes the LEAD FINDING of an already
+      published card, which is a re-review of those cards rather than a core change. Doing it in the
+      same change that opens the branch would mean altering published claims inside the review that
+      authorized the alteration.
+    fix_queued_to: >
+      Filed against the private packs repo: re-recon the affected packs under the new vocabulary and
+      re-issue their cards. This public gate change is what unblocks it.
+
+  - id: the-reference-pack-does-not-pass-the-recon-gate
+    adr: adr-0029-availability-and-vendorability-are-two-findings.md
+    hazard: >
+      The reference pack declares an available spec under a permissive licence and deliberately
+      vendors nothing, because a frozen upstream repository holds the vendored closure. That is a
+      THIRD honest combination the gate cannot express, and the gate has blocked this pack since
+      ADR-0006 with nobody noticing: recon runs only when the factory dispatches a target, and the
+      reference pack is never dispatched. The round-trip control (ADR-0010) sweeps every pack on
+      disk for exactly this reason; recon does not, and that asymmetry is what hid it.
+    status: ungated
+    ungated_reason: >
+      A suite-wide recon sweep would have failed on the reference pack the day it was written, so
+      the compatibility check added here covers external packs only and says so in its docstring.
+      Closing the gap requires deciding what "anchored offline forever" means when the anchor is
+      deliberately somewhere else.
+    fix_queued_to: >
+      Filed. Two candidate resolutions — vendor the closure into the reference pack, or let a pack
+      cite an external vendored copy by URL, byte count and hash — and choosing between them is a
+      decision, not a bug fix.
+    drift_pin:
+      - core/tests/test_factory.py::test_the_reference_pack_recon_state_is_pinned
+
+  # ------------------------------------------------------------------ ADR-0030 -----
+  - id: a-grant-is-shadowed-by-the-credential-it-produces
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      Prose describing an OAuth grant necessarily names the credential the grant produces — an
+      authorization-code flow cannot be documented without saying that the result is sent as
+      `Authorization: Bearer`. With `bearer-token` ranked above the grant, such a ground truth
+      canonicalized to bearer-token while a model answering the precise "OAuth2 authorization code
+      with PKCE" canonicalized to `unknown`, so the dimension INVERTED: the exact answer scored 0 and
+      a vaguer one scored 1. Two packs read 0.0 on both conditions, one of them already published.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_the_authorization_code_grant_outranks_bearer_or_the_dimension_inverts
+      - core/tests/test_scorer.py::test_the_authorization_code_grant_is_a_style_of_its_own
+      - core/tests/test_scorer.py::test_the_authorization_code_grant_does_not_outrank_an_explicit_client_credentials_grant
+
+  - id: widening-the-grant-markers-would-fire-on-ordinary-code-prose
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      The markers for the authorization-code style are phrases (`authorization code`, `auth code`,
+      `pkce`). The obvious next edit is to add the bare word `code`, which would fire on every
+      `code_verifier`, `status code` and HTTP-code mention in the cohort and silently reclassify
+      unrelated ground truth.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer.py::test_the_authorization_code_markers_do_not_fire_on_ordinary_code_prose
+
+  - id: the-round-trip-control-cannot-see-a-wrong-but-listed-style
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      ADR-0011 blocks a pack whose ground-truth auth style canonicalizes to `unknown`, and ADR-0010's
+      control scores each key against itself. Neither can see a key that canonicalizes to the WRONG
+      listed style: the guard fires on silence, not on being wrong, and an answer key always matches
+      itself. This is the fourth recorded instance of that limit being the reason a defect survived
+      (after ADR-0013, ADR-0017 and ADR-0020).
+    status: ungated
+    ungated_reason: >
+      Structurally unclosable by the control itself. Detecting a wrong-but-listed style needs an
+      oracle for what the vendor's documentation actually says, which is the recon judgement the key
+      encodes in the first place. What caught it was the standing suspect-instrument rule plus
+      reading transcripts, and that is a practice rather than a test.
+    fix_queued_to: >
+      Not queued as a test, and recorded as not closable. The practice it depends on — a dimension
+      reading uniformly zero is a suspect before it is a finding — is now stated in four ADRs and is
+      the actual control.
+
+  - id: auth-flow-still-forces-one-style-on-a-multi-credential-api
+    adr: adr-0030-authorization-code-is-a-login-style.md
+    hazard: >
+      `auth_flow` picks exactly one style. A real API often accepts several credentials for the same
+      call, and adding an eighth style widens the vocabulary without changing that. A vendor
+      documenting two equally valid flows still has one of them scored 0 unless the pack declares an
+      alternate.
+    status: ungated
+    ungated_reason: >
+      Making the dimension multi-label changes what every published number means and would make the
+      cohort incomparable across the change. `auth_flow_alternates` (ADR-0023) is the deliberate
+      narrow mitigation.
+    fix_queued_to: >
+      Filed as core issue #20, which predates this ADR and is the standing home for the limitation.
