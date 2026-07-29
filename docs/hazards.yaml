@@ -1788,6 +1788,40 @@ entries:
     fix_queued_to: >
       Not queued. Recorded so the guard is not read as broader than it is.
 
+  - id: a-rebuild-silently-deletes-a-disclosure-it-cannot-recompute
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      `rebuild_report` assembles metadata from a whitelist, so any key not named in it is dropped. Three
+      of those drops are deliberate and pinned (ADR-0002's run-provenance class). Two were not:
+      `format_failure_threshold`, which ADR-0032 states is recorded "whether or not it fired" precisely
+      so that publishing past a high failure rate is a decision on the permanent record, and
+      `stopped_early`, the record that a grid is deliberately partial. Neither is recomputable from the
+      run records, so a rebuild destroyed the only copy — and a re-score for integrity is exactly when
+      an archive is most likely to be rebuilt. Found when a pack's two archives lost the threshold to a
+      ground-truth correction, before either was committed.
+    status: gated
+    gated_by:
+      - core/tests/test_rebuild_metadata.py::test_a_rebuild_carries_the_disclosure_forward
+      - core/tests/test_rebuild_metadata.py::test_a_rebuild_does_not_invent_a_disclosure_that_was_never_recorded
+      - core/tests/test_rebuild_metadata.py::test_the_documented_provenance_drops_still_drop
+
+  - id: the-metadata-whitelist-has-no-general-rule
+    adr: adr-0032-format-failure-circuit-breaker.md
+    hazard: >
+      The fix above names two keys. It does not establish a rule for which metadata a rebuild must
+      preserve, so the next key added to a live run's metadata and not to that list is dropped the same
+      way, silently, and the tests above will not notice. The distinction that matters — recomputable
+      run provenance versus a disclosure that exists only because someone recorded it — is currently
+      held in a comment rather than in the code.
+    status: ungated
+    ungated_reason: >
+      A test asserting "every key a live run writes survives a rebuild" would be wrong: three keys are
+      SUPPOSED to be dropped, and pinning the rest by enumeration recreates the same whitelist one
+      layer up. The real fix is to classify metadata the way ADR-0033 classified run-record fields, and
+      that is a change to how metadata is built rather than a test.
+    fix_queued_to: >
+      Filed as issue #57.
+
   - id: archived-run-records-go-stale-after-a-rebuild
     adr: adr-0032-format-failure-circuit-breaker.md
     hazard: >
