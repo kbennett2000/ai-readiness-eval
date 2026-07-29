@@ -61,7 +61,7 @@ so a threshold that would abort published work fails the suite.
 **The replay is deliberately pessimistic, and the reason is worth recording.** It reads each run
 record's own `format_failure` flag, and for a grid later re-scored by `rebuild-report` those flags
 are **stale** — the rebuild rewrites `scores.json` and `summary.md` but not `runs/*.json`. Three
-archived conditions carry 8 such flags that the published numbers no longer count (filed separately).
+archived conditions carry 8 such flags that the published numbers no longer count (filed as #52).
 The breaker is therefore being replayed against a *worse* failure record than the cohort actually
 published, and still never fires.
 

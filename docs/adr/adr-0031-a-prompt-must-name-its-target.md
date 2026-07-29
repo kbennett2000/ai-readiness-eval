@@ -126,7 +126,7 @@ It is **pinned, not fixed, and not exempted**:
   an unwalkbackable change made inside the review that would authorize it.
 - **Not exempted** — no exemption mechanism exists. The gate blocks the pack, and a test asserts it
   blocks the pack, naming **exactly which 10 task ids fail and with which single problem**. Editing
-  any of them breaks the pin on purpose.
+  any of them breaks the pin on purpose. Filed as #51.
 - **`ISC` is deliberately absent from `vendor_names`.** Listing it would assert that an ambiguous
   abbreviation names this vendor. A test pins that it stays absent.
 

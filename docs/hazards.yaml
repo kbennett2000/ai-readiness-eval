@@ -1711,7 +1711,7 @@ entries:
       - core/tests/test_prompt_gate.py::test_the_one_reference_prompt_that_names_the_vendor_still_does
       - core/tests/test_prompt_gate.py::test_the_ambiguous_abbreviation_is_not_declared_as_a_vendor_name
     fix_queued_to: >
-      Filed as issue #50. Deliberately NOT taken: a re-baseline of the frozen anchor is not a change
+      Filed as issue #51. Deliberately NOT taken: a re-baseline of the frozen anchor is not a change
       a cycle makes inside the review that would authorize it.
 
   - id: naming-a-target-does-not-make-a-question-good
@@ -1802,5 +1802,5 @@ entries:
       the direction is safe: the replay reads a WORSE failure record than was published, so it is
       pessimistic rather than flattering, and it still never fires.
     fix_queued_to: >
-      Filed as issue #51. Related to #46 (archived results do not rebuild identically) but distinct:
+      Filed as issue #52. Related to #46 (archived results do not rebuild identically) but distinct:
       this is the run record disagreeing with the report built from it.
