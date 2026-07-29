@@ -3,6 +3,10 @@
 vendor:
   id: acme
   display_name: Acme Widget Cloud
+  # What counts as a task prompt naming this target (ADR-0031). Synthetic, like the rest of this
+  # fixture — no name here belongs to a real company.
+  vendor_names: [Acme]
+  product_names: [Widget Cloud]
 tasks_dir: tasks
 docs_manifest: docs-manifest.yaml
 specs: specs.yaml

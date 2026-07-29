@@ -3,9 +3,9 @@ and stocks the drawer with DRAFT report cards (ADR-0006).
 
 Vendor-agnostic, like the rest of `core`. It carries no vendor name: the ranked `queue.yaml` (which
 names targets) and the packs it drives both live outside this repo and reach the dispatcher only as a
-queue path + a packs dir. The pipeline is a chain of **hard gates** — recon, validate, roundtrip,
-anchoring, mock, canary — each of which, on failure, marks the target `blocked` with a written reason
-and stops. The
+queue path + a packs dir. The pipeline is a chain of **hard gates** — recon, validate, prompts,
+roundtrip, anchoring, mock, canary — each of which, on failure, marks the target `blocked` with a
+written reason and stops. The
 factory never guesses past a gate, never scores a guess, and never reduces N to fit a window. Producing
 is unattended; shipping is gated: every card it writes carries a DRAFT/UNREVIEWED banner and nothing
 leaves the drawer toward a prospect without human review.
@@ -31,7 +31,8 @@ from .report import _DIM_LABELS
 from .scorer import DIMENSIONS
 
 # Pipeline stages, in order. A target advances through these; its `status` records how far it got.
-STAGES = ["recon", "validate", "roundtrip", "anchoring", "mock", "canary", "grid", "compare", "card"]
+STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "mock", "canary", "grid",
+          "compare", "card"]
 # A target is "done" (skipped by next_target) when it is finished or parked, in one of three senses:
 #   carded  — measured, a card exists. The pipeline put it here.
 #   blocked — a gate refused it, or it cannot be measured at all. The pipeline or an author put it here.
@@ -408,6 +409,24 @@ def check_validate(pack: Pack) -> tuple[bool, str]:
     return True, "task files match the schema"
 
 
+def check_prompts(pack: Pack) -> tuple[bool, str]:
+    """Prompt-sanity gate: every task prompt names this pack's vendor and product (ADR-0031).
+
+    Sits after `validate` and before `roundtrip` because the order is the argument: the schema says
+    a prompt exists, this says the prompt identifies what it is asking about, and only then is it
+    worth proving the answer key scores itself. Every gate before this one reads the answer key; a
+    question that names nobody passes all of them and produces a grid about our prompt rather than
+    about the vendor. That happened once and cost a whole grid.
+    """
+    from .prompt_gate import check_pack, summarize_failures
+
+    report = check_pack(pack)
+    if not report.ok:
+        return False, summarize_failures(report)
+    note = f"; {len(report.dual_listed)} name(s) declared as both" if report.dual_listed else ""
+    return True, f"{len(report.tasks)} prompt(s) name a vendor and a product{note}"
+
+
 def check_roundtrip(pack: Pack) -> tuple[bool, str]:
     """Round-trip control: every task scores its own ground truth 1.0 (ADR-0010).
 
@@ -487,6 +506,7 @@ def check_anchoring(pack: Pack) -> tuple[bool, str]:
 GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
     ("recon", check_recon),
     ("validate", check_validate),
+    ("prompts", check_prompts),
     ("roundtrip", check_roundtrip),
     ("anchoring", check_anchoring),
 )

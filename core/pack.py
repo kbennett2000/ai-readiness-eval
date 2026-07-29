@@ -36,6 +36,13 @@ class Pack:
     root: Path
     vendor_id: str
     display_name: str
+    # What counts as a task prompt naming this target (ADR-0031). Both are REQUIRED — the prompt gate
+    # fails closed on a pack that declares neither, so there is no silent default. They are declared
+    # rather than derived from `display_name` because that field is a card heading, not a matcher: it
+    # is vendor-only in some packs and a whole "Vendor Product (Surface API)" string in others, and a
+    # gate built on splitting it would pass or fail on punctuation.
+    vendor_names: list[str]
+    product_names: list[str]
     tasks_dir: Path
     docs_manifest_path: Path
     specs_path: Path
@@ -97,6 +104,8 @@ class Pack:
             root=root,
             vendor_id=vid,
             display_name=display,
+            vendor_names=[str(n) for n in (vendor.get("vendor_names") or [])],
+            product_names=[str(n) for n in (vendor.get("product_names") or [])],
             tasks_dir=root / cfg.get("tasks_dir", "tasks"),
             docs_manifest_path=root / cfg.get("docs_manifest", "docs-manifest.yaml"),
             specs_path=root / cfg.get("specs", "specs.yaml"),

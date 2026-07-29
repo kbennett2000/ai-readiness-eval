@@ -5,6 +5,23 @@
 vendor:
   id: sailpoint
   display_name: SailPoint Identity Security Cloud (ISC)
+  # What counts as a task prompt naming this target (ADR-0031).
+  #
+  # READ THIS BEFORE "FIXING" THE PROMPTS THAT FAIL AGAINST IT. 10 of the 11 task prompts in this
+  # pack identify the target only as "ISC" — a three-letter abbreviation that belongs to several
+  # unrelated real organizations — so this pack FAILS its own prompt gate, and that failure is
+  # deliberately left in place. The prompts are frozen: they are the questions that produced the
+  # 73/68/93 regression anchor, and rewriting them would silently re-baseline the one table this
+  # whole repo checks itself against. `ISC` is therefore NOT listed below to make the gate pass;
+  # listing it would assert that an ambiguous abbreviation names this vendor, which is the claim the
+  # hazard registry records as false.
+  #
+  # The ambiguity bounds this pack's ABSOLUTE numbers, not its finding: every condition was run with
+  # identical prompts, so the gap between conditions — which is what the method measures — is
+  # unaffected. See docs/hazards.yaml (`reference-pack-prompts-name-an-ambiguous-abbreviation`) and
+  # core/tests/test_prompt_gate.py, which pins exactly which task ids fail and why.
+  vendor_names: [SailPoint]
+  product_names: [Identity Security Cloud, ISC]
 
 tasks_dir: tasks
 docs_manifest: docs-manifest.yaml
