@@ -164,9 +164,18 @@ def manifest_urls(manifest: dict, *, include_anchors: bool = True) -> set[str]:
     return urls
 
 
+class RobotsDisallowed(RuntimeError):
+    """The host instructs automated readers not to retrieve this path (ADR-0036).
+
+    Distinct from every other failure in this module, because it is not a failure: the page is there and
+    would very likely arrive intact. What is absent is permission. It is raised before any request is
+    made — a Disallowed URL is never opened, so this is a refusal and not a recovery.
+    """
+
+
 def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None,
               user_agent: str | None = None, delay_seconds: float = 0.0,
-              retries: int = DEFAULT_RETRIES, sleep=time.sleep) -> dict:
+              retries: int = DEFAULT_RETRIES, sleep=time.sleep, policy_for=None) -> dict:
     """Fetch every page in the manifest, cache text, and update manifest entries in place.
 
     Returns a summary dict {task_id: [(url, byte_size, status)]}. Errors are recorded
@@ -178,11 +187,21 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
 
     `delay_seconds` paces requests for hosts that throttle a rapid loop (ADR-0009). It
     defaults to 0, so a pack that declares nothing fetches exactly as it did before.
+
+    `policy_for` resolves a URL to its host's robots policy (ADR-0036) and is injectable so the suite
+    stays offline. Every URL is judged BEFORE it is opened; a Disallowed one is annotated and skipped,
+    never requested.
     """
+    from . import robots as robots_mod
+
     manifest_path = Path(manifest_path)
     cache_dir = Path(cache_dir)
     manifest = load_manifest(manifest_path)
     today = today or datetime.date.today().isoformat()
+    agent = user_agent or USER_AGENT
+    if policy_for is None:
+        def policy_for(url):  # noqa: E306 — one fetch per host, memoised in core.robots
+            return robots_mod.fetch_policy(url, user_agent=agent, today=today)
     summary: dict[str, list] = {}
     first = True
     for task_id, entry in (manifest.get("tasks") or {}).items():
@@ -193,6 +212,28 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
         for page in [p for pages in _entry_lists(entry) for p in pages]:
             url = page["url"]
             dest = cache_path_for(cache_dir, task_id, url)
+            # ADR-0036: permission first, and before the pacing sleep — a URL we may not open should
+            # not cost the host a delay slot either.
+            policy = policy_for(url)
+            verdict = policy.verdict(url)
+            page["robots_disallowed"] = not verdict.allowed
+            page["robots_rule"] = verdict.rule
+            page["robots_source"] = verdict.source
+            page["robots_fetched"] = policy.fetched_on
+            page["robots_agent"] = verdict.agent_group
+            if not verdict.allowed:
+                page["fetch_date"] = today
+                page["content_hash"] = None
+                page["byte_size"] = 0
+                page["fetch_error"] = (
+                    f"robots-disallowed — {policy.host} instructs automated readers not to retrieve "
+                    f"this path ({verdict.rule or verdict.source}). Not fetched (ADR-0036).")[:200]
+                # A snapshot an earlier fetch already took is deleted, not merely left unread. The
+                # cache is gitignored and regenerable, so nothing is lost that permission would not
+                # restore; keeping bytes we are no longer allowed to retrieve is the thing refused.
+                dest.unlink(missing_ok=True)
+                summary[task_id].append((url, 0, "robots-disallowed"))
+                continue
             if delay_seconds and not first:
                 sleep(delay_seconds)
             first = False

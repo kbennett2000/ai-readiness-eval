@@ -555,6 +555,15 @@ def build_parser() -> argparse.ArgumentParser:
     fd = sub.add_parser("fetch-docs", help="fetch + cache the public-docs snapshot; populate the manifest")
     fd.set_defaults(func=cmd_fetch_docs)
 
+    ar = sub.add_parser("annotate-robots",
+                        help="record, for every manifest URL, whether its host's robots.txt permits "
+                             "an automated reader to retrieve it (ADR-0036)")
+    ar.add_argument("packs", nargs="*",
+                    help="pack dirs (default: every pack under packs/ and --packs-dir)")
+    ar.add_argument("--check", action="store_true",
+                    help="re-read each host and report drift; change nothing")
+    ar.set_defaults(func=cmd_annotate_robots)
+
     cmp = sub.add_parser("compare", help="side-by-side comparison report for 2+ results dirs")
     cmp.add_argument("dirs", nargs="+",
                      help="results dirs in order (last is the 'after', e.g. ...-no-context "
@@ -704,6 +713,59 @@ def cmd_reconcile_runs(args: argparse.Namespace) -> int:
     print(f"\nSynced {stale} field(s) across {len(results)} directory(ies); "
           "scores.json and summary.md untouched")
     return EXIT_OK
+
+
+def cmd_annotate_robots(args: argparse.Namespace) -> int:
+    """ADR-0036. Fetch each host's robots.txt once and record, on every manifest URL, whether that host
+    permits an automated reader to retrieve it.
+
+    The only online path in this project's test-facing surface. The standing sweep in the suite reads
+    the committed annotations and never touches the network; this command is what refreshes them, so a
+    host editing its robots.txt after a pack was authored is a detectable event rather than a silent
+    change in what we were allowed to do.
+    """
+    from .robots import annotate_manifest, clear_cache, format_report
+
+    pack_dirs = [Path(p) for p in args.packs]
+    if not pack_dirs:
+        packs_dir = args.packs_dir or os.environ.get("AIRE_PACKS_DIR")
+        roots = [Path(__file__).resolve().parent.parent / "packs"]
+        if packs_dir:
+            roots.append(Path(packs_dir))
+        pack_dirs = sorted({p.parent for r in roots if r.is_dir() for p in r.glob("*/pack.yaml")})
+    if not pack_dirs:
+        print("ERROR: no packs — pass pack dirs, or --packs-dir <dir>.", file=sys.stderr)
+        return EXIT_ERROR
+
+    clear_cache()
+    audits = []
+    for pack_dir in pack_dirs:
+        pack = Pack.load(pack_dir)
+        if not Path(pack.docs_manifest_path).is_file():
+            continue
+        audits.append(annotate_manifest(
+            pack.docs_manifest_path,
+            user_agent=pack.public_docs_user_agent or robots_default_agent(),
+            write=not args.check))
+    text, disallowed = format_report(audits)
+    print(text)
+    drift = sum(len(a.drift) for a in audits)
+    if disallowed:
+        print(f"\nBLOCKED: {disallowed} manifest URL(s) may not be fetched. A pack must not name a "
+              "page its host disallows; record the Disallow as a finding instead (ADR-0036).",
+              file=sys.stderr)
+        return EXIT_BLOCKED
+    if args.check:
+        print(f"{drift} annotation(s) disagree with the hosts' current robots.txt"
+              + ("" if drift else " — every pack's record is current"))
+        return EXIT_ERROR if drift else EXIT_OK
+    print(f"Annotated {len(audits)} manifest(s); no url, hash, byte_size or cache_file was touched.")
+    return EXIT_OK
+
+
+def robots_default_agent() -> str:
+    from .robots import USER_AGENT
+    return USER_AGENT
 
 
 def cmd_invented(args: argparse.Namespace) -> int:
