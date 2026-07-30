@@ -87,6 +87,37 @@ def cache_path_for(cache_dir: str | Path, task_id: str, url: str) -> Path:
     return Path(cache_dir) / task_id / f"{slug_for(url)}.txt"
 
 
+def leading_comment_header(path: str | Path) -> str:
+    """The hand-authored comment block at the top of a manifest, or ''.
+
+    `yaml.safe_dump` does not round-trip comments, so every rewrite of a manifest silently deletes
+    them. One pack's manifest opens with 21 lines recording, across two cycles, why its docs host is
+    unreachable and what was tried — a finding, in the file the finding is about. Rewriting the file
+    was quietly destroying it. Same problem `factory.save_queue` already solves for `queue.yaml`, and
+    the same fix: capture the header, put it back.
+
+    Only the LEADING block is preserved, which is where every comment in the cohort's manifests lives.
+    An inline comment further down is still lost; that is a known limit rather than a silent one.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return ""
+    header: list[str] = []
+    for line in path.read_text().splitlines(keepends=True):
+        if line.strip() and not line.lstrip().startswith("#"):
+            break
+        header.append(line)
+    return "".join(header)
+
+
+def write_manifest(path: str | Path, manifest: dict, header: str | None = None) -> None:
+    """Serialise a manifest, preserving its leading comment header. The only writer of these files."""
+    path = Path(path)
+    header = leading_comment_header(path) if header is None else header
+    body = yaml.safe_dump(manifest, sort_keys=False, width=100, allow_unicode=True)
+    path.write_text(header + body)
+
+
 def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -197,6 +228,7 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
     manifest_path = Path(manifest_path)
     cache_dir = Path(cache_dir)
     manifest = load_manifest(manifest_path)
+    header = leading_comment_header(manifest_path)
     today = today or datetime.date.today().isoformat()
     agent = user_agent or USER_AGENT
     if policy_for is None:
@@ -267,5 +299,5 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 page["byte_size"] = 0
                 page["fetch_error"] = str(exc)[:200]
                 summary[task_id].append((url, 0, f"error: {str(exc)[:80]}"))
-    manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False, width=100, allow_unicode=True))
+    write_manifest(manifest_path, manifest, header)
     return summary

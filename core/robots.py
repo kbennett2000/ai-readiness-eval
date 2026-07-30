@@ -266,13 +266,12 @@ def annotate_manifest(manifest_path, *, user_agent: str = USER_AGENT, today: str
     """
     from pathlib import Path
 
-    import yaml
-
-    from .docs_fetch import _entry_lists, load_manifest
+    from .docs_fetch import _entry_lists, leading_comment_header, load_manifest, write_manifest
 
     policy_for = policy_for or (lambda url: fetch_policy(url, user_agent=user_agent, today=today))
     manifest_path = Path(manifest_path)
     manifest = load_manifest(manifest_path)
+    header = leading_comment_header(manifest_path)
     audit = ManifestAudit(manifest_path=manifest_path, label=manifest_path.parent.name)
 
     for task_id, entry in (manifest.get("tasks") or {}).items():
@@ -303,8 +302,7 @@ def annotate_manifest(manifest_path, *, user_agent: str = USER_AGENT, today: str
                 page["robots_agent"] = v.agent_group
 
     if write:
-        manifest_path.write_text(
-            yaml.safe_dump(manifest, sort_keys=False, width=100, allow_unicode=True))
+        write_manifest(manifest_path, manifest, header)
         audit.written = True
     return audit
 

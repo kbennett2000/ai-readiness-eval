@@ -128,6 +128,46 @@ def test_the_pacing_delay_is_not_spent_on_a_url_we_will_not_open(pack, fetched):
     assert len(slept) == 2
 
 
+# --- a rewrite must not delete the record it is written into ---------------- #
+
+HEADER = ("# FINDING (cycle 3): this docs host does not resolve from any environment tested.\n"
+          "# CYCLE-4 CLOSEOUT: re-attempted from additional vantage points and CONFIRMED.\n")
+
+
+def _with_header(pack: Pack) -> Path:
+    path = pack.root / "docs-manifest.yaml"
+    path.write_text(HEADER + path.read_text())
+    return path
+
+
+def test_fetching_preserves_a_manifests_comment_header(pack, fetched):
+    """`yaml.safe_dump` does not round-trip comments, so every rewrite was silently deleting them.
+    One pack's manifest opens with 21 lines recording, across two cycles, why its docs host is
+    unreachable — a finding, living in the file the finding is about."""
+    path = _with_header(pack)
+    docs_fetch.fetch_all(path, pack.docs_cache_dir, today="2026-01-01", policy_for=_policy_for)
+    assert path.read_text().startswith(HEADER)
+    assert yaml.safe_load(path.read_text())["tasks"], "the header survived but the document did not"
+
+
+def test_annotating_preserves_a_manifests_comment_header(pack):
+    from core.robots import annotate_manifest
+
+    path = _with_header(pack)
+    annotate_manifest(path, today="2026-01-01", policy_for=lambda u: _policy_for(u))
+    assert path.read_text().startswith(HEADER)
+    assert yaml.safe_load(path.read_text())["tasks"]
+
+
+def test_a_manifest_with_no_header_gains_none(pack, fetched):
+    """The converse: preservation must not invent a leading blank or a stray line."""
+    path = pack.root / "docs-manifest.yaml"
+    before = path.read_text()
+    docs_fetch.fetch_all(path, pack.docs_cache_dir, today="2026-01-01", policy_for=_policy_for)
+    assert not path.read_text().startswith("\n")
+    assert before.splitlines()[0].split(":")[0] == path.read_text().splitlines()[0].split(":")[0]
+
+
 # --- the default path consults the real policy module ----------------------- #
 
 def test_fetch_all_consults_robots_when_no_policy_is_injected(pack, fetched, monkeypatch):
