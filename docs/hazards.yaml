@@ -1949,3 +1949,94 @@ entries:
     fix_queued_to: >
       Not queued. The ADR requires the disclosure and each affected pack's card carries it.
 
+
+  # ---------------------------------------------------------------- ADR-0035 / ADR-0036 ---
+
+  - id: no-gate-reads-pr-issue-or-commit-text
+    adr: adr-0035-an-auto-closing-keyword-is-an-issue-state-action.md
+    hazard: >
+      The contract's rules about what a cycle may write in a PR body, a PR title, a commit message or
+      an issue are enforced by nothing at all. Two guards exist and both are blind to this: one reads
+      `git ls-files` (tracked file paths and content), the other `git for-each-ref` (branch names).
+      The auto-closing-keyword ban, the prospect-naming rule as it applies to PR and issue text, and
+      the base-branch rule are all in this blind spot together.
+    status: ungated
+    ungated_reason: >
+      Checking it means reading GitHub metadata, which is network- and auth-dependent and would be the
+      first such test in this repo. Every existing guard is a local, offline read. A test that skipped
+      whenever `gh` was unavailable would report coverage it does not have, which is the failure this
+      registry exists to catch.
+    fix_queued_to: >
+      Filed as core #59, alongside the standing #16 (make the base-branch rule enforceable). Both are
+      the same shape — a rule about PR metadata that only prose currently holds.
+
+  - id: an-auto-closing-keyword-changes-issue-state-at-merge
+    adr: adr-0035-an-auto-closing-keyword-is-an-issue-state-action.md
+    hazard: >
+      `close`/`fix`/`resolve` before an issue reference performs an issue-state action the contract
+      forbids, at merge time, in the author's name — and the write looks like a cross-reference at the
+      moment it is made. It has fired once, on issue #52.
+    status: ungated
+    ungated_reason: >
+      Same blind spot as the entry above: the text that would have to be read is not in the tree. The
+      wording rule is in both repos' CLAUDE.md, which is where a cycle reads it, and that is the whole
+      of the current control.
+    fix_queued_to: >
+      Filed as core #59. The check itself is trivial — a regex over the PR body — and the cost is
+      entirely in the first network-dependent test.
+
+  - id: a-manifest-may-name-a-page-its-host-disallows
+    adr: adr-0036-robots-txt-is-a-fetch-permission.md
+    hazard: >
+      A pack could name any URL in `docs-manifest.yaml` and the fetcher would retrieve it, with nothing
+      consulting the host's robots.txt. For the life of the project this was true of every pack: 271
+      URLs across 16 hosts fetched without the question being asked once.
+    status: gated
+    gated_by:
+      - core/tests/test_robots_annotations.py::test_no_pack_names_a_url_its_host_disallows
+      - core/tests/test_robots_annotations.py::test_every_url_carries_a_complete_annotation
+
+  - id: a-disallowed-url-could-still-be-fetched-or-injected
+    adr: adr-0036-robots-txt-is-a-fetch-permission.md
+    hazard: >
+      Recording that a URL is Disallowed and declining to open it are different acts, and only the
+      second is the ruling. Two routes could open one anyway: the fetcher requesting it, and — because
+      an earlier fetch's snapshot survives in the cache — the condition injecting bytes from disk long
+      after the host began refusing them.
+    status: gated
+    gated_by:
+      - core/tests/test_robots_refusal.py::test_a_disallowed_url_is_never_requested
+      - core/tests/test_robots_refusal.py::test_a_disallowed_page_never_reaches_a_built_prompt
+      - core/tests/test_robots_refusal.py::test_fetch_all_consults_robots_when_no_policy_is_injected
+
+  - id: a-robots-matcher-can-be-wrong-in-either-direction
+    adr: adr-0036-robots-txt-is-a-fetch-permission.md
+    hazard: >
+      The verdict is only as good as the matcher, and a wrong one fails both ways: too permissive
+      fetches what a host refused, too strict manufactures a violation. `urllib.robotparser` is wrong
+      on both of the directive forms that forced this ruling, and the first cohort-wide run of this
+      module reported eleven violations against a host that had merely stopped resolving.
+    status: gated
+    gated_by:
+      - core/tests/test_robots.py::test_wildcard_and_anchor_forms
+      - core/tests/test_robots.py::test_the_standard_library_would_disagree_which_is_why_this_module_exists
+      - core/tests/test_robots.py::test_a_host_that_does_not_resolve_is_not_a_host_that_refused
+      - core/tests/test_robots.py::test_a_dns_failure_and_a_connection_failure_are_told_apart_at_the_transport
+      - core/tests/test_robots.py::test_unreachable_means_the_whole_host_is_disallowed
+
+  - id: robots-annotations-go-stale-and-the-suite-cannot-tell
+    adr: adr-0036-robots-txt-is-a-fetch-permission.md
+    hazard: >
+      The committed annotation is a dated snapshot of a host's instruction. A host that tightens its
+      robots.txt after a pack was authored leaves every annotation reading `allowed` and every test
+      green, because the standing sweep is deliberately offline and checks the record's completeness
+      and internal consistency, never its currency.
+    status: ungated
+    ungated_reason: >
+      Deliberate, and the same trade as the docs snapshot itself (ADR-0005). Making the sweep online
+      would put sixteen vendors' uptime inside every test run, and a green suite would then mean the
+      hosts answered rather than that we were permitted.
+    fix_queued_to: >
+      Not queued as a code change — `annotate-robots --check` is the refresh and re-reads every host,
+      so the drift is detectable on demand. What is unqueued is a cadence for running it; it belongs
+      with the docs re-snapshot, which has the same staleness property and the same answer.

@@ -43,6 +43,13 @@ deliberately did not do. You file it; the operator assigns it. Before you exit, 
 Filing an issue is never a third exit. Work you chose to defer is not a blocker, and a cycle that filed
 issues and changed no file is still Blocked or Completed on the evidence above — never on the filing.
 
+**Never write an auto-closing keyword in a PR body, a PR title, or a commit message.** GitHub closes an
+issue when a merged PR or a commit landing on the default branch contains `close`/`closes`/`closed`,
+`fix`/`fixes`/`fixed`, or `resolve`/`resolves`/`resolved` immediately before an issue reference. Write
+**`refs #NN`** or **`addresses #NN`** instead. Citing the issue is the point; changing its state is not
+yours to do, and the keyword performs that state change on your behalf without your deciding to — which
+is how a cycle closed an issue it had itself filed (ADR-0035).
+
 ## Conventions
 
 - ADR-first: significant decisions get an ADR in `docs/adr/` before implementation.

@@ -115,6 +115,12 @@ class PublicDocsCondition(Condition):
         return sorted(entry.get("pages", []), key=lambda p: self._role_rank(p.get("role", "")))
 
     def _load_text(self, task_id: str, page: dict) -> str:
+        # ADR-0036, and it is checked HERE rather than only at fetch time on purpose. Refusing to
+        # retrieve a Disallowed page leaves any snapshot an earlier fetch already took sitting in the
+        # cache, and a host that adds a Disallow after we fetched would otherwise keep being injected
+        # from disk forever. Permission is a present-tense fact, so it is read at the point of use.
+        if page.get("robots_disallowed"):
+            return ""
         path = self._pack.cache_path_for(task_id, page["url"])
         if not path.exists():
             # Fidelity to the machine reader (ADR-0005): public-docs models what a fetch actually
