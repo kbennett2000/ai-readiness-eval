@@ -19,26 +19,45 @@ def _gt_paths(task: dict) -> list[list[str]]:
     return [normalize_path(e["path"]) for e in task["ground_truth"]["endpoints"]]
 
 
-def unmatched_endpoints(results_dir: str | Path, tasks_by_id: dict) -> dict:
-    """Return {task_id: Counter({(method, verbatim_path): count})} for unmatched endpoints."""
-    runs_dir = Path(results_dir) / "runs"
-    out: dict[str, Counter] = {}
-    for run_file in sorted(runs_dir.glob("*.json")):
+def iter_parsed_runs(results_dir: str | Path, tasks_by_id: dict):
+    """Yield `(task_id, task, record, parsed)` for every archived run whose answer block parsed.
+
+    Shared so that everything reading the archive reads it the same way. This loop embeds two
+    judgments — which runs are skipped (unknown task, format failure) and that the VERBATIM answer
+    is what downstream sees — and a second copy would drift on both. `docs/hazards.yaml` already
+    records a live hazard of exactly that shape for the repaired-run flag.
+    """
+    for run_file in sorted(Path(results_dir).glob("runs/*.json")):
         rec = json.loads(run_file.read_text())
-        task_id = rec["task_id"]
-        task = tasks_by_id.get(task_id)
+        task = tasks_by_id.get(rec["task_id"])
         if not task:
             continue
         parsed = answer_block.parse(rec.get("raw_response", ""))
         if parsed.is_failure:
             continue
+        yield rec["task_id"], task, rec, parsed
+
+
+def unmatched_endpoints(results_dir: str | Path, tasks_by_id: dict) -> dict:
+    """Return {task_id: Counter({(method, verbatim_path): count})} for unmatched endpoints."""
+    out: dict[str, Counter] = {}
+    for task_id, task, _rec, parsed in iter_parsed_runs(results_dir, tasks_by_id):
         gt = _gt_paths(task)
         counter = out.setdefault(task_id, Counter())
         for ep in parsed.summary.endpoints:
-            npath = normalize_path(ep.path)
-            if npath not in gt:
+            if normalize_path(ep.path) not in gt:
                 counter[(ep.method or "?", ep.path or "?")] += 1
     return out
+
+
+# What this exhibit is called matters, because it goes in front of vendors. These endpoints are
+# UNMATCHED — they are not ground truth for their task — and that is all this module can establish.
+# Calling them "invented" is a further claim, about the world rather than about our answer key, and
+# nothing here checks it: a vendor's real, documented endpoint answered for the wrong task lands in
+# this list, and several already have. See ADR-0037.
+UNCURATED_CAVEAT = ("Endpoints outside this task's ground truth. UNCURATED: some are real endpoints "
+                    "of this vendor answered for the wrong task, or from another of its published "
+                    "surfaces. Establishing that one does not exist takes a further check.")
 
 
 def format_unmatched(unmatched: dict) -> str:

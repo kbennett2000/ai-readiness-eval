@@ -197,6 +197,10 @@ def validate_pack(pack: Pack) -> dict[str, list[str]]:
             suite.append(f"unexpected tasks: {', '.join(sorted(unexpected))}")
 
     suite.extend(validate_task_groups(pack.task_groups, seen_ids.keys()))
+    try:
+        suite.extend(validate_answer_surfaces(pack.answer_surfaces))
+    except Exception as exc:  # an unreadable inventory file is a schema problem, not a crash
+        suite.append(f"answer_surfaces could not be loaded: {exc}")
 
     if suite:
         results["(suite)"] = suite
@@ -241,6 +245,65 @@ def validate_task_groups(task_groups: dict | None, task_ids) -> list[str]:
             "task_groups is declared but does not cover every task; ungrouped: "
             + ", ".join(ungrouped))
 
+    return errors
+
+
+def validate_answer_surfaces(surface_set) -> list[str]:
+    """Check a pack's declared `answer_surfaces` (ADR-0037). Returns errors; [] when none declared.
+
+    The bar is that the axis can DISCRIMINATE. A single surface has nothing to be told apart from;
+    an unmarked measured surface leaves the round-trip control with no target; an empty inventory
+    silently sends every answer to `unrecognized`. The last rule is the load-bearing one: where two
+    surfaces publish the same normalized path, the pack must declare version markers that separate
+    them, so an overlap is a stated fact with a stated resolution rather than something the
+    classifier discovers and quietly reports as `ambiguous`.
+    """
+    if not surface_set:
+        return []
+    errors: list[str] = []
+    ids = [s.id for s in surface_set.surfaces]
+
+    if len(surface_set.surfaces) < 2:
+        errors.append("answer_surfaces declares fewer than 2 surfaces — there is nothing to tell "
+                      "apart, and a one-surface split reports only its own inventory's gaps")
+    for sid in sorted({i for i in ids if ids.count(i) > 1}):
+        errors.append(f"answer_surfaces declares id '{sid}' more than once")
+
+    measured = [s.id for s in surface_set.surfaces if s.measured]
+    if len(measured) != 1:
+        errors.append(f"answer_surfaces must mark exactly one surface `measured: true`, "
+                      f"found {len(measured)}: {', '.join(measured) or '(none)'}")
+
+    for surface in surface_set.surfaces:
+        if not surface.id:
+            errors.append("a declared surface has no id")
+        if not surface.paths:
+            errors.append(f"surface '{surface.id}' has an empty path inventory — every answer "
+                          f"would fall to `unrecognized` without it ever being wrong")
+        if not str(surface.rationale or "").strip():
+            errors.append(f"surface '{surface.id}' has no rationale — why this surface belongs in "
+                          f"the comparison is an argument nothing else in this repo can check")
+
+    seen: dict[tuple, list] = {}
+    for surface in surface_set.surfaces:
+        for npath in surface.normalized_paths:
+            seen.setdefault(npath, []).append(surface)
+    for npath, sharers in sorted(seen.items()):
+        if len(sharers) < 2:
+            continue
+        without = [s.id for s in sharers if not s.normalized_markers]
+        if without:
+            errors.append(
+                f"/{'/'.join(npath)} is published by {', '.join(s.id for s in sharers)}, but "
+                f"{', '.join(without)} declares no version_markers to tell it apart")
+        marker_sets = [s.normalized_markers for s in sharers if s.normalized_markers]
+        for i, left in enumerate(marker_sets):
+            for right in marker_sets[i + 1:]:
+                if left & right:
+                    errors.append(
+                        f"/{'/'.join(npath)} is published by more than one surface and they share "
+                        f"version marker(s) {', '.join(sorted(left & right))} — the overlap cannot "
+                        f"be resolved")
     return errors
 
 
