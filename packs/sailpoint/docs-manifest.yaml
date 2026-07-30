@@ -12,7 +12,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/personal-access-tokens
       role: api-reference
@@ -24,7 +24,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   find-identity:
     pages:
@@ -38,7 +38,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/search
       role: api-reference
@@ -50,7 +50,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/public-identities
       role: api-reference
@@ -62,7 +62,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/standard-collection-parameters
       role: topic-guide
@@ -74,7 +74,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   identity-accounts:
     pages:
@@ -88,7 +88,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/accounts
       role: api-reference
@@ -100,7 +100,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/standard-collection-parameters
       role: topic-guide
@@ -112,7 +112,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   access-request:
     pages:
@@ -126,7 +126,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/access-requests
       role: api-reference
@@ -138,7 +138,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   grant-revoke:
     pages:
@@ -152,7 +152,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/access-requests
       role: api-reference
@@ -164,7 +164,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   search-filter:
     pages:
@@ -178,7 +178,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/search
       role: api-reference
@@ -190,7 +190,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/standard-collection-parameters
       role: topic-guide
@@ -202,7 +202,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   audit-report:
     pages:
@@ -216,7 +216,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/search
       role: api-reference
@@ -228,7 +228,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/reports-data-extraction
       role: api-reference
@@ -240,7 +240,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   source-aggregation:
     pages:
@@ -254,7 +254,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/sources
       role: api-reference
@@ -266,7 +266,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   transform:
     pages:
@@ -280,7 +280,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/extensibility/transforms/
       role: topic-guide
@@ -292,7 +292,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/transforms
       role: api-reference
@@ -304,7 +304,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   cert-campaign:
     pages:
@@ -318,7 +318,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/certification-campaigns
       role: api-reference
@@ -330,7 +330,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
   lifecycle-trigger:
     pages:
@@ -344,7 +344,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/extensibility/event-triggers/
       role: topic-guide
@@ -356,7 +356,7 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'
     - url: https://developer.sailpoint.com/docs/api/triggers
       role: api-reference
@@ -368,5 +368,5 @@ tasks:
       robots_disallowed: false
       robots_rule: 'Allow: /'
       robots_source: robots.txt
-      robots_fetched: '2026-07-29'
+      robots_fetched: '2026-07-30'
       robots_agent: '*'

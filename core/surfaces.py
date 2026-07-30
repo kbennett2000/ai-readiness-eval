@@ -361,10 +361,6 @@ def format_report(report: SurfaceReport, surfaces: SurfaceSet) -> tuple[str, int
                           for k, v in sorted(report.operation_mentions.items()))
         lines.append(f"- Declared operation names appearing in answer prose (corroboration only, "
                      f"never classification): {named}.")
-    if surfaces.coverage_note():
-        lines.append(f"- `unrecognized` means outside these inventories, not non-existent — "
-                     f"{surfaces.coverage_note()}")
-
     for bucket in RESIDUAL_BUCKETS:
         entries = report.examples.get(bucket)
         if not entries:
@@ -372,6 +368,16 @@ def format_report(report: SurfaceReport, surfaces: SurfaceSet) -> tuple[str, int
         lines.append(f"\n**{bucket}, verbatim:**\n")
         for (method, path), count in entries.most_common(12):
             lines.append(f"  {method:6s} {path}   (x{count})")
+
+    # The coverage strings go LAST and one per line. They are what stops `unrecognized` being read as
+    # "these endpoints do not exist", so they have to be legible — joined into one paragraph they were
+    # a wall nobody would read, which is the same as not printing them.
+    if report.endpoints[UNRECOGNIZED] and surfaces.coverage_note():
+        lines.append("\n`unrecognized` means **outside the inventories below**, not non-existent. "
+                     "Each is a copy taken on a date:\n")
+        for surface in surfaces.surfaces:
+            if surface.coverage.strip():
+                lines.append(f"- **{surface.id}** — {' '.join(surface.coverage.split())}")
 
     n_residual = sum(report.endpoints[b] for b in RESIDUAL_BUCKETS)
     return "\n".join(lines), n_residual
