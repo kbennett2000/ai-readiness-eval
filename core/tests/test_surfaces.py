@@ -68,6 +68,40 @@ def test_a_shared_path_with_no_version_anywhere_is_ambiguous_not_guessed():
     assert "rest-v1" in verdict.basis and "rest-v3" in verdict.basis
 
 
+def test_one_surfaces_resource_with_another_surfaces_version_does_not_credit_either():
+    """FOUND IN A REAL EXHIBIT, NOT IN A FIXTURE, and it inflated the measured surface.
+
+    A vendor renamed a resource between surfaces, so only ONE inventory contains the new spelling. An
+    answer that writes the new resource with the OLD version — `/v3/sprockets` where the deprecated
+    surface has no sprockets at all — matches exactly one candidate, and an unconditional
+    single-candidate return credits the measured surface for an address that exists on neither.
+
+    That is the one direction of error that flatters the result, so it gets its own test. In the run
+    that found it, 13 of 14 endpoints in the measured bucket were really `/v1/...` paths.
+    """
+    verdict = classify_endpoint("/v1/sprockets", "v1", SURFACES)
+    assert verdict.bucket == CONFLICTED
+    assert "rest-v3" in verdict.basis and "rest-v1" in verdict.basis
+
+
+def test_a_single_candidate_that_declares_no_version_makes_no_version_claim_to_contradict():
+    """The converse, and it is why the rule above is conditioned on the candidate having markers.
+
+    The legacy surface declares no version markers — it is not making a version claim — so
+    `/graph` answered with any stated version is still that surface, not a conflict. Without this
+    condition every answer naming a version-less surface would become `conflicted`.
+    """
+    assert classify_endpoint("/graph", "v3", SURFACES).bucket == "graph"
+    assert classify_endpoint("/graph", "v1", SURFACES).bucket == "graph"
+
+
+def test_a_single_candidate_with_a_consistent_or_unknown_version_is_unchanged():
+    assert classify_endpoint("/v3/sprockets", "v3", SURFACES).bucket == "rest-v3"
+    assert classify_endpoint("/v3/sprockets", None, SURFACES).bucket == "rest-v3"
+    # a version belonging to no declared surface is uninformative, not a conflict
+    assert classify_endpoint("/v9/sprockets", "v9", SURFACES).bucket == "rest-v3"
+
+
 def test_a_path_version_disagreeing_with_the_stated_version_is_its_own_bucket():
     """`/v1/widgets` with `api_version: v3` is not a coin flip to resolve — it is evidence about the
     exact confusion being measured, so it gets counted rather than tidied away."""

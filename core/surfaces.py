@@ -192,11 +192,26 @@ def classify_endpoint(path: str | None, api_version: str | None,
     npath = tuple(normalize_path(path))
     candidates = [s for s in surfaces.surfaces if npath in s.normalized_paths]
 
+    stated = [*version_segments(path), normalize_version(api_version)]
+
     if not candidates:
         return EndpointVerdict(UNRECOGNIZED, "no declared inventory contains this path", host)
+
     if len(candidates) == 1:
-        return EndpointVerdict(candidates[0].id,
-                               f"the path appears only in {candidates[0].id}'s inventory", host)
+        only = candidates[0]
+        # A single candidate is NOT the end of the question. An answer can name one surface's
+        # RESOURCE with another surface's VERSION — `/v1/network-volumes` where the v1 surface spells
+        # that resource `networkvolumes` and only the v2 surface has the hyphen. The resource matches
+        # exactly one inventory, so an unconditional return credits the measured surface for an
+        # address that exists on neither. That is the one direction of error that inflates the
+        # measured bucket, so it is checked here rather than left to the multi-candidate branch.
+        elsewhere = _sole([s for s in surfaces.surfaces if s.id != only.id], stated)
+        if only.normalized_markers and elsewhere and not (only.normalized_markers & set(stated)):
+            return EndpointVerdict(
+                CONFLICTED,
+                f"the resource is only in {only.id}'s inventory but the version says {elsewhere.id}",
+                host)
+        return EndpointVerdict(only.id, f"the path appears only in {only.id}'s inventory", host)
 
     # Published by more than one surface — which is the interesting case, and the reason the
     # endpoint dimension alone cannot answer the question: `normalize_path` strips the version
@@ -204,6 +219,7 @@ def classify_endpoint(path: str | None, api_version: str | None,
     ids = ", ".join(s.id for s in candidates)
     by_path = _sole(candidates, version_segments(path))
     by_field = _sole(candidates, [normalize_version(api_version)])
+    del stated  # the multi-candidate branch weighs the two signals separately, on purpose
 
     if by_path and by_field and by_path.id != by_field.id:
         return EndpointVerdict(
