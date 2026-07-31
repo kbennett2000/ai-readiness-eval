@@ -2259,3 +2259,57 @@ entries:
       `an-opt-in-tolerance-nobody-is-told-they-need`: report, per condition, how many unmatched
       answers would have matched under some single leading prefix, so the artifact surfaces as a
       number in the run summary instead of waiting to be noticed.
+
+  - id: the-style-list-is-closed-and-the-next-vendor-may-not-be-in-it
+    adr: adr-0040-a-seventh-login-style.md
+    hazard: >
+      `_AUTH_STYLES` is a finite list, and adding `oauth2-implicit` did not make it exhaustive. The
+      next vendor may publish an eighth login style — device-code, mTLS, JWT-bearer, SAML-bearer —
+      and until it is named, that pack's `auth_flow` is unnameable. Nothing predicts which style a
+      not-yet-recon'd vendor declares, so the list can only ever be extended in arrears.
+
+      The GUARD here is the refusal, not the list. ADR-0011 made an unlisted style BLOCK
+      `roundtrip`, so the failure mode is a stopped cycle rather than a silent wrong number — and
+      that is exactly what happened this cycle, twelve times, before this entry existed.
+    status: gated
+    gated_by:
+      - core/tests/test_roundtrip.py::test_a_login_style_the_scorer_cannot_name_blocks_the_pack
+      - core/tests/test_scorer_oauth_implicit.py::test_the_style_is_declarable_by_a_pack
+      - core/tests/test_scorer_oauth_implicit.py::test_nothing_that_names_no_style_gains_one
+
+  - id: a-marker-wide-enough-to-fire-on-prose-moves-archived-cells
+    adr: adr-0040-a-seventh-login-style.md
+    hazard: >
+      Every style added to `_AUTH_STYLES` is a substring test applied to BOTH ground truth and
+      answer, so a marker one word too wide silently re-canonicalizes published ground truth and
+      moves archived cells with no model run and no visible edit to any pack. `implicit` is the live
+      example: it appears as "implicitly" and in ordinary prose across the cohort, and only the
+      two-word form is safe.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer_oauth_implicit.py::test_bare_implicit_is_not_a_marker
+      - core/tests/test_scorer_oauth_implicit.py::test_the_word_inside_another_style_does_not_hijack_it
+      - core/tests/test_scorer_oauth_implicit.py::test_an_unrelated_flow_word_does_not_fire
+      - core/tests/test_scorer_oauth_implicit.py::test_it_outranks_bearer_and_access_token
+
+  - id: rebuild-against-archive-is-not-a-score-neutrality-proof
+    adr: adr-0040-a-seventh-login-style.md
+    hazard: >
+      The obvious way to prove a scorer change moves no number — rebuild every archived result and
+      diff against the committed files — is WRONG, and wrong in the reassuring direction only by
+      luck. It measures every core change made since each archive was written, so it reports
+      differences that are not the change under test (dropped `rebuild_note` metadata,
+      display-only casing from an older normalizer) and would equally hide a real move inside that
+      noise. Only an A/B on ONE core isolates the change. Worse, the loop can pass VACUOUSLY: a
+      wrong CLI flag made 36 consecutive rebuilds fail while the comparison still printed
+      "byte-identical", because nothing had been rebuilt.
+    status: ungated
+    ungated_reason: >
+      There is no committed script to gate: the A/B is a procedure a cycle runs by hand against the
+      private packs repo, which core cannot see. A test in core could not perform it, because core
+      holds no archived transcripts. What exists is the written procedure in ADR-0040 decision 3,
+      including the two ways the naive version fails.
+    fix_queued_to: >
+      Public issue filed this cycle proposing `rebuild-report --check` — rebuild in a temp dir,
+      compare, exit non-zero on any difference, and exit non-zero if it rebuilt nothing — so the
+      vacuous pass becomes impossible and the A/B becomes one command.

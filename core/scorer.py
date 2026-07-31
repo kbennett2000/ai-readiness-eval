@@ -202,6 +202,25 @@ _AUTH_STYLES: tuple[tuple[str, tuple[str, ...]], ...] = (
     # `code` alone would fire on every `code_verifier`, `status code` and HTTP-code mention in the
     # cohort.
     ("oauth2-authorization-code", ("authorization code", "auth code", "pkce")),
+    # oauth2-implicit ranks ABOVE bearer-token and access-token for the same reason
+    # oauth2-authorization-code does: the implicit grant's defining property is that it returns the
+    # access token straight from the authorization endpoint, so prose describing it NECESSARILY
+    # names the token it hands back. With `bearer` above it, ground truth stating the implicit grant
+    # would canonicalize to bearer-token while an answer saying precisely "OAuth2 implicit flow"
+    # canonicalized to `unknown` — the inversion ADR-0011 exists to prevent, scoring the exact
+    # answer 0 and a vaguer one 1.
+    #
+    # It ranks BELOW oauth2-authorization-code and below client-credentials, and that order is the
+    # conservative one: prose that states either of those explicitly keeps it even when it also
+    # mentions the implicit grant it is contrasting itself against, which is the direction that
+    # protects already-published ground truth.
+    #
+    # Markers are deliberately narrow and NEVER bare `implicit`, which appears as "implicitly" and
+    # inside ordinary prose across the cohort. Both markers were checked against every task file,
+    # vendored spec, `scores.json` and archived run in the pack repo before being added: ZERO
+    # occurrences outside the pack that forced this, so the addition is provably score-neutral for
+    # every archived pack — and the whole cohort was re-scored to prove it byte-identical (ADR-0040).
+    ("oauth2-implicit", ("implicit grant", "implicit flow")),
     ("bearer-token", ("bearer",)),
     ("basic-auth", ("basic auth", "basic authentication", "http basic")),
     ("api-key", ("api key", "apikey", "subscription key")),
