@@ -2123,3 +2123,92 @@ entries:
     status: gated
     gated_by:
       - core/tests/test_surfaces_overlay.py::test_the_uncurated_caveat_is_carried_wherever_the_exhibit_is_printed
+
+  # ------------------------------------------------------------------------------ ADR-0038 ---
+
+  - id: a-vendor-mcp-server-inventory-is-a-pin-date-not-a-fact
+    adr: adr-0038-a-vendor-published-mcp-server-is-posture-evidence.md
+    hazard: >
+      The sweep behind ADR-0038 is a snapshot. These servers were announced within months of each
+      other and ship on their own cadence: a vendor recorded as publishing none may publish one next
+      week, a hosted-only server may open its source, and a tool definition that carries no path today
+      may carry one in the next release. Nothing in the suite can notice, so a study read later reads
+      as current.
+    status: ungated
+    ungated_reason: >
+      Structural, and the same limit ADR-0037 records for a surface inventory: testing currency would
+      mean fetching, which puts vendors' uptime inside the suite and — worse here — would mean
+      repeatedly reaching for artifacts ADR-0038 decision 2 forbids connecting to. Every finding
+      carries `source_url` and `fetched_at`, and the study is dated in its filename so it cannot be
+      mistaken for a standing claim.
+    fix_queued_to: >
+      Not queued as a code change. Re-running the sweep is a cycle's work on the same cadence as the
+      docs re-snapshot and `annotate-robots --check`.
+
+  - id: camp-assignment-reads-only-the-tool-definition-layer
+    adr: adr-0038-a-vendor-published-mcp-server-is-posture-evidence.md
+    hazard: >
+      Whether a server "carries the surface" was decided by reading the files where tools are declared.
+      A server whose tool files delegate to a helper package may hold literal method-and-path pairs one
+      level down, which would move it from the SDK-wrapped reading to the raw-HTTP reading. At least
+      one vendor in the sweep is unresolved for exactly this reason.
+    status: ungated
+    ungated_reason: >
+      The tool-definition layer is the right layer to read for the question asked: it is what a model
+      is shown. What lives below it is not in the model's context, so a path in a helper package does
+      not close the knowledge gap for the agent. But the distinction is fine enough to be got wrong,
+      and the unresolved case is named in the study rather than assigned a camp.
+    fix_queued_to: >
+      Not queued. Reading a vendor's transitive dependency tree is unbounded work for a posture note;
+      the honest treatment is to record the boundary, which the study does.
+
+  - id: a-closed-server-is-unreadable-not-empty
+    adr: adr-0038-a-vendor-published-mcp-server-is-posture-evidence.md
+    hazard: >
+      Several vendors' servers cannot be read from public sources at all. "We could not determine
+      whether the tool definitions carry the API surface" is one sentence away from "the tool
+      definitions carry no API surface", and the second is a claim about a vendor's product that no
+      evidence supports. A summary table is where the two collapse into each other.
+    status: ungated
+    ungated_reason: >
+      Treated the way ADR-0037 treats `unrecognized`: `surface_knowledge` takes a closed vocabulary in
+      which `unreadable` is a distinct value from `none-found`, and the private gate refuses a record
+      that claims `none-found` for a server it also records as not inspectable. That gate lives in the
+      packs repo, so from this repo the rule is prose.
+    fix_queued_to: >
+      Not queued here. The vocabulary is enforced where the records live; enforcing it in core would
+      mean core carrying a posture schema it has no other use for.
+
+  - id: the-condition-name-collision-is-unenforced
+    adr: adr-0038-a-vendor-published-mcp-server-is-posture-evidence.md
+    hazard: >
+      `KNOWN_CONDITIONS` contains `mcp`, meaning the context layer this project builds. ADR-0038 rules
+      that a vendor's own MCP server is never described that way, and nothing checks it. No test in
+      either repo reads a card's prose, so a card describing the `mcp` column as the vendor's server
+      would render, publish and pass green.
+    status: ungated
+    ungated_reason: >
+      Same shape as ADR-0035's auto-closing keyword: a rule about what gets written, in artifacts no
+      test parses. A regex over card prose was considered and rejected for the reason ADR-0037 gives
+      for refusing marker-list matching — the false-positive rate on short, ordinary strings is the
+      pathology this repo has already paid for twice, and `mcp` appears legitimately on every card
+      that ran the condition.
+    fix_queued_to: >
+      Not queued. Queued alongside the standing prose-rule gap recorded under ADR-0035.
+
+  - id: a-seed-pack-contributes-no-product-guard-tokens
+    adr: adr-0038-a-vendor-published-mcp-server-is-posture-evidence.md
+    hazard: >
+      Two measured packs have no queue entry. `_load_prospects` falls back to the pack directory name
+      for those, so the vendor name is guarded but `guard_product_tokens` and its cased sibling are
+      absent — their product names would pass into a public file green. Writing about vendor MCP
+      servers is precisely the prose that wants to name products.
+    status: ungated
+    ungated_reason: >
+      A narrower instance of the recorded hazard that an unqueued target contributes no tokens at all,
+      and unfixable in this repo by construction: the tokens live in the packs repo (ADR-0018), so the
+      fix is a queue-entry edit there, not a change here. The public ADR names no product at all,
+      which is the treatment that does not depend on the guard firing.
+    fix_queued_to: >
+      Filed against the packs repo this cycle as issue #46 there — the queue entries and their token
+      declarations live in that repo, so the fix cannot land here.
