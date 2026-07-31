@@ -5,9 +5,9 @@ place. A later vendor disagrees with itself in two places at once, in its own ma
 documents rather than merely between a spec and a guide:
 
   * two of its OpenAPI documents describe the same domain on the same host, one writing a leading
-    `/apiHub` segment into every path key and the other omitting it;
-  * a third document absorbs a different segment (`/api`) into `servers[].url`, so the address its
-    own reference page DISPLAYS carries a prefix its `paths` key does not.
+    platform segment into every path key and the other omitting it;
+  * a third document absorbs a different segment into `servers[].url`, so the address its own
+    reference page DISPLAYS carries a prefix its `paths` key does not.
 
 One declared prefix cannot reconcile both, and choosing either one leaves half the pack mis-scored
 in the direction ADR-0013 exists to prevent — a dimension reported low while the model wrote the
