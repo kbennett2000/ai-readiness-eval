@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import surfaces
 from .answer_block import AnswerSummary, Endpoint, parse, render_block
 from .pack import Pack
 from .scorer import (
@@ -215,6 +216,25 @@ def check_pack(pack: Pack) -> list[TaskControl]:
                 task_id=str(task.get("id") or "(unnamed task)"), ok=False,
                 problems=[f"round-trip raised {type(exc).__name__}: {exc}"],
             ))
+
+    # A pack that declares published surfaces (ADR-0037) must classify its OWN ground truth as the
+    # surface it says it measures. Same register as the round-trip above and for the same reason: an
+    # inventory that is mis-transcribed, stale or too broad produces a confident, wrong split, and
+    # nothing downstream can tell. Checked here so it BLOCKS at the roundtrip gate — before a grid
+    # burns — rather than being discovered in a card.
+    try:
+        declared = pack.answer_surfaces
+        if declared:
+            problems = surfaces.unclassified_ground_truth(
+                tasks, declared, getattr(pack, "base_prefix_segments", None))
+            if declared.measured is None:
+                problems = ["no declared surface is marked `measured: true`", *problems]
+            controls.append(TaskControl(task_id="(answer-surfaces)", ok=not problems,
+                                        problems=problems))
+    except Exception as exc:
+        controls.append(TaskControl(
+            task_id="(answer-surfaces)", ok=False,
+            problems=[f"surface control raised {type(exc).__name__}: {exc}"]))
     return controls
 
 

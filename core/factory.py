@@ -26,6 +26,7 @@ from pathlib import Path
 
 import yaml
 
+from . import analyze, surfaces
 from .pack import Pack
 from .report import _DIM_LABELS
 from .scorer import DIMENSIONS
@@ -516,11 +517,13 @@ GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
 # Draft report card scaffold (name-free renderer; the vendor label is pack data, not core source)
 # --------------------------------------------------------------------------- #
 
-def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], invented: dict) -> str:
+def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], invented: dict,
+                         surface_reports: list[tuple[str, object]] | None = None) -> str:
     """Render the DRAFT report-card scaffold from the graded conditions. `results` is a list of
-    (condition, aggregate, metadata); `invented` is {task_id: Counter((method, path): count)}. The
-    executor fills the Findings prose; the numbers, the headline table, and the invented-endpoints
-    exhibit are computed here so the card is never hand-transcribed."""
+    (condition, aggregate, metadata); `invented` is {task_id: Counter((method, path): count)};
+    `surface_reports` is an optional list of (condition, SurfaceReport) for a pack that declares
+    `answer_surfaces` (ADR-0037). The executor fills the Findings prose; the numbers, the headline
+    table, and the exhibits are computed here so the card is never hand-transcribed."""
     dims = list(DIMENSIONS)
     meta = results[0][2] if results else {}
     lines = [
@@ -557,11 +560,18 @@ def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], inve
         "",
         f"_See `specs.yaml` `spec_finding`._ Recon: {_recon_line(pack)}",
         "",
-        "## Invented endpoints (verbatim)",
+        "## Endpoints outside ground truth (verbatim, uncurated)",
+        "",
+        f"_{analyze.UNCURATED_CAVEAT}_",
         "",
     ]
     exhibit = _format_invented(invented)
     lines += exhibit if exhibit else ["_(none — no endpoint outside ground truth was proposed)_"]
+
+    for condition, report in (surface_reports or []):
+        text, _n = surfaces.format_report(report, pack.answer_surfaces)
+        lines += ["", f"### {condition}", "", text]
+
     lines += [
         "",
         "## Coverage, exclusions & disclosures",
@@ -727,7 +737,7 @@ def run_pipeline(entry: QueueEntry, pack: Pack, *, today: str, model: str | None
 
     entry.status = "card"
     invented = unmatched_for_dirs(result_dirs, pack)
-    card = render_card_scaffold(pack, graded, invented)
+    card = render_card_scaffold(pack, graded, invented, surface_reports_for_dirs(result_dirs, pack))
     card_path = pack.root / "REPORT.scaffold.md"
     card_path.write_text(card)
     report["card"] = str(card_path)
@@ -740,6 +750,26 @@ def run_pipeline(entry: QueueEntry, pack: Pack, *, today: str, model: str | None
     entry.last_run = today
     report.update(outcome="carded", stage="card")
     return report
+
+
+def surface_reports_for_dirs(result_dirs: list[Path], pack: Pack) -> list[tuple[str, object]]:
+    """Classify each condition's archived answers by published surface (ADR-0037).
+
+    Per condition rather than merged: the whole question is whether SHOWING a model the current
+    documentation moves it off a superseded surface, and a union across conditions would average
+    away exactly that difference.
+    """
+    declared = pack.answer_surfaces
+    if not declared:
+        return []
+    tasks_by_id = pack.tasks_by_id()
+    out: list[tuple[str, object]] = []
+    for d in result_dirs:
+        scores = _read_scores(d)
+        condition = scores["metadata"].get("condition", d.name)
+        out.append((condition, surfaces.classify_results_dir(
+            d, tasks_by_id, declared, pack.base_prefix_segments)))
+    return out
 
 
 def unmatched_for_dirs(result_dirs: list[Path], pack: Pack) -> dict:

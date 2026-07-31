@@ -78,6 +78,14 @@ class Pack:
     # card makes, not a fact the task file carries.
     task_groups: dict | None = None
 
+    # Published API surfaces this pack can tell apart in an answer (ADR-0037). Optional and empty
+    # for every pack that does not declare it, so no published number moves by adding this field —
+    # and it CANNOT move one even when declared, because nothing in the scoring path reads it. Like
+    # `task_groups` this is a pack-level reporting axis; unlike `task_groups`, each surface's path
+    # list is a transcription from a published artifact rather than an argument, which is why the
+    # long ones live in a pinned sibling file that can carry their provenance.
+    answer_surfaces_config: dict | None = None
+
     @classmethod
     def load(cls, pack_dir: str | Path) -> "Pack":
         root = Path(pack_dir).resolve()
@@ -123,7 +131,15 @@ class Pack:
             na_categories=(dict(cfg["na_categories"]) if cfg.get("na_categories") else None),
             endpoint_base_prefix=cfg.get("endpoint_base_prefix") or None,
             task_groups=(dict(cfg["task_groups"]) if cfg.get("task_groups") else None),
+            answer_surfaces_config=(dict(cfg["answer_surfaces"])
+                                    if cfg.get("answer_surfaces") else None),
         )
+
+    @property
+    def answer_surfaces(self):
+        """The declared `SurfaceSet` (ADR-0037); an empty one when the pack declares none."""
+        from .surfaces import load_surface_set
+        return load_surface_set(self.answer_surfaces_config, self.root)
 
     def task_to_group(self) -> dict:
         """`{task_id: group_key}` from the declared `task_groups`; empty when none are declared."""

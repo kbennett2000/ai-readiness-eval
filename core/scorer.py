@@ -45,6 +45,55 @@ _DOTTED_VERSION_RE = re.compile(r"^v?(\d+(?:\.\d+)+)$", re.IGNORECASE)
 # Normalization helpers (each mirrors a rule in ADR-0004).
 # --------------------------------------------------------------------------- #
 
+def address_to_path(address: str | None) -> str:
+    """Strip scheme/host/tenant and any query or fragment, leaving the request path.
+
+    Factored out of `normalize_path` so that anything needing to read a RAW path starts from the
+    same string `normalize_path` starts from. `version_segments` below returns exactly what
+    `normalize_path` throws away, and two copies of this stripping would be two path vocabularies —
+    the drift `category.rollup_by_category` exists to prevent for group arithmetic.
+    """
+    if not address:
+        return ""
+    p = address.strip()
+    # strip scheme://host
+    if "://" in p:
+        p = p.split("://", 1)[1]
+        slash = p.find("/")
+        p = p[slash:] if slash != -1 else "/"
+    # a bare host with no scheme but a dot before the first slash -> drop host
+    elif not p.startswith("/") and "/" in p and "." in p.split("/", 1)[0]:
+        p = "/" + p.split("/", 1)[1]
+    # strip query string / fragment
+    return p.split("?", 1)[0].split("#", 1)[0]
+
+
+def states_host(address: str | None) -> bool:
+    """Did the answer write a scheme or host into the path, against the prompt contract?
+
+    The contract says "request path only — no scheme/host/tenant" (`core/prompt.py`). This reports
+    whether that instruction was followed rather than assuming it was: a surface classifier must not
+    lean on a signal the contract forbids, and the way to keep that honest is to publish the count.
+    """
+    if not address:
+        return False
+    p = address.strip()
+    return "://" in p or (not p.startswith("/") and "/" in p and "." in p.split("/", 1)[0])
+
+
+def version_segments(path: str | None) -> list[str]:
+    """The version-marker segments a raw path carries, in order, each normalized.
+
+    The exact complement of `normalize_path`, which STRIPS these so two spellings of one resource
+    compare equal. Anything that needs to read a version OUT of a path must call this rather than
+    re-deriving it, so the repo keeps a single version vocabulary.
+    """
+    if not path:
+        return []
+    return [normalize_version(seg) for seg in address_to_path(path).split("/")
+            if seg and (_VERSION_SEG_RE.match(seg) or _DOTTED_VERSION_RE.match(seg))]
+
+
 def normalize_path(path: str | None) -> list[str]:
     """Return comparable, version-stripped, lowercased path segments.
 
@@ -55,17 +104,7 @@ def normalize_path(path: str | None) -> list[str]:
     """
     if not path:
         return []
-    p = path.strip()
-    # strip scheme://host
-    if "://" in p:
-        p = p.split("://", 1)[1]
-        slash = p.find("/")
-        p = p[slash:] if slash != -1 else "/"
-    # a bare host with no scheme but a dot before the first slash -> drop host
-    elif not p.startswith("/") and "/" in p and "." in p.split("/", 1)[0]:
-        p = "/" + p.split("/", 1)[1]
-    # strip query string / fragment
-    p = p.split("?", 1)[0].split("#", 1)[0]
+    p = address_to_path(path)
     # drop version-marker segments wherever they appear (leading /v3, /beta, /oauth,
     # or a trailing per-service /v1), leaving the resource path for comparison
     segments = [s for s in p.split("/")

@@ -2040,3 +2040,86 @@ entries:
       Not queued as a code change — `annotate-robots --check` is the refresh and re-reads every host,
       so the drift is detectable on demand. What is unqueued is a cadence for running it; it belongs
       with the docs re-snapshot, which has the same staleness property and the same answer.
+
+  - id: a-classification-can-be-tuned-toward-a-finding-after-the-grid
+    adr: adr-0037-a-superseded-surface-is-not-an-invention.md
+    hazard: >
+      The overlay is read-only over archived runs, which is what makes it safe — and also means an
+      inventory or a version-marker list can be edited AFTER a grid and the split re-derived at no
+      cost. Nothing distinguishes correcting a mis-transcribed inventory from adjusting one until the
+      split reads better, because both are the same edit to the same file with the same effect.
+    status: gated
+    gated_by:
+      - core/tests/test_surfaces_overlay.py::test_declaring_surfaces_moves_no_score
+      - core/tests/test_surfaces_overlay.py::test_the_scoring_path_cannot_see_surfaces
+      - core/tests/test_surfaces.py::test_declaration_order_changes_no_classification
+      - core/tests/test_surfaces_overlay.py::test_the_overlay_writes_nothing
+
+  - id: an-inventory-that-cannot-place-its-own-ground-truth-reports-a-confident-wrong-split
+    adr: adr-0037-a-superseded-surface-is-not-an-invention.md
+    hazard: >
+      A mis-transcribed, stale or over-broad path inventory produces a split that is internally
+      consistent, sums correctly, and is wrong. No dimension moves and no report looks unusual — the
+      same shape as ADR-0013, where a dimension read 13.7% while the model was right in 98% of runs.
+    status: gated
+    gated_by:
+      - core/tests/test_surfaces.py::test_ground_truth_classifies_as_the_measured_surface
+      - core/tests/test_surfaces.py::test_a_mis_transcribed_inventory_is_caught_by_the_control
+      - core/tests/test_surfaces.py::test_an_over_broad_inventory_is_caught_too
+      - core/tests/test_surfaces_overlay.py::test_a_mis_transcribed_inventory_blocks_the_roundtrip_gate
+
+  - id: a-marker-list-matched-against-the-wrong-field-mis-buckets-every-answer
+    adr: adr-0037-a-superseded-surface-is-not-an-invention.md
+    hazard: >
+      Declared operation names are short strings, and matching them against a path field would fire on
+      ordinary resource segments — classifying correct answers as legacy with no dimension moving and
+      no test failing. The repo has paid for this class twice: `_AUTH_STYLES` records three near-misses
+      and an unbounded product token once matched a longer English word in six ADR headers.
+    status: gated
+    gated_by:
+      - core/tests/test_surfaces.py::test_operation_names_are_counted_from_prose_but_do_not_classify
+      - core/tests/test_surfaces.py::test_an_operation_name_that_is_a_path_segment_does_not_pull_a_rest_answer_into_the_legacy_bucket
+      - core/tests/test_surfaces.py::test_a_stated_host_is_recorded_as_evidence_and_never_decides
+
+  - id: the-classifier-reads-what-was-emitted-not-what-was-reasoned
+    adr: adr-0037-a-superseded-surface-is-not-an-invention.md
+    hazard: >
+      Classification uses the answer block only. A model that reasons in one surface's idiom and emits
+      another surface's path is classified by the path, so the split measures what was written down
+      rather than what was believed.
+    status: ungated
+    ungated_reason: >
+      Deliberate, and the emitted path is the right thing to measure: it is what an integrator would
+      actually call. The prose signal is not discarded — declared operation names are counted in their
+      own labelled column beside the table — but it never overrules the path, because a marker list
+      given that power mis-buckets ordinary answers (see the entry above).
+    fix_queued_to: >
+      Not queued. Reading the reasoning would mean scoring free text, which this method does not do
+      anywhere; the corroboration column is the whole of the intended treatment.
+
+  - id: unrecognized-is-bounded-by-a-pin-date-not-by-what-exists
+    adr: adr-0037-a-superseded-surface-is-not-an-invention.md
+    hazard: >
+      The `unrecognized` bucket means "outside the declared inventories", and an inventory is a copy
+      taken on a date. A vendor adding an endpoint after the pin makes correct answers read as
+      unrecognized, and nothing in the suite can notice — the same staleness the docs snapshot has.
+    status: ungated
+    ungated_reason: >
+      Structural, and stated rather than hidden: every inventory carries `source_url`, `fetched_at`,
+      `digest` and a `coverage` string, and the coverage string is printed WITH the bucket so it cannot
+      be read as "these endpoints do not exist". Testing currency would mean fetching, which would put
+      vendors' uptime inside the suite.
+    fix_queued_to: >
+      Not queued as a code change. Re-verifying a digest is a fetch a cycle runs, and it belongs on the
+      same cadence as the docs re-snapshot and `annotate-robots --check`.
+
+  - id: the-unmatched-exhibit-was-published-as-an-accusation
+    adr: adr-0037-a-superseded-surface-is-not-an-invention.md
+    hazard: >
+      `analyze.unmatched_endpoints` establishes only that an endpoint was not that task's ground truth.
+      Printing it under the word "invented" added a claim about the world that nothing checks, and real
+      documented endpoints — a query interface and an OAuth2 token endpoint — were published that way on
+      a card. Renaming the heading does not stop a future renderer from re-adding the stronger word.
+    status: gated
+    gated_by:
+      - core/tests/test_surfaces_overlay.py::test_the_uncurated_caveat_is_carried_wherever_the_exhibit_is_printed

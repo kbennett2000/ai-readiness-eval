@@ -586,6 +586,12 @@ def build_parser() -> argparse.ArgumentParser:
     inv.add_argument("results_dir", help="a results dir under <pack>/results/")
     inv.set_defaults(func=cmd_invented)
 
+    surf = sub.add_parser("surfaces",
+                          help="classify archived answers by which published API surface they came "
+                               "from (ADR-0037); requires a pack declaring `answer_surfaces`")
+    surf.add_argument("results_dir", help="a results dir under <pack>/results/")
+    surf.set_defaults(func=cmd_surfaces)
+
     cons = sub.add_parser("consultation",
                           help="per-task mcp tool-consultation / skip rates")
     cons.add_argument("results_dir", help="an mcp-condition results dir under <pack>/results/")
@@ -769,10 +775,31 @@ def robots_default_agent() -> str:
 
 
 def cmd_invented(args: argparse.Namespace) -> int:
-    from .analyze import format_unmatched, unmatched_endpoints
+    from .analyze import UNCURATED_CAVEAT, format_unmatched, unmatched_endpoints
     pack = _load_pack(args)
     unmatched = unmatched_endpoints(args.results_dir, pack.tasks_by_id())
+    print(f"# {UNCURATED_CAVEAT}\n")
     print(format_unmatched(unmatched))
+    return EXIT_OK
+
+
+def cmd_surfaces(args: argparse.Namespace) -> int:
+    """Classify a results dir's archived answers by published surface (ADR-0037). Read-only."""
+    from .surfaces import classify_results_dir, format_report
+    pack = _load_pack(args)
+    declared = pack.answer_surfaces
+    if not declared:
+        print(f"ERROR: pack '{pack.vendor_id}' declares no `answer_surfaces`; nothing to classify.",
+              file=sys.stderr)
+        return EXIT_ERROR
+    report = classify_results_dir(args.results_dir, pack.tasks_by_id(), declared,
+                                  pack.base_prefix_segments)
+    text, n_residual = format_report(report, declared)
+    print(text)
+    # Not an error: a residual is a fact about our inventories, and reporting it is the job. The
+    # exit code stays OK so a card build never turns on how many answers we could not place.
+    print(f"\n{n_residual} of {report.total_endpoints} answer endpoint(s) unplaced "
+          f"(ambiguous/conflicted/unrecognized).")
     return EXIT_OK
 
 
