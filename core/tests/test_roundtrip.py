@@ -129,9 +129,13 @@ def test_a_login_style_the_scorer_cannot_name_blocks_the_pack():
     "API key in the X-Api-Key header",
     "Session token from the logon call, sent in the Authorization header",
     "HTTP Basic-auth login (not a token-grant flow)",
+    # ADR-0040. A vendor whose published specification declares `flow: implicit` blocked all twelve
+    # of its tasks here until `oauth2-implicit` was taught, which is the gate doing its job — and
+    # this row is what pins that it now passes.
+    "OAuth 2.0 implicit grant against the tenant authorization host; no token URL is published",
 ])
 def test_the_styles_taught_this_cycle_no_longer_block(auth_flow):
-    """The three login styles ADR-0011 added must pass the gate they would have failed before it."""
+    """Every login style taught to close a scoring hole must pass the gate it would have failed."""
     control = check_task(_task(auth_flow=auth_flow))
     assert control.ok, control.problems
 
