@@ -68,7 +68,11 @@ class Pack:
     # description disagree about where the base URL ends. Empty for every pack that does not declare
     # it, so no pack's numbers move by adding this field. Never derived from `base_url`: that field
     # points at a spec REPOSITORY for several packs, not at an API base.
-    endpoint_base_prefix: str | None = None
+    #
+    # ADR-0039 widens this to accept a LIST of prefixes as well as a single string, for a vendor
+    # whose own documents disagree about the base in more than one place at once. A string still
+    # means exactly what it meant, so the six packs that declare one are byte-identical.
+    endpoint_base_prefix: str | list[str] | None = None
 
     # Named task groups a pack declares as a reporting axis (ADR-0026), e.g. surface age. Shape:
     # `{key: {label, rationale, tasks: [...]}}`. Optional and empty for every pack that does not
@@ -150,10 +154,28 @@ class Pack:
         return out
 
     @property
-    def base_prefix_segments(self) -> list[str]:
-        """The declared endpoint-base tolerance as comparable segments (ADR-0017); [] if unset."""
+    def declared_base_prefixes(self) -> list[str]:
+        """The declared endpoint-base tolerance as the literal strings a pack wrote; [] if unset.
+
+        One string declares one prefix; a list declares several (ADR-0039). Callers that compare
+        PATHS want `base_prefix_segments`; this property exists for the one caller that compares
+        literal documentation text (`conditions._path_spellings`).
+        """
+        p = self.endpoint_base_prefix
+        if not p:
+            return []
+        return [p] if isinstance(p, str) else [s for s in p if s]
+
+    @property
+    def base_prefix_segments(self) -> list[list[str]]:
+        """The declared endpoint-base tolerance as comparable segments (ADR-0017/0039).
+
+        Always a LIST OF PREFIXES, each a list of segments — one entry for a pack declaring a single
+        string, so nothing downstream changes for the six packs that do. `[]` when unset, which is
+        the pre-ADR-0017 behaviour and the reason no archived score can move.
+        """
         from .scorer import normalize_path
-        return normalize_path(self.endpoint_base_prefix) if self.endpoint_base_prefix else []
+        return [seg for seg in (normalize_path(p) for p in self.declared_base_prefixes) if seg]
 
     # --- task ground truth -------------------------------------------------- #
     def load_tasks(self, only: set[str] | None = None) -> list[dict]:

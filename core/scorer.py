@@ -448,21 +448,45 @@ class TaskScore:
 # Scoring.
 # --------------------------------------------------------------------------- #
 
-def _strip_base_prefix(segments: list[str], prefix: list[str]) -> list[str]:
-    """Drop `prefix` from the front of `segments` if it is there. ADR-0017.
+def as_prefix_list(prefix) -> list[list[str]]:
+    """Normalize a declared base tolerance to a list of prefixes. ADR-0017, widened by ADR-0039.
+
+    Accepts either shape and is the ONLY place the two are told apart:
+      * one prefix, as a flat list of segments   -> `["vendorbase"]`
+      * several, as a list of such lists         -> `[["vendorbase"], ["svc"]]`
+
+    A pack declaring a single string still arrives here as one flat list, so every archived score is
+    byte-identical. Empty and `None` both mean "no tolerance declared", which is the default.
+    """
+    if not prefix:
+        return []
+    if isinstance(prefix[0], str):
+        return [list(prefix)]
+    return [list(p) for p in prefix if p]
+
+
+def _strip_base_prefix(segments: list[str], prefix) -> list[str]:
+    """Drop a declared base prefix from the front of `segments` if one is there. ADR-0017/0039.
 
     Applied symmetrically to ground truth and answer, so the comparison stops depending on where
-    two equally-official sources chose to end the base URL. Never guesses: the prefix is whatever
+    two equally-official sources chose to end the base URL. Never guesses: the prefixes are whatever
     the pack declared and nothing else, so this can only ever collapse a difference the pack has
     said in advance is not a difference.
+
+    With several declared (ADR-0039), the FIRST that matches is stripped and stripping happens AT
+    MOST ONCE. Both properties are deliberate. First-match-wins makes declaration order the pack's
+    own tie-break rather than a hidden rule, and stripping once keeps the tolerance exactly as wide
+    as one base URL — repeated stripping would let two short declared prefixes eat a real resource
+    segment between them, which is the must-not-inflate property this rule is licensed by.
     """
-    if not prefix or len(segments) < len(prefix) or segments[:len(prefix)] != prefix:
-        return segments
-    return segments[len(prefix):]
+    for pre in as_prefix_list(prefix):
+        if len(segments) >= len(pre) and segments[:len(pre)] == pre:
+            return segments[len(pre):]
+    return segments
 
 
 def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
-                     base_prefix: list[str] | None = None) -> list[dict]:
+                     base_prefix=None) -> list[dict]:
     """Greedily match each ground-truth endpoint to an answer endpoint by path.
 
     Returns one record per ground-truth endpoint with match + method/version flags.
@@ -470,9 +494,10 @@ def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
     the right method on an endpoint you never identified).
 
     `base_prefix` is empty for every pack that does not opt in, in which case this behaves
-    exactly as it did before ADR-0017 and no archived score can move.
+    exactly as it did before ADR-0017 and no archived score can move. It accepts one prefix or
+    several; see `as_prefix_list`.
     """
-    pre = base_prefix or []
+    pre = as_prefix_list(base_prefix)
     used: set[int] = set()
     ans_norm = [(i, _strip_base_prefix(normalize_path(e.path), pre)) for i, e in enumerate(ans_eps)]
     records: list[dict] = []
