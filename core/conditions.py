@@ -259,16 +259,21 @@ def available_conditions() -> list[str]:
 # Truncation audit — the docs condition must not measure our own budget
 # --------------------------------------------------------------------------------------------- #
 
-def _path_spellings(path: str, base_prefix: str | None) -> list[str]:
+def _path_spellings(path: str, base_prefixes) -> list[str]:
     """The literal forms a documentation page might use for one ground-truth path.
 
-    Only the base-prefix pair, because that is the one rewriting a vendor is entitled to do and this
+    Only the base-prefix pairs, because that is the one rewriting a vendor is entitled to do and this
     project already models it (ADR-0013/0017): a spec may write the whole address while a guide writes
     the fragment after the base URL. No normalization beyond that, deliberately — see the docstring of
     `audit_docs_truncation` for why an approximate matcher is safe here and a clever one would not be.
+
+    A pack may declare more than one prefix (ADR-0039); each contributes its own pair. Accepts a bare
+    string for the single-prefix packs that predate that widening.
     """
+    if isinstance(base_prefixes, str):
+        base_prefixes = [base_prefixes]
     out = [path]
-    if base_prefix:
+    for base_prefix in base_prefixes or []:
         pre = "/" + base_prefix.strip("/")
         if path.startswith(pre):
             out.append(path[len(pre):] or "/")
@@ -302,7 +307,8 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
     Returns one record per (task, endpoint). A caller treats `truncated: True` as the defect.
     """
     condition = PublicDocsCondition(pack)
-    prefix = getattr(pack, "endpoint_base_prefix", None)
+    prefix = getattr(pack, "declared_base_prefixes", None) or \
+        getattr(pack, "endpoint_base_prefix", None)
     records: list[dict] = []
     for task in pack.load_tasks():
         task_id = task["id"]

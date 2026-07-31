@@ -2123,3 +2123,51 @@ entries:
     status: gated
     gated_by:
       - core/tests/test_surfaces_overlay.py::test_the_uncurated_caveat_is_carried_wherever_the_exhibit_is_printed
+
+  - id: several-declared-prefixes-widen-a-tolerance-nobody-verifies
+    adr: adr-0039-a-vendor-may-disagree-with-itself-in-more-than-one-place.md
+    hazard: >
+      ADR-0017 already records that a pack declares its own prefix and nothing checks the string
+      names a real base URL for that vendor. Allowing a LIST multiplies that unverified surface: a
+      pack may now declare several, each collapsing a distinction on both sides of every endpoint
+      comparison, and every one of them raises the endpoint score rather than lowering it. A careless
+      second prefix that is actually a resource segment would be invisible in exactly the way the
+      first one is — the pack validates, anchors and round-trips green, and the only symptom is an
+      endpoint number that reads high rather than low, which is the direction nobody questions.
+      What the tests below gate is the BOUND, not the declaration, and the same bounded protection
+      ADR-0017 has — re-pinned on the multi-prefix path rather than assumed to carry over. Stripping
+      is single, so the tolerance stays as wide as one base URL however many prefixes a pack
+      declares; only a leading occurrence is absorbed; two surfaces sharing a declared prefix still
+      compare unequal; an empty inner prefix is dropped rather than matching the front of every path.
+      What stays ungated is whether any declared string is a real base for that vendor — the standing
+      ADR-0017 hazard `a-declared-prefix-is-not-checked-against-the-vendor`, which this change makes
+      neither better nor worse in kind.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer_base_prefixes.py::test_stripping_happens_at_most_once
+      - core/tests/test_scorer_base_prefixes.py::test_an_undeclared_leading_segment_is_still_a_miss
+      - core/tests/test_scorer_base_prefixes.py::test_a_declared_prefix_is_only_stripped_at_the_front
+      - core/tests/test_scorer_base_prefixes.py::test_two_surfaces_sharing_a_declared_prefix_do_not_collide
+      - core/tests/test_scorer_base_prefixes.py::test_empty_inner_prefixes_are_dropped_rather_than_matching_everything
+
+  - id: a-pack-author-who-misses-the-second-prefix-is-still-mis-scored
+    adr: adr-0039-a-vendor-may-disagree-with-itself-in-more-than-one-place.md
+    hazard: >
+      Nothing detects that a vendor disagrees with itself, in one place or in two. ADR-0039 makes the
+      condition EXPRESSIBLE; it does not make it visible. A pack whose author reads one of a vendor's
+      OpenAPI documents and not the sibling that writes the same domain differently declares one
+      prefix, or none, and is mis-scored exactly as before the widening — and the round-trip control
+      cannot help, because an answer key written in one notation still matches itself (ADR-0010's own
+      recorded limit).
+    status: ungated
+    ungated_reason: >
+      Detection would mean cross-reading a vendor's documents for notation divergence, which is
+      authoring work rather than a gate: core holds no vendor documents and the pack's transcription
+      is the only copy in the tree, so there is no independent second source to diff against. The
+      protection that does exist is procedural and was what worked this time — the suspect-instrument
+      rule, and reading the vendor's own reference pages before authoring rather than after a grid.
+    fix_queued_to: >
+      Not queued as a gate. It shares a queued non-gate with the ADR-0017 entry
+      `an-opt-in-tolerance-nobody-is-told-they-need`: report, per condition, how many unmatched
+      answers would have matched under some single leading prefix, so the artifact surfaces as a
+      number in the run summary instead of waiting to be noticed.
