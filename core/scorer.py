@@ -280,6 +280,35 @@ def canonical_auth_flow(text: str | None) -> str:
     return UNKNOWN_AUTH
 
 
+def uncorroborated_auth_reason(ground_truth: dict | None) -> str | None:
+    """This task's written reason that its own `auth_flow` key cannot be corroborated (ADR-0041).
+
+    Returns the reason, or None when the task makes no such declaration — which is every task in
+    every pack that has not asked for this, so the field's absence is inert and no archived score
+    can move by adding it.
+
+    THE REASON IS THE WHOLE MECHANISM, and a bare `true` is refused for the same argument
+    `short_text_ok` refuses one (ADR-0021): a tolerance this project grants is one a pack asked for
+    in writing, on the record, where a reviewer can disagree with it. `auth_flow: null` alone would
+    have been a silent opt-out indistinguishable from an authoring omission — and worse, it would
+    re-open the exact hole ADR-0011 closed, where an absent style scores 1.0 against any answer that
+    also names none.
+
+    It does NOT waive the requirement that the declared prose still name a style the scorer can
+    recognize. `roundtrip` checks that independently and still blocks, so this field cannot be used
+    to smuggle vague auth prose past the gate — it only decides whether a nameable style is SCORED.
+    """
+    raw = (ground_truth or {}).get("auth_flow_not_corroborable")
+    if raw is None or raw is False:
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(
+            "auth_flow_not_corroborable must give a non-empty reason, not "
+            f"{raw!r} — a dimension this project declines to score has to say why on the record"
+        )
+    return raw.strip()
+
+
 def declared_alternates(ground_truth: dict | None) -> list[str]:
     """The alternate login-style names a task declares, in file order (ADR-0023).
 
@@ -587,16 +616,27 @@ def score_task(task: dict, answer: AnswerSummary,
         f"{sum(1 for r in records if r['version_ok'])}/{total} api_versions correct",
     )
 
-    # --- auth_flow (concept containment; ADR-0004, ADR-0023) ----------------
+    # --- auth_flow (concept containment; ADR-0004, ADR-0023, ADR-0041) ------
     gt_auth = canonical_auth_flow(gt.get("auth_flow"))
     ans_auth = canonical_auth_flow(answer.auth_flow)
-    alternates = declared_alternates(gt)
-    matched = auth_flow_matches(gt.get("auth_flow"), answer.auth_flow, alternates)
-    accepted = f"{gt_auth} or {' or '.join(alternates)}" if alternates else gt_auth
-    result.dimensions["auth_flow"] = DimensionScore(
-        "auth_flow", 1.0 if matched else 0.0,
-        f"required {accepted}, got {ans_auth}",
-    )
+    uncorroborated = uncorroborated_auth_reason(gt)
+    if uncorroborated:
+        # ADR-0041. The pack has declared IN WRITING that its own answer key cannot be corroborated,
+        # so the dimension reports n/a instead of scoring. This is ADR-0011's rule applied one level
+        # up: that rule refuses to score when the SCORER cannot positively test a style; this refuses
+        # when the PACK cannot positively establish which style is true. Scoring anyway would publish
+        # a model's answer as wrong on the authority of a key its own author does not trust.
+        result.dimensions["auth_flow"] = DimensionScore(
+            "auth_flow", None, f"not corroborable (n/a) — {uncorroborated}",
+        )
+    else:
+        alternates = declared_alternates(gt)
+        matched = auth_flow_matches(gt.get("auth_flow"), answer.auth_flow, alternates)
+        accepted = f"{gt_auth} or {' or '.join(alternates)}" if alternates else gt_auth
+        result.dimensions["auth_flow"] = DimensionScore(
+            "auth_flow", 1.0 if matched else 0.0,
+            f"required {accepted}, got {ans_auth}",
+        )
 
     # --- required_scopes (any-of overlap; ADR-0004 judgment call) -----------
     gt_scopes = {bare_scope(s) for s in gt.get("required_scopes", []) if bare_scope(s)}

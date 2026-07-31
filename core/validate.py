@@ -104,6 +104,11 @@ def build_schema(*, spec_ref_file_prefix: str | None = None) -> dict:
                     # for this operation. Shape only here; the rules that keep a set from becoming a
                     # way to make any answer right are argued and enforced in
                     # `scorer.alternate_problems`, which the `roundtrip` gate runs before any grid.
+                    # ADR-0041. Optional and absent everywhere it is not asked for, so adding it
+                    # moves no archived score. `minLength: 1` is the schema half of the rule the
+                    # scorer enforces at read time: a dimension this project declines to score has
+                    # to say why on the record, so a bare `true` is not expressible here either.
+                    "auth_flow_not_corroborable": {"type": "string", "minLength": 1},
                     "auth_flow_alternates": {
                         "type": "array",
                         "minItems": 1,

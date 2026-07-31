@@ -2313,3 +2313,54 @@ entries:
       Public issue filed this cycle proposing `rebuild-report --check` — rebuild in a temp dir,
       compare, exit non-zero on any difference, and exit non-zero if it rebuilt nothing — so the
       vacuous pass becomes impossible and the A/B becomes one command.
+
+  - id: a-written-reason-is-reviewed-by-a-human-or-not-at-all
+    adr: adr-0041-a-key-the-pack-itself-cannot-corroborate.md
+    hazard: >
+      `auth_flow_not_corroborable` removes a dimension from a published result on the strength of a
+      STRING a pack author wrote. Nothing can check that the reason is true, sufficient, or offered
+      in good faith — a pack that writes a bad reason passes exactly as a pack that writes a bad
+      `short_text_ok` reason passes. The failure mode is a dimension quietly dropped wherever it was
+      inconvenient, with a plausible paragraph attached.
+    status: gated
+    gated_by:
+      - core/tests/test_scorer_uncorroborated_auth.py::test_a_reason_that_is_not_written_out_is_refused
+      - core/tests/test_scorer_uncorroborated_auth.py::test_it_is_n_a_even_when_the_answer_would_have_MATCHED
+      - core/tests/test_scorer_uncorroborated_auth.py::test_declaring_it_does_not_excuse_prose_the_scorer_cannot_NAME
+      - core/tests/test_scorer_uncorroborated_auth.py::test_a_task_that_does_not_declare_it_is_completely_unaffected
+
+  - id: an-n-a-column-read-against-a-six-dimension-score
+    adr: adr-0041-a-key-the-pack-itself-cannot-corroborate.md
+    hazard: >
+      A pack measuring FIVE dimensions publishes an overall that is the mean of five, and a reader
+      comparing it to a six-dimension pack is comparing different quantities. Two packs in the
+      cohort are now in this position for two different reasons, and the arithmetic gives no signal
+      — the number simply looks like every other number.
+    status: ungated
+    ungated_reason: >
+      The protection is prose on a card, and no test can read a paragraph and decide whether it
+      warns clearly enough. `core/report.py` already prints `n/a` per cell and states that the
+      overall is the mean of APPLICABLE dimension scores, so the fact is in the artifact; what is
+      ungated is whether a card's summary says it where a skimming reader will see it.
+    fix_queued_to: >
+      Public issue filed this cycle proposing that `rebuild-report` and `compare` emit the scored
+      dimension COUNT beside every overall (e.g. "6% — mean of 5 of 6 dimensions"), so the caveat
+      travels with the number instead of depending on a card's prose.
+
+  - id: the-second-unmeasurable-dimension-is-a-pattern-not-an-accident
+    adr: adr-0041-a-key-the-pack-itself-cannot-corroborate.md
+    hazard: >
+      Two packs now report a dimension as unmeasurable, and BOTH times the cause was the vendor's own
+      documentation being unreachable rather than the model failing. Nothing in this project counts
+      that, so the shape is visible only to someone who has read both ADRs — which is exactly the
+      decay mode ADR-0015 exists to catch. The risk is that a third instance is recorded as a local
+      quirk instead of as the third data point in a finding about documentation posture.
+    status: ungated
+    ungated_reason: >
+      There is nothing to gate yet: two instances are recorded in two private pack records, and core
+      holds no cross-pack tally of unmeasurable dimensions. Making it gated would mean inventing that
+      tally, which is a reporting feature rather than a guard.
+    fix_queued_to: >
+      Public issue filed this cycle, together with the entry above: the same change that prints the
+      scored-dimension count per pack gives the cross-vendor renderer what it needs to list which
+      dimension each pack could not measure, and why.
