@@ -11,7 +11,8 @@ in the private packs repo, per ADR-0018.
 
 Vendors have started publishing their own MCP servers over the same APIs this project measures. A sweep
 of every measured pack plus the public reference — recon and source analysis only, no server run and no
-credential anywhere — found **eleven of fifteen** vendors shipping something MCP-shaped. That is a large
+credential anywhere — found **twelve of fifteen** vendors shipping something MCP-shaped — though only **four** ship one that
+is both inspectable and covers the surface the pack in question actually measured. That is a large
 enough share of the cohort that the method needs a stated position before a card reaches a vendor, and
 two things make the position non-obvious.
 
@@ -111,7 +112,7 @@ new question here, only a new place it shows up.
 
 ### 6. A negative requires exhaustion evidence
 
-Four vendors publish nothing MCP-shaped that public sources reveal. That is a finding, and it is only a
+Three vendors publish nothing MCP-shaped that public sources reveal. That is a finding, and it is only a
 finding if it records where it looked: which organisations, which package registries with which query,
 which documentation hosts, and **where evidence ran out** — a bot wall, a login wall, a search endpoint
 returning empty.
@@ -145,7 +146,7 @@ It does not measure any vendor's MCP server. Nothing was run, connected to, or a
 Every claim in the private study rests on published source, published documentation, or a recorded
 failure to reach either.
 
-It does not establish that the four vendors with no findable server publish none. It establishes that a
+It does not establish that the three vendors with no findable server publish none. It establishes that a
 recorded search did not find one, on a date.
 
 It does not gate itself. No test in this repo reads a card's prose, so nothing prevents a future card
