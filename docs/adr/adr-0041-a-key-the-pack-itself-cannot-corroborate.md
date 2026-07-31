@@ -83,14 +83,14 @@ must still state a style the scorer can name — it simply does not get to score
 
 ## Decision 4 — this is the SECOND dimension in the cohort ruled unmeasurable rather than scored low
 
-The first was ADP (private ADR-0023/0024): zero `securitySchemes` across 48 documents and 283
+The first is recorded in private ADR-0023/0024: zero `securitySchemes` across 48 documents and 283
 operations, so `required_scopes` is n/a on every task and that pack measures **five** of six
 dimensions. This is the second, and it reaches the same verdict by a different route — not a
 dimension the vendor never declared, but one the vendor declared in a form that cannot be trusted.
 
 **Both times the cause was the vendor's own documentation being unreachable, not the model failing.**
-ADP's token endpoint appears in no published document; this vendor's authentication guide is closed
-to automated readers by its own `robots.txt`. In neither case did the model do anything wrong, and in
+In the earlier case the token endpoint appears in no published document; in this one the
+authentication guide is closed to automated readers by the host's own `robots.txt`. In neither case did the model do anything wrong, and in
 both the honest report is a missing column with its reasons attached rather than a zero.
 
 That is a pattern worth naming, because two instances make it a shape rather than an accident: **when
