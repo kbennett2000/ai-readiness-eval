@@ -1,0 +1,210 @@
+# CI — ADR-0042. The privacy guard runs on every push, not when someone remembers.
+#
+# WHY THIS FILE EXISTS
+#   `core/tests/test_core_no_vendor.py` asserts that no tracked file and no git ref in this PUBLIC
+#   repository names a measured prospect. Its name list lives in the private packs repo (ADR-0018),
+#   so it SKIPS wherever `AIRE_PACKS_DIR` is unset — and a skip is what a green build is made of.
+#   The registry entry `the-leak-guard-is-silent-where-the-private-repo-is-absent` named this exact
+#   fix in its own `fix_queued_to`, before there was any CI to put it in.
+#
+#   It was not hypothetical by the time it was built. A merge landed a prospect's name on the default
+#   branch of this public repository, because the guard is only ever armed by hand and nobody's hand
+#   was there.
+#
+# THE ONE RULE EVERY STEP HERE OBEYS
+#   **This repository is public, so these logs are public. No step prints a pytest message.**
+#
+#   Not a traceback, not an assertion text, not a JUnit `<failure message=…>`, and no artifact
+#   carrying any of them. The reason is that the messages are the sensitive part: a failing
+#   `test_public_repo_names_no_prospect` prints the offending line, which contains the prospect's
+#   name — so the guard FIRING would publish, to a wider and more durable audience, the exact string
+#   it exists to keep unpublished. And it is not only the guard. Every job below loads the private
+#   packs repo, so a failing manifest or robots assertion prints private vendor URLs just as
+#   readily.
+#
+#   So pytest writes to files nobody prints, and `tools/assert_guard_ran.py` reports which tests
+#   failed, by NAME, and nothing else. That is a worse debugging experience and the only correct
+#   one: the detail belongs on the operator's machine, where reproducing it is two exports.
+#
+# WHY THERE IS NO "OUTSIDE CLONE" JOB
+#   The first draft had one — the full suite with no private repo, guard skipping, meant to stay
+#   green for forks. It does not stay green, and never did: `test_the_sweep_below_is_not_vacuous`
+#   and `test_the_matcher_finds_paths_that_are_really_there` are anti-vacuity gates that REQUIRE
+#   the private packs and fail without them, on `main`, today. Shipping a job that is red for a
+#   reason already known is how people learn to ignore red. The honest statement is that this
+#   repository's suite does not pass without the private packs repo, and both jobs below say so by
+#   needing it.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PY_VERSION: "3.14"
+  PACKS_REPO: kbennett2000/airead-packs
+
+jobs:
+  # ---------------------------------------------------------------------------------------------
+  # The gate that matters. Narrow, so its result is unambiguous and it can be a required check.
+  # ---------------------------------------------------------------------------------------------
+  privacy-guard:
+    name: privacy guard (ARMED — a skip fails)
+    runs-on: ubuntu-latest
+    # Forks cannot read secrets, so they cannot reach the name list, so arming them is impossible.
+    # That is not a hole: a fork's commits reach this repository only through a merge to a branch
+    # here, and that merge fires this job on `push`. The check is skipped exactly where it cannot
+    # run and required everywhere its result would mean something.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: fail early and legibly if the private-repo token is missing
+        env:
+          TOKEN: ${{ secrets.PACKS_REPO_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::The repository secret PACKS_REPO_TOKEN is not set, so the prospect name"
+            echo "::error::list cannot be loaded and this guard cannot run. That is a FAILURE and"
+            echo "::error::not a skip, deliberately: a build that is green because the privacy"
+            echo "::error::guard was unreachable is the exact failure this workflow exists to end."
+            echo "::error::Fix: create a fine-grained PAT with Contents:Read on ${PACKS_REPO},"
+            echo "::error::and add it here as the repository secret PACKS_REPO_TOKEN."
+            exit 1
+          fi
+
+      # fetch-depth: 0 so the ref scan sees every branch. At depth 1 the runner has one ref and
+      # `test_public_repo_ref_names_no_prospect` passes by having nothing to look at — which is how
+      # a real leak got onto a world-visible branch in the first place.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: public
+
+      # The private repo supplies the name list ONLY. Nothing from it is printed, listed, diffed or
+      # uploaded by any step below. A full checkout rather than a sparse one on purpose: a sparse
+      # pattern that silently matched fewer pack directories would NARROW the name list without
+      # failing anything, and a guard that quietly checks less is worse than one that checks nothing.
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PACKS_REPO }}
+          token: ${{ secrets.PACKS_REPO_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: packs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY_VERSION }}
+          cache: pip
+          cache-dependency-path: public/requirements.txt
+
+      - run: pip install -r public/requirements.txt
+
+      - name: run the guard, armed, without echoing what it finds
+        id: guard
+        working-directory: public
+        env:
+          AIRE_PACKS_DIR: ${{ github.workspace }}/packs
+          AIRE_GUARD_REQUIRED: "1"
+        run: |
+          set +e
+          python3 -m pytest core/tests/test_core_no_vendor.py \
+            -p no:cacheprovider \
+            --junitxml="${RUNNER_TEMP}/guard.xml" \
+            --tb=no -q > "${RUNNER_TEMP}/guard.log" 2>&1
+          echo "pytest_rc=$?" >> "$GITHUB_OUTPUT"
+          # guard.log and guard.xml both contain the offending line on failure. Neither is printed
+          # and neither is uploaded. See the rule at the top of this file.
+
+      - name: assert the guard actually ran, and report only test NAMES
+        run: python3 public/tools/assert_guard_ran.py "${RUNNER_TEMP}/guard.xml"
+
+      - name: fail the build if the guard failed
+        if: steps.guard.outputs.pytest_rc != '0'
+        run: |
+          echo "::error::The privacy guard FAILED. Its output is withheld on purpose: this"
+          echo "::error::repository is public, so this log is public, and the failure message"
+          echo "::error::contains the prospect name the guard exists to keep out of public view."
+          echo "::error::Reproduce locally — the detail belongs there, not here:"
+          echo "::error::  export AIRE_PACKS_DIR=/path/to/airead-packs AIRE_GUARD_REQUIRED=1"
+          echo "::error::  python3 -m pytest core/tests/test_core_no_vendor.py"
+          exit 1
+
+  # ---------------------------------------------------------------------------------------------
+  # The rest of the suite. Same arming, same silence — a manifest assertion's message carries
+  # private vendor URLs exactly as a privacy assertion's carries a prospect name.
+  # ---------------------------------------------------------------------------------------------
+  suite:
+    name: suite (armed)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: fail early and legibly if the private-repo token is missing
+        env:
+          TOKEN: ${{ secrets.PACKS_REPO_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::PACKS_REPO_TOKEN is not set. This repository's suite does not pass"
+            echo "::error::without the private packs repo — two anti-vacuity gates require it —"
+            echo "::error::so this is a failure rather than a reduced run. See ADR-0042."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: public
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PACKS_REPO }}
+          token: ${{ secrets.PACKS_REPO_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: packs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY_VERSION }}
+          cache: pip
+          cache-dependency-path: public/requirements.txt
+
+      - run: pip install -r public/requirements.txt
+
+      - name: pytest, armed, output withheld
+        id: suite
+        working-directory: public
+        env:
+          AIRE_PACKS_DIR: ${{ github.workspace }}/packs
+          AIRE_GUARD_REQUIRED: "1"
+        run: |
+          set +e
+          python3 -m pytest -p no:cacheprovider \
+            --junitxml="${RUNNER_TEMP}/suite.xml" \
+            --tb=no -q > "${RUNNER_TEMP}/suite.log" 2>&1
+          echo "pytest_rc=$?" >> "$GITHUB_OUTPUT"
+
+      - name: report which tests failed, by name only
+        run: python3 public/tools/assert_guard_ran.py "${RUNNER_TEMP}/suite.xml" --names-only
+
+      - name: fail the build if pytest failed
+        if: steps.suite.outputs.pytest_rc != '0'
+        run: |
+          echo "::error::The suite failed; the failing test names are in the step above and the"
+          echo "::error::messages are withheld because this log is public. Reproduce locally:"
+          echo "::error::  export AIRE_PACKS_DIR=/path/to/airead-packs AIRE_GUARD_REQUIRED=1"
+          echo "::error::  python3 -m pytest"
+          exit 1

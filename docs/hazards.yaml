@@ -416,20 +416,20 @@ entries:
       its privacy guard never having run, and green is exactly what a reader takes as proof the
       rule held. The old design could not fail this way; it could only disclose. This is the
       trade that was made knowingly, not an oversight.
-    status: ungated
-    ungated_reason: >
-      Failing instead of skipping would break every outside clone of a public repository for a
-      reason unrelated to its own tree, which is a worse outcome than a visible skip. The
-      halfway measures are already taken and do not close it: a misconfigured source FAILS
-      rather than skips, a source yielding zero names FAILS rather than passing green, and the
-      skip message names the variable and the reason. What remains uncovered is nobody being
-      forced to read it.
-    fix_queued_to: >
-      Not queued, in ADR-0016's "considered and declined" sense rather than the undecided one.
-      The real fix is environmental, not code: set `AIRE_PACKS_DIR` wherever this suite is run
-      by anyone who owns the private repo. If this project ever gains CI, requiring the variable
-      there — and failing without it — is the cheapest real improvement, because a CI runner has
-      no legitimate reason to be missing it.
+
+      FIRED, 2026-07-31, and this entry had already named its own fix. An ADR sentence naming a
+      measured prospect was committed, the guard was never run against it, the pull request was
+      merged, and the name reached the default branch of a PUBLIC repository. The guard fails on
+      that tree the moment it is armed — it was correct throughout, and absent throughout.
+    status: gated
+    gated_by:
+      # The promotion itself: an environment that DECLARES it can run the guard does not get to skip.
+      - core/tests/test_core_no_vendor.py::test_a_declared_requirement_turns_the_skip_into_a_failure
+      - core/tests/test_core_no_vendor.py::test_an_armed_run_here_is_actually_armed
+      # …and the CI that does the declaring, held to it so the arming cannot be quietly dropped.
+      - core/tests/test_ci_arms_the_guard.py::test_the_guard_job_sets_both_variables
+      - core/tests/test_ci_arms_the_guard.py::test_the_armed_flag_is_set_to_something_the_code_reads_as_true
+      - core/tests/test_ci_arms_the_guard.py::test_no_step_in_the_guard_job_is_advisory
 
   - id: prospect-names-remain-in-this-repository-git-history
     adr: adr-0018-prospect-names-live-outside-this-repo.md
@@ -2364,3 +2364,94 @@ entries:
       Public issue filed this cycle, together with the entry above: the same change that prints the
       scored-dimension count per pack gives the cross-vendor renderer what it needs to list which
       dimension each pack could not measure, and why.
+
+  # -------------------------------------------------------------------------- ADR-0042 ---
+
+  - id: nothing-requires-the-ci-check-before-a-merge
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      CI now runs the privacy guard armed on every push, but a workflow that FAILS does not by
+      itself stop anything. Unless the `privacy-guard` job is configured as a required status
+      check on `main`, a pull request can be merged over a red build — which is precisely the
+      sequence that put a prospect's name on the default branch in the first place, with the
+      only difference that the warning would now exist and be ignored rather than not exist.
+    status: ungated
+    ungated_reason: >
+      Branch protection is repository configuration, not code. Nothing in this tree can read it,
+      set it, or fail when it is absent, and a test that asserted "the operator has enabled it"
+      could only ever assert that somebody wrote a file saying so.
+    fix_queued_to: >
+      Operator action, recorded in the ADR-0042 pull request body: mark `privacy-guard` (public)
+      and `public-guard-against-this-name-list` (private) as required status checks on `main` in
+      both repositories. Until that is done, CI is a smoke alarm nobody is obliged to answer.
+
+  - id: no-test-proves-the-workflow-actually-runs
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      `core/tests/test_ci_arms_the_guard.py` proves the workflow FILE says what it should say —
+      both variables set, no advisory step, depth-0 checkout, the non-vacuity checker invoked. It
+      cannot prove GitHub ever executes it. A disabled Actions setting, a syntax error GitHub
+      rejects at dispatch, a workflow-file path typo, or an org policy blocking the run all look
+      identical from inside the repository: every test passes and no job exists.
+    status: ungated
+    ungated_reason: >
+      This is the same shape as the hazard the ADR closes, one level up, and it is not closable
+      from inside the tree for the same reason: an artifact cannot assert its own execution. The
+      first push is the experiment.
+    fix_queued_to: >
+      Not queued, in ADR-0016's "considered and declined" sense. The check is visual and happens
+      once — the job appears in the pull request's checks list, or it does not. Recording it here
+      rather than trusting it to be noticed is the whole of the mitigation.
+
+  - id: the-public-ci-log-is-as-public-as-the-file-it-guards
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      A failing `test_public_repo_names_no_prospect` prints the offending line, and the offending
+      line contains the prospect's name. This repository is public, so its Actions logs are
+      public, and its JUnit report carries the same string in `<failure message=…>`. A workflow
+      that echoed either — or uploaded the report as an artifact — would make the guard FIRING a
+      wider and more durable disclosure than the tracked file it caught. The first draft of the
+      workflow did exactly that.
+    status: gated
+    gated_by:
+      - core/tests/test_ci_arms_the_guard.py::test_nothing_prints_or_uploads_the_guards_own_output
+      - core/tests/test_ci_arms_the_guard.py::test_the_checker_never_prints_the_failure_message
+
+  - id: a-green-pytest-run-is-not-evidence-a-test-executed
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      Arming pytest closes the skip only for tests that were COLLECTED. Three other routes to a
+      guard that reports success while asserting nothing are all live and all previously met in
+      this project: an empty parametrize collects to one silent skip (which produced a vacuous
+      verification pass in the private cohort gate the same cycle this was written), a test that
+      is never collected reports nothing at all, and a shallow clone empties the REF half of the
+      scan without failing it — the half that caught the only branch-name leak on record.
+    status: gated
+    gated_by:
+      - core/tests/test_ci_arms_the_guard.py::test_an_empty_report_is_a_failure_not_a_pass
+      - core/tests/test_ci_arms_the_guard.py::test_a_missing_required_test_is_caught_one_at_a_time
+      - core/tests/test_ci_arms_the_guard.py::test_any_other_skip_in_an_armed_run_is_caught
+      - core/tests/test_ci_arms_the_guard.py::test_the_public_checkout_is_not_shallow
+      - core/tests/test_core_no_vendor.py::test_the_ref_scan_saw_more_than_the_branch_it_is_standing_on
+
+  - id: the-armed-guard-depends-on-a-credential-outside-the-tree
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      The public `privacy-guard` job can only load the name list by checking out the private packs
+      repo, which needs a repository secret. A secret can be deleted, expire, or have its scope
+      narrowed by someone with no idea what depends on it, and the job then fails for a reason
+      that reads as infrastructure noise rather than as the privacy gate going dark. The tempting
+      repair is to make the job advisory, which restores the original hazard exactly.
+    status: ungated
+    ungated_reason: >
+      No test in this tree can see a repository secret, its expiry, or its scope. The mitigations
+      taken are that the job fails LOUDLY with the remedy in the message rather than skipping, and
+      that `test_no_step_in_the_guard_job_is_advisory` blocks the tempting repair — but neither
+      shortens the window between a token lapsing and someone noticing.
+    fix_queued_to: >
+      Public issue #77. Two candidates recorded there: a fine-grained PAT with a recorded expiry
+      and a reminder (cheap, does not detect revocation), or removing the credential from the loop
+      entirely by publishing a hash-only form of the list. The second is the only one that closes
+      it, needs its own ADR — ADR-0018 refused publishing the list — and probably fails on the
+      merits, since a short list of known vendor names is not meaningfully protected by a hash
+      against an offline dictionary attack. Filed rather than decided.

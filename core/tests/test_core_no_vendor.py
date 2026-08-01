@@ -33,6 +33,7 @@ source like every other tracked file.
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,12 @@ VENDOR_TOKENS = re.compile(r"sailpoint|isc_spec_context|developer\.sailpoint|idn
 
 PACKS_DIR_ENV = "AIRE_PACKS_DIR"        # already the engine's packs-root variable (core/__main__.py)
 QUEUE_ENV = "AIRE_QUEUE"                # already the engine's queue-path variable
+GUARD_REQUIRED_ENV = "AIRE_GUARD_REQUIRED"   # set => a skip here is a FAILURE (ADR-0042)
+
+# Values that mean "not required". Anything else — including the empty-ish typo `AIRE_GUARD_REQUIRED=`
+# — is handled below; see `_guard_is_required` for why the unset case and the false case are the same
+# answer while a typo'd path is not.
+_FALSEY = {"", "0", "false", "no", "off"}
 
 
 @dataclass
@@ -171,8 +178,35 @@ def _load_prospects() -> _Prospects:
 PROSPECTS = _load_prospects()
 
 
+def _guard_is_required() -> bool:
+    """Has the caller DECLARED that this guard must actually run here?
+
+    Read at call time rather than at import, so the tests below can exercise both answers without
+    re-importing the module. Unset and falsey are the same answer, because the honest default for an
+    outside clone of a public repository is to skip (see `_Prospects.skip`).
+    """
+    return os.environ.get(GUARD_REQUIRED_ENV, "").strip().lower() not in _FALSEY
+
+
 def _require_prospects() -> _Prospects:
     if PROSPECTS.skip:
+        if _guard_is_required():
+            # The third state, added by ADR-0042. `skip` and `error` already separated "nobody
+            # configured this" from "somebody configured it wrong". Neither covers the case that
+            # actually bit: a run that was SUPPOSED to be armed, wasn't, and reported green.
+            #
+            # A skip is quieter than a failure, and quiet is the whole failure mode — a green suite
+            # with its privacy guard never having run is read by everyone, including its author, as
+            # proof the rule held. So an environment that claims to be armed does not get to skip.
+            pytest.fail(
+                f"{GUARD_REQUIRED_ENV} is set, so this guard MUST run — but it cannot:\n\n"
+                f"{PROSPECTS.skip}\n\n"
+                f"This is a failure and not a skip on purpose. {GUARD_REQUIRED_ENV} is the caller "
+                f"saying 'I own the private packs repo, so a skip here means my configuration is "
+                f"broken, not that this checkout is an outsider's.' Set {PACKS_DIR_ENV} to that "
+                f"checkout, or unset {GUARD_REQUIRED_ENV} if this environment genuinely cannot "
+                f"reach it."
+            )
         pytest.skip(PROSPECTS.skip)
     if PROSPECTS.error:
         pytest.fail(PROSPECTS.error)
@@ -487,3 +521,118 @@ def test_the_prospect_matcher_does_not_fire_on_unrelated_text():
                    "a 2xx with an empty body is a fetch failure",
                    "cycle-99-example-target-that-is-not-real"):
         assert not prospects.search(benign), f"the matcher fires on unrelated text: {benign!r}"
+
+
+# ------------------------------------------- arming the guard where it has no excuse (ADR-0042) ---
+#
+# The hazard `guard-skips-where-the-private-repo-is-absent` records the trade ADR-0018 made: the name
+# list lives outside this repository, so the guard skips wherever `AIRE_PACKS_DIR` is unset, and a
+# skipped guard reports green. That entry named its own fix in `fix_queued_to` — "if this project ever
+# gains CI, requiring the variable there, and failing without it" — and this is that.
+#
+# It is deliberately NOT a change of default. An outside clone still skips, because failing there
+# would break a public repository's suite for a reason unrelated to its own tree. What changes is that
+# an environment CAN declare itself armed, and a declared-armed environment that skips fails the build.
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "FALSE", "no", "off", "  "])
+def test_a_falsey_or_absent_declaration_leaves_the_skip_a_skip(monkeypatch, value):
+    """The default must stay a skip: an outside clone is not misconfigured, it is an outsider."""
+    monkeypatch.delenv(GUARD_REQUIRED_ENV, raising=False)
+    assert not _guard_is_required(), "unset must mean not-required"
+    monkeypatch.setenv(GUARD_REQUIRED_ENV, value)
+    assert not _guard_is_required(), f"{value!r} must mean not-required"
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "required"])
+def test_any_other_declaration_arms_the_guard(monkeypatch, value):
+    monkeypatch.setenv(GUARD_REQUIRED_ENV, value)
+    assert _guard_is_required()
+
+
+def test_a_declared_requirement_turns_the_skip_into_a_failure(monkeypatch):
+    """The whole point: where the guard is declared required, "it did not run" is a red build.
+
+    Verified by breaking it — with the promotion removed this raises Skipped, and a skip is what CI
+    reads as success.
+    """
+    monkeypatch.setenv(GUARD_REQUIRED_ENV, "1")
+    monkeypatch.setattr(
+        sys.modules[__name__], "PROSPECTS",
+        _Prospects(skip="the name list could not be loaded in this environment"),
+    )
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        _require_prospects()
+    message = str(excinfo.value)
+    assert GUARD_REQUIRED_ENV in message and PACKS_DIR_ENV in message, (
+        "the failure must name both variables, or the person reading a CI log cannot act on it"
+    )
+    assert "the name list could not be loaded" in message, "the original reason must survive"
+
+
+def test_without_the_declaration_the_same_state_is_still_a_skip(monkeypatch):
+    """The other half of the same bargain, so the promotion cannot quietly become unconditional."""
+    monkeypatch.delenv(GUARD_REQUIRED_ENV, raising=False)
+    monkeypatch.setattr(
+        sys.modules[__name__], "PROSPECTS",
+        _Prospects(skip="the name list could not be loaded in this environment"),
+    )
+    with pytest.raises(pytest.skip.Exception):
+        _require_prospects()
+
+
+@pytest.mark.parametrize("required", ["1", ""])
+def test_a_configured_but_broken_source_fails_either_way(monkeypatch, required):
+    """`error` already outranked `skip`; arming must not have disturbed that ordering.
+
+    A typo'd `AIRE_PACKS_DIR` was always a failure and not a skip — that is the older half of this
+    design — and it stays one whether or not the run declares itself armed.
+    """
+    monkeypatch.setenv(GUARD_REQUIRED_ENV, required)
+    monkeypatch.setattr(
+        sys.modules[__name__], "PROSPECTS",
+        _Prospects(error="it is not a directory"),
+    )
+    with pytest.raises(pytest.fail.Exception) as excinfo:
+        _require_prospects()
+    assert "not a directory" in str(excinfo.value)
+
+
+def test_an_armed_run_here_is_actually_armed():
+    """Non-vacuity for THIS run: if the suite declares itself armed, prove the list really loaded.
+
+    Without this, every assertion above is about a synthetic `_Prospects`, and the real one could
+    still be a skip. It is inert where the declaration is absent, which is what keeps an outside
+    clone green.
+    """
+    if not _guard_is_required():
+        pytest.skip(f"{GUARD_REQUIRED_ENV} not declared; the guard is allowed to skip here")
+    assert not PROSPECTS.skip, PROSPECTS.skip
+    assert not PROSPECTS.error, PROSPECTS.error
+    assert PROSPECTS.tokens, "armed, but the derived name list is empty"
+
+
+def test_the_ref_scan_saw_more_than_the_branch_it_is_standing_on():
+    """Non-vacuity for the REF half, which is the half a shallow checkout silently empties.
+
+    `test_public_repo_ref_names_no_prospect` is only as good as the refs present. A CI runner cloned
+    at `fetch-depth: 1` has exactly one, so the scan passes by having nothing to look at — the same
+    vacuous-pass shape as an empty parametrize, reached by a different route. The workflow therefore
+    clones at depth 0, and this asserts the clone actually delivered.
+
+    Inert unless armed, because a legitimate fresh single-branch clone is not a misconfiguration.
+    """
+    if not _guard_is_required():
+        pytest.skip(f"{GUARD_REQUIRED_ENV} not declared; a shallow checkout is nobody's problem here")
+    try:
+        refs = subprocess.check_output(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+            cwd=REPO_ROOT, text=True,
+        ).splitlines()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pytest.fail("armed, but this is not a git checkout, so the ref scan cannot run at all")
+    assert len(refs) > 1, (
+        f"the ref scan saw {len(refs)} ref(s). Armed, that means a shallow or single-branch clone, "
+        f"and the scan is passing because it has nothing to read rather than because the refs are "
+        f"clean. Clone with full depth (`fetch-depth: 0` in Actions)."
+    )
