@@ -2449,7 +2449,9 @@ entries:
       that `test_no_step_in_the_guard_job_is_advisory` blocks the tempting repair — but neither
       shortens the window between a token lapsing and someone noticing.
     fix_queued_to: >
-      Public issue filed this cycle: use a fine-grained PAT with a recorded expiry and set a
-      calendar reminder, or move the name list to a mechanism with no credential at all. The
-      second is the real fix and is a larger question than this ADR — it would mean publishing a
-      hash-only form of the list, which ADR-0018 considered and refused.
+      Public issue #77. Two candidates recorded there: a fine-grained PAT with a recorded expiry
+      and a reminder (cheap, does not detect revocation), or removing the credential from the loop
+      entirely by publishing a hash-only form of the list. The second is the only one that closes
+      it, needs its own ADR — ADR-0018 refused publishing the list — and probably fails on the
+      merits, since a short list of known vendor names is not meaningfully protected by a hash
+      against an offline dictionary attack. Filed rather than decided.
