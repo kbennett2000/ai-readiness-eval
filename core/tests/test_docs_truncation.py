@@ -66,11 +66,36 @@ def test_the_matcher_finds_paths_that_are_really_there():
     vacuous-green failure this project keeps re-learning, so it is closed by a positive claim: across
     the cohort, some ground-truth paths ARE found in their cached pages. If this ever reaches zero the
     matcher has broken, whatever the rest of the file says.
+
+    Two ways to reach zero, and they are NOT the same finding. The matcher can be broken, or there
+    can be no cached page to look in — `docs-cache/` is gitignored, so on a clean checkout or a CI
+    runner every audit raises and the count is zero for a reason that says nothing about the matcher.
+    The first armed CI run failed here for the second reason and reported the first, which is how a
+    control that cannot tell "absent" from "broken" spends someone's afternoon. Counted separately.
     """
     documented = 0
+    audited, uncached = [], []
     for pack_dir in PACK_DIRS:
         try:
-            documented += sum(1 for r in audit_docs_truncation(Pack.load(pack_dir)) if r["documented"])
-        except Exception:                       # a pack whose cache is absent cannot be audited
+            records = audit_docs_truncation(Pack.load(pack_dir))
+        except Exception:                       # a pack that cannot be loaded at all
+            uncached.append(pack_dir.name)
             continue
-    assert documented > 0, "no ground-truth path was found in any cached page — the matcher is broken"
+        # `audit_docs_truncation` does not raise on a missing cached page — it records the failure
+        # as `error` on the task and moves on. So the readable signal is a record WITHOUT one; a
+        # pack whose every task errored was never actually read, and counting it as audited is what
+        # turned "there is no cache here" into "the matcher is broken".
+        readable = [r for r in records if not r.get("error")]
+        (audited if readable else uncached).append(pack_dir.name)
+        documented += sum(1 for r in readable if r["documented"])
+    if not audited:
+        pytest.skip(
+            f"no pack on disk has a fetched docs cache ({len(uncached)} checked), so this control "
+            f"cannot run here — `docs-cache/` is gitignored. It says nothing about the matcher, and "
+            f"the sweep it keeps honest is equally unexercised: see the hazard entry "
+            f"`the-truncation-sweep-is-unexercised-without-a-docs-cache`."
+        )
+    assert documented > 0, (
+        f"no ground-truth path was found in any cached page across {len(audited)} pack(s) that DO "
+        f"have a cache ({', '.join(audited)}) — the matcher is broken"
+    )

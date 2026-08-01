@@ -8,12 +8,24 @@ This module answers the question, and `docs_fetch` refuses rather than fetches w
 Disallowed documentation set is then a **measured finding** — recorded, quoted, and reported on the
 card — instead of an obstacle to route around.
 
-WHY NOT `urllib.robotparser`. The standard library's `RuleLine.applies_to` is `path.startswith(pattern)`
-with no wildcard or anchor handling at all. Against the host that forced this ruling it silently
-mis-reads both of the forms that matter — `Disallow: /*/api-next` never matches anything (no path starts
-with a literal `/*/`), and `Disallow: /wfm$` matches every path under `/wfm$...` and nothing else, i.e.
-exactly the wrong set both times. A parser that is wrong about the only two directives at issue cannot
-be the basis for a conduct claim, so RFC 9309 is implemented here directly.
+WHY NOT `urllib.robotparser` — and the answer changed under us, which is now the better reason
+(ADR-0043). When this module was written, the standard library's `RuleLine.applies_to` was
+`path.startswith(pattern)` with no wildcard or anchor handling at all, and it mis-read both forms that
+mattered against the host that forced the ruling: `Disallow: /*/api-next` matched nothing (no path
+starts with a literal `/*/`) and `Disallow: /wfm$` matched everything under `/wfm$...` and nothing
+else — exactly the wrong set, twice.
+
+**That is no longer true.** CPython rewrote the module to RFC 9309 between 3.14.4 and 3.14.6, and it
+now agrees with this one on every case in `core/tests/test_robots.py`. The non-vacuity test written to
+notice exactly that fired in CI on 2026-08-01, on a runner two patch releases ahead of the authoring
+machine.
+
+The module stays, for a reason the original argument did not have available: **the standard library's
+answer to a robots question moved inside a single minor version.** A fetch-permission decision is a
+conduct claim about what this project was allowed to retrieve, and it has to be reproducible from the
+record years later, on whatever interpreter is to hand. One that silently depends on the runner's patch
+level cannot be that. `SOURCE_*`, the status-code rulings below, and the fixed `USER_AGENT` are also
+not things `can_fetch` returns.
 
 WHAT IS DELIBERATE, because each of these is a judgement and not a lookup:
 
