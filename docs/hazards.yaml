@@ -2375,15 +2375,53 @@ entries:
       check on `main`, a pull request can be merged over a red build — which is precisely the
       sequence that put a prospect's name on the default branch in the first place, with the
       only difference that the warning would now exist and be ignored rather than not exist.
+
+      PARTLY CLOSED, 2026-08-01, and the remainder is a plan limit rather than an oversight.
+      Branch protection is now ON for this public repository's `main`, requiring both CI jobs,
+      with force-pushes and deletion of `main` refused. `enforce_admins` is deliberately FALSE:
+      the sole admin is also the sole reviewer, and a branch cut before the workflow file existed
+      reports no check at all and would otherwise be unmergeable forever.
+
+      The private packs repository CANNOT be protected. Both the classic branch-protection API and
+      the newer rulesets API answer 403, "Upgrade to GitHub Pro or make this repository public",
+      because protected branches are not offered on a Free-plan private repository. So the guard
+      that runs from the private side is still advisory there: its red build stops nothing.
     status: ungated
     ungated_reason: >
       Branch protection is repository configuration, not code. Nothing in this tree can read it,
       set it, or fail when it is absent, and a test that asserted "the operator has enabled it"
-      could only ever assert that somebody wrote a file saying so.
+      could only ever assert that somebody wrote a file saying so. That remains true of the half
+      now enabled: this entry records that it was verified by reading the API back, which is
+      evidence of a moment, not a gate.
     fix_queued_to: >
-      Operator action, recorded in the ADR-0042 pull request body: mark `privacy-guard` (public)
-      and `public-guard-against-this-name-list` (private) as required status checks on `main` in
-      both repositories. Until that is done, CI is a smoke alarm nobody is obliged to answer.
+      Public repository: DONE. Private repository: blocked on the GitHub plan, not on work here —
+      a paid plan, or accepting that the private side's guard is advisory. Recorded rather than
+      queued, because the choice is a billing decision and not a code change.
+
+  - id: a-skipped-job-satisfies-a-required-status-check
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      GitHub counts a SKIPPED job as a PASSING required status check. So the instant the privacy
+      guard became a required check, every job-level `if:` in the workflow turned into a way to
+      satisfy the privacy gate without running it — a green tick, on the pull request page, from a
+      job that asserted nothing.
+
+      This workflow shipped with exactly such a condition. Both jobs skipped for fork pull requests,
+      on the reasoning that a fork cannot read `PACKS_REPO_TOKEN` and therefore cannot be armed —
+      which is true, and was harmless for as long as nothing required the check. Turning on branch
+      protection made it a hole: a fork pull request would have shown a green privacy gate.
+
+      It is the same defect the whole ADR is about, moved one level up into the branch-protection
+      layer, where the tree cannot see it and the pull request page reports it as success.
+
+      Closed the same day it was found: no job carries a job-level condition, and the fork case is
+      a first STEP that fails, so the check reports failure rather than success. Both rules were
+      verified by breaking them — re-introducing the condition, deleting the step, making the step
+      advisory, and moving it later. Each was caught.
+    status: gated
+    gated_by:
+      - core/tests/test_ci_arms_the_guard.py::test_no_job_can_be_skipped_wholesale
+      - core/tests/test_ci_arms_the_guard.py::test_a_fork_pull_request_fails_rather_than_skipping
 
   - id: no-test-proves-the-workflow-actually-runs
     adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md

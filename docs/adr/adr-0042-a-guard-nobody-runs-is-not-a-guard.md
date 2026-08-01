@@ -114,8 +114,8 @@ than by reasoning about it.
 
 Shipping a job that is red for a reason already known is how people learn to ignore red, which costs
 more than the job is worth. The honest statement is that **this public repository's suite does not
-pass without the private packs repo**, and both jobs say so by requiring it. A fork therefore gets no
-CI; a fork's commits reach this repository only through a merge, and the merge fires both jobs.
+pass without the private packs repo**, and both jobs say so by requiring it. A fork's run therefore
+fails at its first step — see Decision 5 for why it fails rather than skips.
 
 ## Decision 4 — the private repo runs the public guard, because one direction of drift is invisible
 
@@ -127,6 +127,32 @@ unrelated commit — which is to say, whenever.
 Every push to the private repo therefore re-runs the public guard against public `main` with that
 branch's name list. It needs no secret (the public repo is public) and its logs are private.
 
+## Decision 5 — `main` is protected here, no job may skip, and the private repo cannot be protected
+
+A failing workflow stops nothing on its own. Both jobs are now **required status checks** on this
+repository's `main`, with force-pushes and deletion of `main` refused. `enforce_admins` is
+deliberately **false**: the sole admin is also the sole reviewer, and a branch cut before this
+workflow file existed reports no check at all, so an enforced rule would make the leak fix itself
+unmergeable. Verified by reading the protection back from the API, which is evidence of a moment and
+not a gate — the entry `nothing-requires-the-ci-check-before-a-merge` says so in those terms.
+
+Turning the check on immediately exposed a hole in this very file. **GitHub counts a skipped job as a
+passing required status check.** Both jobs shipped with a job-level `if:` that skipped fork pull
+requests, on the correct reasoning that a fork cannot read `PACKS_REPO_TOKEN` and so cannot be armed.
+Harmless while nothing required the check; the moment one did, a fork pull request would have
+displayed a green privacy gate that ran nothing. That is this ADR's own subject relocated one level
+up, into a layer no test in the tree can read — and it survived a first review because *skipping
+where you cannot run* reads as conservative.
+
+So no job here carries a job-level condition, and the fork case is a first **step** that fails with
+an explanation. Both rules are gated, and each was verified by breaking it: re-adding the condition,
+deleting the step, making the step advisory, and moving it later were all caught.
+
+**The private packs repository cannot be protected at all.** Classic branch protection and the newer
+rulesets API both answer `403 — Upgrade to GitHub Pro or make this repository public`: protected
+branches are not offered on a Free-plan private repository. Its guard job therefore remains advisory,
+and the asymmetry is recorded rather than described as symmetric. It is a billing decision, not work.
+
 ## Consequences
 
 - `AIRE_GUARD_REQUIRED` + `_guard_is_required()` in `core/tests/test_core_no_vendor.py`, with the
@@ -134,11 +160,11 @@ branch's name list. It needs no secret (the public repo is public) and its logs 
   assertion.
 - `tools/assert_guard_ran.py` — the JUnit non-vacuity checker, pure over its input, with a
   `--names-only` mode for the whole-suite job.
-- `core/tests/test_ci_arms_the_guard.py` — 38 tests holding the workflow to what it claims: both
-  variables set, no advisory step, depth-0 checkout, the checker invoked, no artifact upload, every
-  pytest-running job redirecting its output and reporting by name, no job attempting the suite
-  without the private packs, every required name resolved with `ast`, and each refusal verified one
-  at a time rather than in aggregate.
+- `core/tests/test_ci_arms_the_guard.py` — 41 tests holding the workflow to what it claims: both
+  variables set, no advisory step, no job-level `if:`, a fork-detecting first step that fails,
+  depth-0 checkout, the checker invoked, no artifact upload, every pytest-running job redirecting its
+  output and reporting by name, no job attempting the suite without the private packs, every required
+  name resolved with `ast`, and each refusal verified one at a time rather than in aggregate.
 - `.github/workflows/ci.yml` here; `.github/workflows/ci.yml` + `tests/test_ci_arms_the_guard.py` in
   the private packs repo.
 - The public workflow needs one repository secret, `PACKS_REPO_TOKEN` (fine-grained PAT,
