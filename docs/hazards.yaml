@@ -2013,13 +2013,21 @@ entries:
     adr: adr-0036-robots-txt-is-a-fetch-permission.md
     hazard: >
       The verdict is only as good as the matcher, and a wrong one fails both ways: too permissive
-      fetches what a host refused, too strict manufactures a violation. `urllib.robotparser` is wrong
+      fetches what a host refused, too strict manufactures a violation. `urllib.robotparser` was wrong
       on both of the directive forms that forced this ruling, and the first cohort-wide run of this
       module reported eleven violations against a host that had merely stopped resolving.
+
+      AMENDED 2026-08-01 (ADR-0043). CPython rewrote `urllib.robotparser` to RFC 9309 between 3.14.4
+      and 3.14.6, and it now agrees with this module on every case in the fixture. The gate that used
+      to assert the stdlib is wrong has been retired — it asserted a property of the running
+      interpreter, so it passed on the authoring machine and failed in CI. What gates this hazard now
+      is the pinned answer table plus an `ast` check that this module imports no `robotparser`, which
+      is the claim that was always the load-bearing one.
     status: gated
     gated_by:
       - core/tests/test_robots.py::test_wildcard_and_anchor_forms
-      - core/tests/test_robots.py::test_the_standard_library_would_disagree_which_is_why_this_module_exists
+      - core/tests/test_robots.py::test_this_module_does_not_delegate_to_the_standard_library
+      - core/tests/test_robots.py::test_our_answers_do_not_move_when_the_standard_library_does
       - core/tests/test_robots.py::test_a_host_that_does_not_resolve_is_not_a_host_that_refused
       - core/tests/test_robots.py::test_a_dns_failure_and_a_connection_failure_are_told_apart_at_the_transport
       - core/tests/test_robots.py::test_unreachable_means_the_whole_host_is_disallowed
@@ -2375,15 +2383,53 @@ entries:
       check on `main`, a pull request can be merged over a red build — which is precisely the
       sequence that put a prospect's name on the default branch in the first place, with the
       only difference that the warning would now exist and be ignored rather than not exist.
+
+      PARTLY CLOSED, 2026-08-01, and the remainder is a plan limit rather than an oversight.
+      Branch protection is now ON for this public repository's `main`, requiring both CI jobs,
+      with force-pushes and deletion of `main` refused. `enforce_admins` is deliberately FALSE:
+      the sole admin is also the sole reviewer, and a branch cut before the workflow file existed
+      reports no check at all and would otherwise be unmergeable forever.
+
+      The private packs repository CANNOT be protected. Both the classic branch-protection API and
+      the newer rulesets API answer 403, "Upgrade to GitHub Pro or make this repository public",
+      because protected branches are not offered on a Free-plan private repository. So the guard
+      that runs from the private side is still advisory there: its red build stops nothing.
     status: ungated
     ungated_reason: >
       Branch protection is repository configuration, not code. Nothing in this tree can read it,
       set it, or fail when it is absent, and a test that asserted "the operator has enabled it"
-      could only ever assert that somebody wrote a file saying so.
+      could only ever assert that somebody wrote a file saying so. That remains true of the half
+      now enabled: this entry records that it was verified by reading the API back, which is
+      evidence of a moment, not a gate.
     fix_queued_to: >
-      Operator action, recorded in the ADR-0042 pull request body: mark `privacy-guard` (public)
-      and `public-guard-against-this-name-list` (private) as required status checks on `main` in
-      both repositories. Until that is done, CI is a smoke alarm nobody is obliged to answer.
+      Public repository: DONE. Private repository: blocked on the GitHub plan, not on work here —
+      a paid plan, or accepting that the private side's guard is advisory. Recorded rather than
+      queued, because the choice is a billing decision and not a code change.
+
+  - id: a-skipped-job-satisfies-a-required-status-check
+    adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
+    hazard: >
+      GitHub counts a SKIPPED job as a PASSING required status check. So the instant the privacy
+      guard became a required check, every job-level `if:` in the workflow turned into a way to
+      satisfy the privacy gate without running it — a green tick, on the pull request page, from a
+      job that asserted nothing.
+
+      This workflow shipped with exactly such a condition. Both jobs skipped for fork pull requests,
+      on the reasoning that a fork cannot read `PACKS_REPO_TOKEN` and therefore cannot be armed —
+      which is true, and was harmless for as long as nothing required the check. Turning on branch
+      protection made it a hole: a fork pull request would have shown a green privacy gate.
+
+      It is the same defect the whole ADR is about, moved one level up into the branch-protection
+      layer, where the tree cannot see it and the pull request page reports it as success.
+
+      Closed the same day it was found: no job carries a job-level condition, and the fork case is
+      a first STEP that fails, so the check reports failure rather than success. Both rules were
+      verified by breaking them — re-introducing the condition, deleting the step, making the step
+      advisory, and moving it later. Each was caught.
+    status: gated
+    gated_by:
+      - core/tests/test_ci_arms_the_guard.py::test_no_job_can_be_skipped_wholesale
+      - core/tests/test_ci_arms_the_guard.py::test_a_fork_pull_request_fails_rather_than_skipping
 
   - id: no-test-proves-the-workflow-actually-runs
     adr: adr-0042-a-guard-nobody-runs-is-not-a-guard.md
@@ -2455,3 +2501,57 @@ entries:
       it, needs its own ADR — ADR-0018 refused publishing the list — and probably fails on the
       merits, since a short list of known vendor names is not meaningfully protected by a hash
       against an offline dictionary attack. Filed rather than decided.
+
+  - id: a-tracked-claim-about-a-dependency-can-stop-being-true
+    adr: adr-0043-the-standard-library-caught-up.md
+    hazard: >
+      `core/robots.py` justified its own existence with a claim about someone else's code — that
+      `urllib.robotparser` mis-reads `Disallow: /*/api-next` and `Disallow: /wfm$`. That was true
+      when written and stopped being true without anyone touching this repository: CPython rewrote
+      the module to RFC 9309 between 3.14.4 and 3.14.6, two PATCH releases of one minor version.
+
+      The failure this produced is subtler than a stale sentence. The test carrying the claim
+      asserted that the stdlib gets it wrong, so it asserted a property of the RUNNING INTERPRETER:
+      it passed on the authoring machine at 3.14.4, failed on a CI runner at 3.14.6, and neither
+      result said anything about this repository. A green suite and a red suite were both correct.
+
+      The general shape: a test whose subject is a dependency's behaviour is a test whose result
+      depends on which machine ran it, and in a project whose output is a published measurement,
+      that is the same defect as an unpinned model.
+    status: gated
+    gated_by:
+      - core/tests/test_robots.py::test_this_module_does_not_delegate_to_the_standard_library
+      - core/tests/test_robots.py::test_our_answers_do_not_move_when_the_standard_library_does
+
+  - id: the-truncation-sweep-is-unexercised-without-a-docs-cache
+    adr: adr-0043-the-standard-library-caught-up.md
+    hazard: >
+      `docs-cache/` is gitignored, so on a clean checkout — a CI runner, a fresh clone, a reviewer
+      reproducing a claim — no pack has a cached page and the whole of
+      `core/tests/test_docs_truncation.py` verifies nothing. Every assertion in that file is
+      relative (present in the full page, absent from the injected text) and both sides are empty.
+
+      The positive control that exists to stop exactly that read zero and reported "the matcher is
+      broken", which is a control that cannot distinguish ABSENT from BROKEN reporting the alarming
+      one. It now skips with a named reason instead — which is correct, and is also the point of
+      this entry: the file's other assertions do not skip. They pass, on nothing, and the summary
+      line calls that green.
+
+      A second, narrower case rides along and is NOT closed by a cache existing. A pack whose docs
+      host serves a JavaScript shell has a cache whose extracted text is a single byte, and one
+      whose every manifest page failed to fetch has a cache that is empty — both are published
+      findings rather than faults, and in both the sweep is vacuous on that pack even on a
+      developer machine. The `searchable` field makes it visible per record; nothing reports the
+      per-pack total.
+    status: ungated
+    ungated_reason: >
+      The gate would have to be "a docs cache exists", and on CI it does not and cannot. Committing
+      the cache is refused on two grounds — size, and redistributing vendor documentation this
+      project has no licence for — and fetching in CI is refused by ADR-0036, which makes the suite
+      offline on purpose and would otherwise put traffic on a measured vendor's host on every push.
+    fix_queued_to: >
+      Not queued in this repository. The parallel case in the private packs repo is `airead-packs`
+      #56, which records the same three candidates: a small synthetic fixture cache that exercises
+      the mechanism without redistributing anything, reporting the checked/unchecked delta as a
+      first-class CI line, or documenting the gap and leaving it. The synthetic fixture is the only
+      one that closes it and is the larger piece of work; deciding between them is not done here.

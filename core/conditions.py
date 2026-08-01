@@ -330,6 +330,21 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
                 "task_id": task_id, "path": path,
                 "documented": in_full, "injected": in_injected,
                 "truncated": bool(in_full and not in_injected),
+                # How much cached text this verdict was reached against, and whether that verdict
+                # could have gone the other way. `documented: False` against a page that was read
+                # is a finding; against 0 bytes it is arithmetic, and a caller that cannot tell
+                # them apart reads "nothing found" as "the matcher is broken" (ADR-0043).
+                #
+                # `searchable` is the honest form of that question and takes no magic number: if
+                # the cached text is shorter than the shortest spelling being looked for, a miss
+                # is forced and carries no information. Three ways to get there, only one of which
+                # raises — a missing cache file (recorded as `error` above), a pack whose every
+                # manifest page failed to fetch (empty string, no exception, and a PUBLISHED
+                # finding rather than a fault), and a docs host that serves a JavaScript shell
+                # whose extracted text is a single byte. The third is why a bytes-read test that
+                # merely checked for non-zero was still wrong.
+                "full_len": len(full),
+                "searchable": len(full) >= min(len(s) for s in spellings),
             })
     return records
 

@@ -26,6 +26,15 @@
 #   failed, by NAME, and nothing else. That is a worse debugging experience and the only correct
 #   one: the detail belongs on the operator's machine, where reproducing it is two exports.
 #
+# WHY NO JOB HERE IS EVER SKIPPED
+#   **GitHub counts a skipped job as a PASSING required status check.** So once these jobs are
+#   required on `main` — which they now are — any `if:` at job level is a way to satisfy the privacy
+#   gate without running it. That is the same vacuous pass this file exists to end, moved one level
+#   up into the branch-protection layer where it is harder to see.
+#
+#   The one case that needs it is a fork pull request, which cannot read secrets and therefore cannot
+#   be armed. It is handled by a first STEP that fails, not a job-level condition that skips.
+#
 # WHY THERE IS NO "OUTSIDE CLONE" JOB
 #   The first draft had one — the full suite with no private repo, guard skipping, meant to stay
 #   green for forks. It does not stay green, and never did: `test_the_sweep_below_is_not_vacuous`
@@ -61,14 +70,25 @@ jobs:
   privacy-guard:
     name: privacy guard (ARMED — a skip fails)
     runs-on: ubuntu-latest
-    # Forks cannot read secrets, so they cannot reach the name list, so arming them is impossible.
-    # That is not a hole: a fork's commits reach this repository only through a merge to a branch
-    # here, and that merge fires this job on `push`. The check is skipped exactly where it cannot
-    # run and required everywhere its result would mean something.
-    if: >-
-      github.event_name != 'pull_request'
-      || github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      - name: a fork pull request cannot reach the name list, so it must not pass
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::This pull request comes from a fork. A fork's run cannot read repository"
+          echo "::error::secrets, so it cannot reach the prospect name list and this guard cannot"
+          echo "::error::run here."
+          echo "::error::"
+          echo "::error::It FAILS rather than skips. GitHub counts a skipped job as a PASSING"
+          echo "::error::required status check, so a job-level 'if' that skipped forks would hand"
+          echo "::error::every fork pull request a green privacy gate that checked nothing — the"
+          echo "::error::same vacuous pass this whole workflow exists to end, one level up."
+          echo "::error::"
+          echo "::error::To merge: push the branch to this repository and open the pull request"
+          echo "::error::from there, where the guard can actually be armed."
+          exit 1
+
       - name: fail early and legibly if the private-repo token is missing
         env:
           TOKEN: ${{ secrets.PACKS_REPO_TOKEN }}
@@ -148,10 +168,17 @@ jobs:
   suite:
     name: suite (armed)
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'pull_request'
-      || github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      - name: a fork pull request cannot reach the name list, so it must not pass
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Fork pull request: no access to PACKS_REPO_TOKEN, so the suite cannot be"
+          echo "::error::armed and two anti-vacuity gates cannot run. Failing rather than skipping,"
+          echo "::error::because a skipped job satisfies a required status check."
+          exit 1
+
       - name: fail early and legibly if the private-repo token is missing
         env:
           TOKEN: ${{ secrets.PACKS_REPO_TOKEN }}

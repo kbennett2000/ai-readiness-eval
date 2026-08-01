@@ -7,6 +7,9 @@ network path is the `annotate-robots` command.
 The two cases that forced the module exist at the top: `Disallow: /*/api-next` and `Disallow: /wfm$`.
 `urllib.robotparser` gets both wrong in opposite directions, which is why it is not used.
 """
+import ast
+import pathlib
+
 import pytest
 
 from core import robots
@@ -39,16 +42,58 @@ def test_wildcard_and_anchor_forms(path, allowed):
     assert _policy(BODY_WILDCARDS).allows(path) is allowed
 
 
-def test_the_standard_library_would_disagree_which_is_why_this_module_exists():
-    """Non-vacuity for the whole module. If `urllib.robotparser` ever became correct, this fires and
-    the argument in the docstring can be re-examined rather than inherited."""
+def test_this_module_does_not_delegate_to_the_standard_library():
+    """Non-vacuity for the whole module, stated as a property of this code rather than of CPython's.
+
+    This test used to assert the opposite of a fact: that `urllib.robotparser` mis-reads
+    `Disallow: /*/api-next`, which was the stated reason for writing this module (ADR-0036). Its
+    docstring promised that if the stdlib ever became correct, it would fire and the argument could
+    be re-examined rather than inherited. **It fired, on 2026-08-01, in CI.** CPython rewrote
+    `urllib.robotparser` to RFC 9309 between 3.14.4 and 3.14.6, and on 3.14.6 it agrees with this
+    module on every case in `BODY_WILDCARDS`, including both forms that motivated it.
+
+    So the old assertion has to go: it is now false on a new interpreter and true on an old one,
+    which makes it a test of the runner rather than of this repository. What replaces it is the
+    claim that was always the real one — this module decides for itself. See ADR-0043 for why it
+    stays now that the stdlib has caught up: an answer that changed between two patch releases of
+    one minor version is an answer whose value depends on which machine asked, and a fetch-permission
+    decision that varies by interpreter is not one this project can publish or reproduce.
+    """
+    tree = ast.parse(pathlib.Path(robots.__file__).read_text())
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    offenders = sorted(n for n in imported if "robotparser" in n)
+    assert not offenders, (
+        f"core/robots.py imports {offenders}. Every case in this file would then be testing "
+        f"CPython's parser, which changed its answers inside a single minor version — see ADR-0043."
+    )
+
+
+def test_our_answers_do_not_move_when_the_standard_library_does():
+    """The converse, and the actual argument for keeping the module.
+
+    Runs the same body through both and asserts only OURS. Whatever the interpreter's parser says —
+    it said one thing on 3.14.4 and another on 3.14.6 — the pinned table above is what this project
+    acts on. A failure here means our matcher moved, which is the only movement that matters.
+    """
     import urllib.robotparser
 
-    rp = urllib.robotparser.RobotFileParser()
-    rp.parse(BODY_WILDCARDS.splitlines())
-    stdlib = rp.can_fetch(robots.USER_AGENT, "https://h.invalid/hcm/api-next/v2/branches")
-    ours = _policy(BODY_WILDCARDS).allows("https://h.invalid/hcm/api-next/v2/branches")
-    assert stdlib is True and ours is False, "the stdlib parser no longer mis-reads a wildcard rule"
+    policy = _policy(BODY_WILDCARDS)
+    for path, expected in [
+        ("https://h.invalid/hcm/api-next/v2/branches", False),
+        ("https://h.invalid/wfm", False),
+        ("https://h.invalid/wfmx/reference", True),
+    ]:
+        rp = urllib.robotparser.RobotFileParser()
+        rp.parse(BODY_WILDCARDS.splitlines())
+        rp.can_fetch(robots.USER_AGENT, path)      # exercised, deliberately not asserted
+        assert policy.allows(path) is expected, (
+            f"our matcher moved on {path} — it, not the stdlib, is what ADR-0036 publishes"
+        )
 
 
 # --- precedence ------------------------------------------------------------- #
