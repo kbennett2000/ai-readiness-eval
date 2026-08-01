@@ -1,0 +1,10 @@
+Northwind Controls — XR Series Controllers User Manual
+Publication XR-UM001B
+
+Redundancy
+Redundancy requires controller firmware revision 12.003 or later with the
+Northwind Studio application version 30 and later. Earlier firmware revisions in
+the 11 series do not support a redundant chassis pair.
+
+Motion
+Motion requires the Northwind Studio application version 28 or later.

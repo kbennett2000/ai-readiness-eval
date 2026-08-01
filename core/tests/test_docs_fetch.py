@@ -8,6 +8,18 @@ import hashlib
 import yaml
 
 from core import docs_fetch
+from core.html_text import html_to_text as _html_to_text
+
+
+def _doc(html: str) -> "docs_fetch.Document":
+    """What a mocked `_fetch` returns now that extraction happens beside the bytes (ADR-0044).
+
+    `_fetch` decides HTML-vs-PDF from the content type and the magic bytes, which only it can see,
+    so it returns text that is already extracted. These fixtures therefore hand back a `Document`
+    rather than raw markup; the extraction they exercise is unchanged.
+    """
+    return docs_fetch.Document(text=_html_to_text(html), kind="html",
+                               extracted_by="core.html_text")
 
 
 def _page(body: str = "reference text") -> str:
@@ -44,7 +56,7 @@ def _write_manifest(tmp_path):
 def test_fetch_populates_hash_and_size(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: _page(f"text for {url}"))
+                        lambda url, timeout=30, user_agent=None: _doc(_page(f"text for {url}")))
     mpath = _write_manifest(tmp_path)
 
     summary = docs_fetch.fetch_all(mpath, cache_dir, today="2026-07-23")
@@ -68,7 +80,7 @@ def test_fetch_error_recorded_not_fatal(tmp_path, monkeypatch):
     def boom(url, timeout=30, user_agent=None):
         if "accounts" in url:
             raise RuntimeError("404 not found")
-        return _page("ok")
+        return _doc(_page("ok"))
 
     monkeypatch.setattr(docs_fetch, "_fetch", boom)
     mpath = _write_manifest(tmp_path)
@@ -87,7 +99,7 @@ def test_default_user_agent_is_the_self_identifying_one(tmp_path, monkeypatch):
     """No override => the honest default agent, and no provenance key on the page."""
     seen = []
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or _page())
+                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or _doc(_page()))
     mpath = _write_manifest(tmp_path)
 
     docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-23")
@@ -105,7 +117,7 @@ def test_user_agent_override_is_used_and_recorded(tmp_path, monkeypatch):
     """
     seen = []
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or _page())
+                        lambda url, timeout=30, user_agent=None: seen.append(user_agent) or _doc(_page()))
     mpath = _write_manifest(tmp_path)
 
     docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-23", user_agent="Mozilla/5.0 (test)")
@@ -120,7 +132,8 @@ def test_request_carries_the_user_agent_header(monkeypatch):
     captured = {}
 
     class _Resp:
-        headers = type("H", (), {"get_content_charset": lambda self: "utf-8"})()
+        headers = type("H", (), {"get_content_charset": lambda self: "utf-8",
+                                 "get_content_type": lambda self: "text/html"})()
 
         def read(self):
             return b"<p>x</p>"
@@ -168,7 +181,8 @@ def test_empty_body_on_a_success_status_is_an_error_not_a_snapshot(monkeypatch):
     """
     class _Resp:
         status = 202
-        headers = type("H", (), {"get_content_charset": lambda self: "utf-8"})()
+        headers = type("H", (), {"get_content_charset": lambda self: "utf-8",
+                                 "get_content_type": lambda self: "text/html"})()
 
         def read(self):
             return b""
@@ -221,7 +235,7 @@ def test_a_throttle_that_clears_is_fetched_normally(tmp_path, monkeypatch):
         state["n"] += 1
         if state["n"] == 1:
             raise docs_fetch.EmptyDocument("HTTP 202 with an empty body")
-        return _page("real reference text")
+        return _doc(_page("real reference text"))
 
     monkeypatch.setattr(docs_fetch, "_fetch", flaky)
     mpath = _write_manifest(tmp_path)
@@ -254,7 +268,7 @@ def test_declared_delay_paces_pages_but_never_leads(tmp_path, monkeypatch):
     """The delay separates pages; it must not pause before the first fetch."""
     order = []
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: order.append(("fetch", url)) or _page())
+                        lambda url, timeout=30, user_agent=None: order.append(("fetch", url)) or _doc(_page()))
     mpath = _write_manifest(tmp_path)
 
     docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-24",
@@ -305,7 +319,7 @@ def test_a_page_that_renders_to_a_nav_crumb_is_an_error_not_a_snapshot(tmp_path,
     """
     assert len(_CLIENT_RENDERED.encode()) > 40_000            # the body is emphatically not empty
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: _CLIENT_RENDERED)
+                        lambda url, timeout=30, user_agent=None: _doc(_CLIENT_RENDERED))
     mpath = _write_manifest(tmp_path)
 
     summary = docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25",
@@ -329,7 +343,7 @@ def test_the_render_floor_is_never_retried(tmp_path, monkeypatch):
 
     def rendered(url, timeout=30, user_agent=None):
         calls.append(url)
-        return _CLIENT_RENDERED
+        return _doc(_CLIENT_RENDERED)
 
     monkeypatch.setattr(docs_fetch, "_fetch", rendered)
     mpath = _write_manifest(tmp_path)
@@ -348,7 +362,7 @@ def test_a_declared_reason_keeps_a_short_page_and_records_why(tmp_path, monkeypa
     manifest, where a reader of the committed record can see it.
     """
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: _CLIENT_RENDERED)
+                        lambda url, timeout=30, user_agent=None: _doc(_CLIENT_RENDERED))
     m = yaml.safe_load(_write_manifest(tmp_path).read_text())
     reason = "operation reference renders client-side; anchored for provenance, not for text"
     m["tasks"]["t1"]["pages"][0]["short_text_ok"] = reason
@@ -374,7 +388,7 @@ def test_an_override_with_no_argument_behind_it_is_rejected(tmp_path, monkeypatc
     a tolerance nobody remembers granting.
     """
     monkeypatch.setattr(docs_fetch, "_fetch",
-                        lambda url, timeout=30, user_agent=None: _CLIENT_RENDERED)
+                        lambda url, timeout=30, user_agent=None: _doc(_CLIENT_RENDERED))
     for bad in (True, "", "   "):
         m = yaml.safe_load(_write_manifest(tmp_path).read_text())
         m["tasks"]["t1"]["pages"][0]["short_text_ok"] = bad
@@ -404,7 +418,7 @@ def test_the_floor_is_a_floor_and_not_a_haircut(tmp_path, monkeypatch):
 
     for html, expected in ((at_floor, "ok"), (under, "error")):
         monkeypatch.setattr(docs_fetch, "_fetch",
-                            lambda url, timeout=30, user_agent=None, _h=html: _h)
+                            lambda url, timeout=30, user_agent=None, _h=html: _doc(_h))
         mpath = _write_manifest(tmp_path)
         summary = docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-07-25",
                                        sleep=lambda s: None)

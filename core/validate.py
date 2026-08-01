@@ -21,7 +21,7 @@ from jsonschema import Draft7Validator
 
 from .pack import Pack
 from .scorer import KNOWN_AUTH_STYLES
-from .taxonomy import CATEGORIES
+from .taxonomy import BY_COHORT, CATEGORIES, DOCS_CATEGORIES
 
 VALID_DIFFICULTY = ["foundational", "daily-automation", "multi-step"]
 VALID_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
@@ -133,6 +133,70 @@ def build_schema(*, spec_ref_file_prefix: str | None = None) -> dict:
     }
 
 
+def build_docs_schema() -> dict:
+    """The DOCS-cohort task schema (ADR-0044).
+
+    A separate schema rather than a loosened one, and the separation is the point: the API schema's
+    `additionalProperties: false` plus its six required ground-truth fields is what stops a task
+    file from carrying a key nobody scores. Widening it to admit both shapes would have meant
+    dropping exactly that, and a docs task could then have declared `endpoints:` — scored by
+    nothing, read by nobody, and indistinguishable from a task that meant it.
+
+    Every endpoint-shaped field is gone because the surface has none. What replaces them is the
+    citation: `publication` is REQUIRED and must carry a number and a revision, which is this
+    cohort's form of the anchoring rule the API cohort spells with `spec_ref`/`doc_ref` — ground
+    truth rests on a first-party published document, identified precisely enough that a reader can
+    fetch the same one.
+    """
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["id", "category", "job_category", "prompt", "ground_truth"],
+        "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "category": {"enum": VALID_DIFFICULTY},
+            "job_category": {"enum": list(DOCS_CATEGORIES)},
+            "prompt": {"type": "string", "minLength": 1},
+            "notes": {"type": "string", "minLength": 1},  # optional (editorial)
+            "ground_truth": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["publication", "success_shape", "common_failure_modes"],
+                "properties": {
+                    # At least one scored value must be present. Which one is a property of the
+                    # question, so the schema does not demand a particular key — `roundtrip` blocks
+                    # a task that declares none of them, where the reason can be said in a sentence
+                    # rather than as a JSON Schema `anyOf` a reader has to decode.
+                    "catalog_numbers": {"type": "array", "minItems": 1,
+                                        "items": {"type": "string", "minLength": 1}},
+                    # Versions are STRINGS, and the schema is where that is enforced. Written bare,
+                    # `35.011` is a YAML float and arrives as `35.01` — the answer key would be
+                    # silently rewritten before anything compared it (ADR-0044).
+                    "firmware_version": {"type": "string", "minLength": 1},
+                    "software_version": {"type": "string", "minLength": 1},
+                    "publication": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["number", "revision", "url"],
+                        "properties": {
+                            # The SERVED document's own footer id, never the request-URL slug: a
+                            # literature host may alias one publication number onto another, so the
+                            # URL is where it was found and the footer is what it is.
+                            "number": {"type": "string", "minLength": 1},
+                            "revision": {"type": "string", "minLength": 1},
+                            "url": {"type": "string", "pattern": r"^https?://"},
+                            "page": {"type": "string", "minLength": 1},
+                            "quote": {"type": "string", "minLength": 1},
+                        },
+                    },
+                    "success_shape": {"type": "string", "minLength": 1},
+                    "common_failure_modes": {"type": "array", "minItems": 1},
+                },
+            },
+        },
+    }
+
+
 def validate_file(path: Path, schema: dict, *, na_categories: dict | None = None) -> list[str]:
     """Return a list of human-readable error strings for one task file ([] if valid)."""
     try:
@@ -165,7 +229,11 @@ def validate_pack(pack: Pack) -> dict[str, list[str]]:
     Whole-suite checks (duplicate ids, expected-id completeness, N/A category keys) are reported under
     the pseudo-file key ``"(suite)"``.
     """
-    schema = build_schema(spec_ref_file_prefix=pack.spec_ref_file_prefix)
+    # The schema is the COHORT's (ADR-0044). `api` is the default, so a pack that declares nothing
+    # is validated by exactly the schema it was validated by before that ADR.
+    schema = (build_docs_schema() if pack.cohort == "docs"
+              else build_schema(spec_ref_file_prefix=pack.spec_ref_file_prefix))
+    categories = BY_COHORT.get(pack.cohort, CATEGORIES)
     na = pack.na_categories or {}
     results: dict[str, list[str]] = {}
     seen_ids: dict[str, str] = {}
@@ -173,8 +241,9 @@ def validate_pack(pack: Pack) -> dict[str, list[str]]:
 
     # N/A keys must be real categories.
     for cat in na:
-        if cat not in CATEGORIES:
-            suite.append(f"na_categories names unknown category '{cat}'")
+        if cat not in categories:
+            suite.append(
+                f"na_categories names unknown category '{cat}' for cohort '{pack.cohort}'")
 
     files = sorted(pack.tasks_dir.glob("*.yaml"))
     if not files:

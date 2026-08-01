@@ -25,8 +25,30 @@ CATEGORIES: tuple[str, ...] = (
     "event-subscription",             # subscribe to events / triggers / webhooks
 )
 
+# The docs cohort's own arc (ADR-0044). A vendor's manuals are not an identity API, and every
+# category above would have to be marked n/a for a pack whose questions are "which part", "will
+# these two revisions work together" and "what do I need to upgrade to". Nine n/a lines arguing that
+# a controller manual has no access-review concept would be a fiction dressed as a finding, so the
+# docs cohort declares the arc it actually has: choose a part, check a combination, plan a move,
+# replace a part. Same rule as above — it grows by ADR, not ad hoc.
+DOCS_CATEGORIES: tuple[str, ...] = (
+    "select-hardware",          # name the part that meets a stated requirement
+    "verify-compatibility",     # will this firmware / software / hardware combination work
+    "plan-revision-upgrade",    # which revision is required to gain a capability
+    "identify-replacement",     # the successor or variant part for one that is stated
+)
+
 _CATEGORY_SET = frozenset(CATEGORIES)
+_DOCS_CATEGORY_SET = frozenset(DOCS_CATEGORIES)
+
+#: Every category name in the project, by cohort. `validate` reads this rather than a constant, so a
+#: task cannot declare a category belonging to the other cohort's arc.
+BY_COHORT: dict[str, tuple[str, ...]] = {"api": CATEGORIES, "docs": DOCS_CATEGORIES}
 
 
 def is_category(name: str) -> bool:
     return name in _CATEGORY_SET
+
+
+def is_docs_category(name: str) -> bool:
+    return name in _DOCS_CATEGORY_SET

@@ -28,12 +28,12 @@ import yaml
 
 from . import analyze, surfaces
 from .pack import Pack
-from .report import _DIM_LABELS
-from .scorer import DIMENSIONS
+from .report import _DIM_LABELS  # noqa: F401 (API labels; card rendering reads the contract's)
+from .scorer import DIMENSIONS  # noqa: F401 (API dimensions; card rendering reads the contract's)
 
 # Pipeline stages, in order. A target advances through these; its `status` records how far it got.
-STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "mock", "canary", "grid",
-          "compare", "card"]
+STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "truncation", "mock", "canary",
+          "grid", "compare", "card"]
 # A target is "done" (skipped by next_target) when it is finished or parked, in one of three senses:
 #   carded  — measured, a card exists. The pipeline put it here.
 #   blocked — a gate refused it, or it cannot be measured at all. The pipeline or an author put it here.
@@ -446,12 +446,56 @@ def check_roundtrip(pack: Pack) -> tuple[bool, str]:
     return True, f"{len(controls)} task(s) score their own ground truth 1.0 ({n_na} n/a dimension(s))"
 
 
+def _check_docs_anchoring(pack: Pack) -> tuple[bool, str]:
+    """Anchoring for the docs cohort: every task's publication is a real, retrieved document.
+
+    The API cohort's version of this question is "does this operationId exist in the spec". Here it
+    is "was this publication actually fetched", and the manifest is the only place that can answer
+    it, because a publication number alone is a claim and a fetched byte count with a hash is
+    evidence. Anchors count as well as injected pages (ADR-0034): a citation may rest on a document
+    the model is never shown.
+
+    The revision is required by the schema and checked for presence here rather than for
+    correctness, and the difference is worth saying plainly: nothing offline can confirm that a
+    revision letter matches the document served at that URL. What this gate can prove is that the
+    URL was retrieved; that the transcribed revision is the served document's own footer id is an
+    authoring claim, recorded in the task file where a reviewer can check it against the cache.
+    """
+    try:
+        manifest = pack.docs_manifest()
+    except (OSError, yaml.YAMLError) as exc:
+        return False, f"docs-manifest could not be read: {exc}"
+    from .docs_fetch import manifest_urls as _manifest_urls
+
+    known = _manifest_urls(manifest)
+    problems: list[str] = []
+    n = 0
+    for task in pack.load_tasks():
+        pub = (task.get("ground_truth") or {}).get("publication") or {}
+        url = pub.get("url")
+        if not url:
+            problems.append(f"{task['id']}: ground truth cites no publication URL")
+            continue
+        n += 1
+        if url not in known:
+            problems.append(f"{task['id']}: publication {pub.get('number')} <- {url} "
+                            f"is not in the docs-manifest, so it has never been retrieved")
+    if problems:
+        return False, "; ".join(problems)
+    return True, f"{n} publication citation(s) resolve to a retrieved document"
+
+
 def check_anchoring(pack: Pack) -> tuple[bool, str]:
     """Anchoring gate: every spec_ref resolves to a real operation in the vendored spec (operationId,
     with method+path agreeing), and every doc_ref URL appears in the docs-manifest. This is the
     "never score a guess" enforcement — ground truth that isn't anchored to something durable is a
     hard stop, not a warning.
+
+    The docs cohort has no operations to resolve, so it anchors the other thing ADR-0044 makes
+    ground truth rest on — the publication — and is handled by `_check_docs_anchoring` below.
     """
+    if pack.cohort == "docs":
+        return _check_docs_anchoring(pack)
     vendored = pack.root / "vendored-spec"
     ops: dict[str, tuple[str, str]] = {}
     if vendored.is_dir():
@@ -501,6 +545,73 @@ def check_anchoring(pack: Pack) -> tuple[bool, str]:
     return True, f"{n_spec} spec-anchored + {n_doc} doc-anchored endpoint(s) resolve"
 
 
+def check_truncation(pack: Pack) -> tuple[bool, str]:
+    """Truncation gate: is the answer we are about to score still inside the text we inject?
+
+    `public-docs` enforces a token budget by dropping low-priority pages and cropping the tail of
+    the last one it keeps. When the cropped part is the part carrying the answer, the resulting
+    number measures OUR budget rather than the vendor's documentation, and nothing downstream can
+    tell the difference — a truncated-away answer and an undocumented one produce the identical
+    transcript. That is the ADR-0013 fault class, which cost a cycle and read as a 13.7% dimension
+    while the model was right 98% of the time.
+
+    Until now this audit existed only as a test sweep. It is a GATE because the docs cohort cannot
+    run without it: on that surface the ground-truth VALUE is the answer, so a value the budget
+    cropped away does not make the question harder, it makes it unanswerable, and every point of the
+    gap that pack is measuring would be an artifact of a number we chose. The cohort's budget policy
+    — the smallest budget that puts every task's ground truth inside the window, declared and argued
+    per pack (ADR-0044) — is only a policy if something checks it.
+
+    SEVERITY IS THE COHORT'S, NOT THE PACK'S:
+
+      * docs — a truncated-away value BLOCKS, and so does having NO cached text to search at all.
+        The second is the ADR-0043 lesson pointed in the direction a gate must fail: a control that
+        cannot tell *absent* from *broken* has to refuse, because passing would certify a window
+        nobody looked through.
+      * api — a warning, exactly as before. Every API pack on disk was authored under the old
+        behaviour, and a gate that newly blocks them would be a rule applied retroactively to
+        published work.
+    """
+    from .conditions import audit_docs_truncation
+
+    contract = pack.contract
+    try:
+        records = audit_docs_truncation(pack)
+    except Exception as exc:
+        if contract.truncation_blocks:
+            return False, f"the truncation audit could not run: {type(exc).__name__}: {exc}"
+        return True, f"truncation audit skipped ({type(exc).__name__}); advisory for this cohort"
+
+    losses = [r for r in records if r.get("truncated")]
+    searchable = [r for r in records if r.get("searchable")]
+    errors = [r for r in records if r.get("error")]
+
+    if contract.truncation_blocks:
+        if not records:
+            return False, "no ground-truth value to audit — the pack would measure nothing"
+        if not searchable:
+            return False, (
+                f"no task has cached text long enough to contain its own answer "
+                f"({len(errors)} audit error(s) of {len(records)} record(s)). Run `fetch-docs`. "
+                "This cohort blocks rather than passes here: an unsearched window and a window "
+                "with nothing in it are different findings, and only one of them is the vendor's"
+            )
+        if losses:
+            shown = ", ".join(f"{r['task_id']}:{r['item']}" for r in losses[:5])
+            return False, (
+                f"the context budget removed {len(losses)} ground-truth value(s) the cached page "
+                f"does contain — raise budget_tokens until this is zero and record the number "
+                f"(ADR-0044): {shown}"
+            )
+        return True, (f"all {len(searchable)} searchable ground-truth value(s) survive the "
+                      f"{pack.public_docs_budget_tokens}-token budget")
+
+    if losses:
+        return True, (f"WARNING: {len(losses)} ground-truth path(s) truncated away — advisory for "
+                      f"the api cohort, see docs/hazards.yaml")
+    return True, f"{len(searchable)} searchable ground-truth item(s), none truncated away"
+
+
 # The deterministic gates, in the order the dispatcher runs them. Declaring them as data (rather than
 # inlining the order in `run_pipeline`) is what keeps STAGES and the dispatcher from drifting apart —
 # a test asserts these names are the leading prefix of STAGES.
@@ -510,6 +621,10 @@ GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
     ("prompts", check_prompts),
     ("roundtrip", check_roundtrip),
     ("anchoring", check_anchoring),
+    # After anchoring, because the order is the argument: anchoring proves the answer key points at
+    # a real published artifact, and only then is it worth asking whether the text we inject still
+    # contains it.
+    ("truncation", check_truncation),
 )
 
 
@@ -524,7 +639,8 @@ def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], inve
     `surface_reports` is an optional list of (condition, SurfaceReport) for a pack that declares
     `answer_surfaces` (ADR-0037). The executor fills the Findings prose; the numbers, the headline
     table, and the exhibits are computed here so the card is never hand-transcribed."""
-    dims = list(DIMENSIONS)
+    contract = pack.contract
+    dims, dim_labels = list(contract.dimensions), contract.dim_labels
     meta = results[0][2] if results else {}
     lines = [
         f"# {pack.display_name} — AI API-readiness report card",
@@ -538,7 +654,7 @@ def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], inve
         "",
         "## Headline",
         "",
-        "| condition | overall | " + " | ".join(_DIM_LABELS[d] for d in dims) + " |",
+        "| condition | overall | " + " | ".join(dim_labels[d] for d in dims) + " |",
         "|" + "---|" * (len(dims) + 2),
     ]
 

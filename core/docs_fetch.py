@@ -16,8 +16,11 @@ from __future__ import annotations
 import datetime
 import hashlib
 import re
+import shutil
+import subprocess
 import time
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -118,19 +121,91 @@ def write_manifest(path: str | Path, manifest: dict, header: str | None = None) 
     path.write_text(header + body)
 
 
-def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> str:
+#: The PDF extractor. A vendor whose documentation IS a library of PDFs — the shape the docs cohort
+#: measures (ADR-0044) — cannot be read by an HTML parser, and decoding a PDF as text produces
+#: mojibake that would sail past every guard in this module: it is neither empty as bytes nor short
+#: as text, so `EmptyDocument` and `EmptyRender` would both pass it through and a manifest would
+#: record tens of thousands of bytes of garbage as a successful snapshot.
+PDF_EXTRACTOR = "pdftotext"
+#: `-layout` preserves column structure. A specification table read without it interleaves the
+#: columns, which for this cohort destroys exactly the thing being scored — a catalog number and the
+#: revision beside it end up in different places, or adjacent to the wrong row.
+PDF_EXTRACTOR_ARGS = ("-q", "-layout", "-", "-")
+
+
+class PdfExtractorMissing(RuntimeError):
+    """`pdftotext` is not installed. Fetch-time only — nothing in the scoring path needs it."""
+
+
+def pdf_extractor_version() -> str:
+    """The extractor's own version string, for the manifest. Provenance, not decoration.
+
+    Extraction is lossy and version-dependent, so a snapshot's byte count and hash are only
+    reproducible against the tool that produced them. Recorded per page rather than assumed.
+    """
+    out = subprocess.run([PDF_EXTRACTOR, "-v"], capture_output=True, text=True, check=False)
+    line = (out.stderr or out.stdout or "").strip().splitlines()
+    return line[0].strip() if line else PDF_EXTRACTOR
+
+
+def pdf_to_text(raw: bytes) -> str:
+    """Extract text from PDF bytes with `pdftotext`, reading stdin and writing stdout.
+
+    Raises `PdfExtractorMissing` rather than degrading. A missing extractor must not look like a
+    vendor whose documentation is empty: that is the absent-vs-broken confusion ADR-0043 names, and
+    here it would be worse than a red test — it would publish a documentation-delivery finding about
+    a vendor when the real finding is about this machine.
+    """
+    if shutil.which(PDF_EXTRACTOR) is None:
+        raise PdfExtractorMissing(
+            f"{PDF_EXTRACTOR} is not installed, so this PDF cannot be read. Install poppler-utils. "
+            "This is a fact about this machine, not about the vendor's documentation, and it is "
+            "raised rather than recorded as an empty page so the two cannot be confused."
+        )
+    proc = subprocess.run([PDF_EXTRACTOR, *PDF_EXTRACTOR_ARGS], input=raw,
+                          capture_output=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{PDF_EXTRACTOR} exited {proc.returncode}: "
+            f"{proc.stderr.decode('utf-8', errors='replace')[:160]}"
+        )
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+@dataclass(frozen=True)
+class Document:
+    """One retrieved document, already extracted to text.
+
+    Extraction happens HERE, beside the bytes, because that is the only place the content type is
+    known. Deciding it at the call site would mean guessing from the decoded string, and a PDF
+    decoded to a string cannot be re-encoded back to the bytes an extractor needs.
+    """
+
+    text: str
+    kind: str            # "html" | "pdf"
+    extracted_by: str    # the tool that produced `text`, for the manifest
+
+
+def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> Document:
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
+        content_type = (resp.headers.get_content_type() or "").lower()
         status = getattr(resp, "status", None)
         raw = resp.read()
     if not raw.strip():
         raise EmptyDocument(f"HTTP {status} with an empty body (throttled or non-document response)")
-    return raw.decode(charset, errors="replace")
+    # The magic bytes are checked as well as the declared type: a literature host that serves its
+    # PDFs as `application/octet-stream` is common, and trusting the header alone would send a PDF
+    # through the HTML parser and record the result as a page.
+    if content_type == "application/pdf" or raw[:5] == b"%PDF-":
+        return Document(text=pdf_to_text(raw), kind="pdf", extracted_by=pdf_extractor_version())
+    return Document(text=html_to_text(raw.decode(charset, errors="replace")),
+                    kind="html", extracted_by="core.html_text")
 
 
 def _fetch_with_retry(url: str, *, user_agent: str | None, delay_seconds: float,
-                      retries: int, sleep=time.sleep) -> str:
+                      retries: int, sleep=time.sleep) -> Document:
     """Fetch `url`, retrying with linear backoff when the host answers 2xx-but-empty.
 
     Only EmptyDocument is retried. A 404 or a connection error is a fact about the page and
@@ -270,9 +345,9 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 sleep(delay_seconds)
             first = False
             try:
-                html = _fetch_with_retry(url, user_agent=user_agent,
-                                         delay_seconds=delay_seconds, retries=retries, sleep=sleep)
-                text = html_to_text(html)
+                doc = _fetch_with_retry(url, user_agent=user_agent,
+                                        delay_seconds=delay_seconds, retries=retries, sleep=sleep)
+                text = doc.text
                 # ADR-0021: the floor is on extracted text, and it is checked here rather than
                 # inside the retry helper precisely so a client-rendered page is recorded on the
                 # first attempt instead of waiting out a throttle schedule it will never clear.
@@ -290,6 +365,12 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 page["content_hash"] = f"sha256:{digest}"
                 page["byte_size"] = len(text.encode("utf-8"))
                 page["cache_file"] = f"{cache_dir.name}/{dest.relative_to(cache_dir)}"
+                # Recorded only for a document an external tool extracted (ADR-0044). Conditional so
+                # every HTML-only manifest already on disk stays byte-identical, and present where it
+                # matters because that extraction is lossy, version-dependent, and the reason a
+                # re-fetch years from now either reproduces the recorded hash or does not.
+                if doc.kind != "html":
+                    page["extracted_by"] = doc.extracted_by
                 if user_agent:
                     page["fetched_with_user_agent"] = user_agent
                 summary[task_id].append((url, page["byte_size"], "ok"))

@@ -1,0 +1,10 @@
+# Synthetic findings record for the docs-cohort fixture pack. No real vendor, host or publication.
+target: docsvendor
+cohort: docs
+spec_repo: "n/a — this cohort's ground truth is a publication library, not a machine-readable spec"
+spec_sha: "n/a"
+spec_finding: >
+  No machine-readable specification exists or is expected: the measured surface is documentation.
+  Availability is recorded as a finding rather than as a gap (ADR-0029 lineage).
+license_finding: >
+  Synthetic fixture; nothing is vendored and no licence question arises.

@@ -26,7 +26,7 @@ def _fmt_cell(value) -> str:
 
 
 def rollup_by_group(aggregate: dict, task_to_group: dict, groups,
-                    na_groups: dict | None = None) -> dict:
+                    na_groups: dict | None = None, contract=None) -> dict:
     """Roll one condition's per-task aggregate up to per-GROUP numbers (ADR-0026).
 
     The grouping is a parameter, not a fixed taxonomy: `groups` is the ordered set of group keys to
@@ -37,8 +37,11 @@ def rollup_by_group(aggregate: dict, task_to_group: dict, groups,
     runs are not re-pooled. `na_groups` (optional `{group: reason}`) marks groups the pack declares
     not-applicable: they render `n/a` and carry the reason.
 
-    Returns `{group: {dimensions{6}, overall, tasks:[...], na:bool, na_reason}}` in `groups` order.
+    Returns `{group: {dimensions, overall, tasks:[...], na:bool, na_reason}}` in `groups` order.
+    The dimension set is the answer contract's (ADR-0044); `None` means the API contract's six, so
+    every caller written before that ADR gets exactly what it got before.
     """
+    dimensions = list(getattr(contract, "dimensions", None) or DIMENSIONS)
     na = dict(na_groups or {})
     per_task = aggregate.get("per_task", {})
 
@@ -52,7 +55,7 @@ def rollup_by_group(aggregate: dict, task_to_group: dict, groups,
         tids = by_group[group]
         if group in na:
             out[group] = {
-                "dimensions": {d: None for d in DIMENSIONS},
+                "dimensions": {d: None for d in dimensions},
                 "overall": None,
                 "tasks": tids,
                 "na": True,
@@ -60,7 +63,7 @@ def rollup_by_group(aggregate: dict, task_to_group: dict, groups,
             }
             continue
         dims: dict[str, float | None] = {}
-        for d in DIMENSIONS:
+        for d in dimensions:
             vals = [per_task[t]["dimensions"].get(d) for t in tids]
             vals = [v for v in vals if v is not None]
             dims[d] = mean(vals) if vals else None
@@ -76,7 +79,7 @@ def rollup_by_group(aggregate: dict, task_to_group: dict, groups,
 
 
 def rollup_by_category(aggregate: dict, task_to_category: dict,
-                       na_categories: dict | None = None) -> dict:
+                       na_categories: dict | None = None, contract=None) -> dict:
     """Roll one condition's per-task aggregate up to per-category numbers.
 
     `aggregate` is the `aggregate` block of a scores.json (it must carry `per_task`). `task_to_category`
@@ -91,17 +94,53 @@ def rollup_by_category(aggregate: dict, task_to_category: dict,
     A thin wrapper over `rollup_by_group` with the taxonomy as the grouping (ADR-0026) — the
     arithmetic lives in exactly one place, so a pack's own task groups and the shared job-category
     rollup can never drift into computing "the mean of a group" two different ways.
+
+    The taxonomy is the CONTRACT's (ADR-0044): a docs-cohort pack's tasks are classified on that
+    cohort's arc, and rolling them up against the identity/API categories would emit a table of
+    eleven `n/a` rows and nothing else.
     """
-    return rollup_by_group(aggregate, task_to_category, CATEGORIES, na_categories)
+    categories = list(getattr(contract, "categories", None) or CATEGORIES)
+    return rollup_by_group(aggregate, task_to_category, categories, na_categories, contract)
+
+
+def cross_cohort_conflict(cohorts) -> str:
+    """The reason these sources may not share one table, or `""` when they may (ADR-0044).
+
+    A cross-vendor grid is only meaningful between packs measured the same way. Two cohorts share no
+    dimension, no prompt and no budget policy, so a table putting them side by side would invite the
+    exact reading the docs cohort's own baseline exists to forbid — and it would do it silently,
+    because every cell would render as a perfectly ordinary percentage.
+
+    Returns a REASON rather than raising, so a caller can put it on the page instead of crashing.
+    """
+    distinct = sorted({c for c in cohorts if c})
+    if len(distinct) <= 1:
+        return ""
+    return (
+        f"sources span more than one cohort ({', '.join(distinct)}). They share no dimension, no "
+        "prompt and no context-budget policy, so a single table would compare numbers that were "
+        "never measurements of the same thing (ADR-0044). Render one table per cohort."
+    )
 
 
 def render_cross_vendor_category_md(sources: list[tuple[str, dict]],
                                     note: str | None = None,
-                                    dimension: str | None = None) -> str:
+                                    dimension: str | None = None,
+                                    contract=None,
+                                    cohorts=None) -> str:
     """Render a category × source table. `sources` is an ordered list of `(label, rollup)` (each rollup
     from `rollup_by_category`). Cells are the per-category overall accuracy, or a single `dimension`'s
     value when `dimension` is given. A category that a source marks N/A — or has no task for — renders
-    `n/a`. Comparison is category-level only, by design (ADR-0003)."""
+    `n/a`. Comparison is category-level only, by design (ADR-0003).
+
+    `cohorts`, when given, is the cohort of each source in the same order. Mixing them RAISES: a
+    cross-cohort table is not a table anyone can read correctly, and rendering it with a caveat
+    would leave the numbers on the page for someone to quote without the caveat.
+    """
+    conflict = cross_cohort_conflict(cohorts or [])
+    if conflict:
+        raise ValueError(f"refusing to render a cross-vendor table: {conflict}")
+    categories = list(getattr(contract, "categories", None) or CATEGORIES)
     labels = [s[0] for s in sources]
     rollups = [s[1] for s in sources]
     what = dimension or "overall accuracy"
@@ -116,7 +155,7 @@ def render_cross_vendor_category_md(sources: list[tuple[str, dict]],
         "| category | " + " | ".join(labels) + " |",
         "|" + "---|" * (len(labels) + 1),
     ]
-    for cat in CATEGORIES:
+    for cat in categories:
         cells = []
         for r in rollups:
             entry = r.get(cat)

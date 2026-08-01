@@ -1,0 +1,28 @@
+# Synthetic DOCS-cohort pack for the core test suite (ADR-0044). Deliberately carries NO real vendor
+# identity — no company, product line, catalog number or publication number here belongs to anyone —
+# so the core guard test (no vendor tokens under core/) stays clean. It exists to exercise the docs
+# answer contract end to end: prompt, parser, scorer, round-trip control, truncation gate.
+cohort: docs
+
+vendor:
+  id: docsvendor
+  display_name: Northwind Controls
+  vendor_names: [Northwind]
+  product_names: [Northwind Controls, XR series controller]
+
+tasks_dir: tasks
+docs_manifest: docs-manifest.yaml
+specs: specs.yaml
+docs_cache_dir: docs-snapshots   # committed synthetic snapshots (real caches are gitignored)
+expected_task_ids: [check-pairing, pick-controller]
+
+public_docs:
+  source_label: "Northwind's publication library"
+  # SIZED TO THE AUDIT, not to a cohort constant — the docs-cohort budget policy (ADR-0044). The
+  # number is small here only because these snapshots are small; what makes it correct is that the
+  # `truncation` gate passes with it, i.e. every task's ground-truth value survives into the injected
+  # window. A docs pack that cannot say that has not chosen a budget, it has chosen a result.
+  budget_tokens: 2000
+
+canary:
+  project_marker: docsvendor-eval-project

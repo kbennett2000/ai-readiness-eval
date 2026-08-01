@@ -487,6 +487,11 @@ class TaskScore:
     failure_reason: str | None = None
     dimensions: dict[str, DimensionScore] = field(default_factory=dict)
     endpoint_matches: list[dict] = field(default_factory=list)
+    # Per-run values a contract records but does not score (ADR-0044). Empty for every API run, and
+    # the runner omits the key entirely when it is empty, so no archived record moves by adding it.
+    # This is where a contract puts the things a card needs and a dimension must not carry — the
+    # ADR-0037 treatment for a reporting axis that must never move a number.
+    exhibit: dict = field(default_factory=dict)
 
     def dim(self, name: str) -> DimensionScore | None:
         return self.dimensions.get(name)

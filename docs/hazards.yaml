@@ -2555,3 +2555,69 @@ entries:
       the mechanism without redistributing anything, reporting the checked/unchecked delta as a
       first-class CI line, or documenting the gap and leaving it. The synthetic fixture is the only
       one that closes it and is the larger piece of work; deciding between them is not done here.
+
+  # ------------------------------------------------------------------------ ADR-0044 ---
+
+  - id: two-cohort-numbers-look-alike-on-a-page
+    adr: adr-0044-a-second-answer-contract.md
+    hazard: >
+      A docs pack's `overall_accuracy` is the mean of THREE dimensions; an API pack's is the mean
+      of SIX. Both render as a bare percentage, from the same renderer, in the same font. The two
+      cohorts also differ in prompt (no excerpt promise) and in context budget (per-pack rather
+      than a cohort constant), so any three of those differences would be enough on their own.
+
+      What is gated is the machine path: `category.cross_cohort_conflict` raises rather than
+      captioning a mixed table, the two dimension name sets are asserted disjoint so a docs cell
+      cannot be read into an API column, and the packs repo's card gate partitions its cohort table
+      and its superlative check.
+
+      What is NOT gated is a human writing "the docs pack scored 61% against the cohort's 73%" in
+      prose that no test reads — a slide, an email, a paragraph in a document outside either repo.
+      Every mechanical route is closed; the sentence is not.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_contract.py::test_the_two_dimension_sets_are_disjoint
+      - core/tests/test_docs_contract.py::test_a_cross_cohort_table_is_refused_rather_than_captioned
+      - core/tests/test_docs_contract.py::test_a_pack_declaring_nothing_is_measured_under_the_api_contract
+
+  - id: a-docs-budget-is-an-authored-number-nothing-can-minimize
+    adr: adr-0044-a-second-answer-contract.md
+    hazard: >
+      The docs-cohort budget policy is "the SMALLEST budget that puts every task's ground truth
+      inside the injected window". The `truncation` gate proves the chosen budget QUALIFIES — no
+      task's answer was cropped away. Nothing proves it is the smallest such budget.
+
+      The direction of the risk is worth stating precisely, because it is not the obvious one. A
+      budget larger than necessary injects more of the vendor's own material than the policy asks
+      for, which can only raise the documented arm and therefore WIDEN the measured gap — the
+      flattering direction for a finding this method exists to publish. A budget too small is
+      caught by the gate and blocks.
+    status: ungated
+    ungated_reason: >
+      Minimality is not checkable from one run. It would need the audit re-run across a descending
+      search of budgets per pack, and the answer would still be a property of one fetched snapshot
+      rather than of the vendor — a re-fetch that lengthens one page moves it. The gate checks the
+      claim that matters for correctness; this entry records the claim it cannot check.
+    fix_queued_to: >
+      Not queued as a search. What is queued instead is disclosure: the chosen number is recorded
+      on the card (ADR-0044 decision 5), so a reader can see it and a reviewer can disagree with
+      it, rather than it living only in a pack.yaml nobody opens.
+
+  - id: pdf-extraction-depends-on-a-tool-outside-the-tree
+    adr: adr-0044-a-second-answer-contract.md
+    hazard: >
+      The docs cohort's snapshots are produced by `pdftotext -layout`, a poppler binary this
+      repository neither vendors nor pins. Extraction is lossy and version-dependent, so a manifest's
+      `byte_size` and `content_hash` are only reproducible against the version that produced them —
+      the same class of dependency drift ADR-0043 found in the standard library, where a robots
+      answer changed between two PATCH releases.
+
+      Two consequences, of different sizes. A version change makes a re-fetch report drift that is
+      ours rather than the vendor's. A MISSING binary would be worse, and is closed: `pdf_to_text`
+      raises rather than returning empty, because a fact about the machine recorded as an empty page
+      would be published as a documentation-delivery finding about a vendor.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_fetch_pdf.py::test_a_missing_extractor_raises_rather_than_returning_nothing
+      - core/tests/test_docs_fetch_pdf.py::test_the_extractor_version_is_recorded_on_the_page
+      - core/tests/test_docs_fetch_pdf.py::test_a_pdf_served_as_octet_stream_is_still_extracted_as_a_pdf

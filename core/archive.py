@@ -30,6 +30,11 @@ DERIVED_FIELDS: tuple[str, ...] = (
     "endpoint_matches",
     "format_repaired",       # ADR-0014; conditional — absent means the repair did not fire
     "repaired_block_text",   # ADR-0014; conditional
+    # ADR-0044; conditional — the per-run values a contract records but does not score. Derived,
+    # because a rebuild recomputes it from the same archived response the dimensions come from, and
+    # conditional for the same reason `format_repaired` is: absent means the contract produced none,
+    # which is what it means for every API record ever written.
+    "exhibit",
 )
 
 # What the model and the transport produced. This is the evidence a published number rests on. It is

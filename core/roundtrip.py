@@ -31,39 +31,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import surfaces
-from .answer_block import AnswerSummary, Endpoint, parse, render_block
+from .contract import API_CONTRACT, contract_for
 from .pack import Pack
-from .scorer import (
-    _AUTH_STYLES,
-    DIMENSIONS,
-    UNKNOWN_AUTH,
-    TaskScore,
-    alternate_problems,
-    canonical_auth_flow,
-    score_task,
-)
-
-_KNOWN_STYLES = ", ".join(style for style, _markers in _AUTH_STYLES)
-
-# The phrase the `--mock` provider answers with for each login style. Mock answers must score 1.0,
-# or a pack's free plumbing preflight would report a failure that says nothing about the plumbing.
-_MOCK_AUTH_PHRASE = {
-    "hmac-signature": "HMAC message signature",
-    "session-token": "Session token from the login call",
-    "oauth2-client-credentials": "OAuth2 client-credentials",
-    # Deliberately does NOT mention the bearer token the grant produces: this phrase has to
-    # canonicalize to itself, and a realistic sentence about this flow would also say "Bearer"
-    # (ADR-0030). That it cannot be written realistically is the point of the ordering it tests.
-    "oauth2-authorization-code": "OAuth2 authorization code grant with PKCE",
-    # Same constraint as the line above and for the same reason (ADR-0040): a realistic sentence
-    # about the implicit grant names the access token it returns, and this phrase must canonicalize
-    # to ITSELF, so it deliberately stops short of saying so.
-    "oauth2-implicit": "OAuth2 implicit grant",
-    "bearer-token": "OAuth2 bearer token",
-    "basic-auth": "HTTP Basic auth",
-    "api-key": "API key",
-    "access-token": "Access token",
-}
+from .roundtrip_api import _MOCK_AUTH_PHRASE, answer_from_ground_truth  # noqa: F401 (re-exported)
+from .scorer import TaskScore
 
 
 @dataclass
@@ -80,40 +51,9 @@ class TaskControl:
     block_text: str = ""                                # the rendered block, for audit
 
 
-def answer_from_ground_truth(task: dict, *, canonical_auth: bool = False) -> AnswerSummary:
-    """Build the answer a model would give if it reproduced this task's ground truth exactly.
-
-    This mapping is the one place where the answer shape and the ground-truth shape are reconciled,
-    so each translation is explicit:
-
-    - `key_parameters` is a list of dicts in ground truth and a list of names in an answer.
-    - `required_scopes` is passed through verbatim, inline `# comment` and all; `scorer.bare_scope`
-      strips the comment on both sides, so a comment must not change the score.
-    - `auth_flow` is passed through **verbatim** by default. Canonicalizing it would mean testing a
-      phrase this function invented rather than the answer key the pack actually documents; the
-      `--mock` provider is the only caller that wants the canonical form.
-    """
-    gt = task["ground_truth"]
-    auth = gt.get("auth_flow")
-    if canonical_auth:
-        auth = _MOCK_AUTH_PHRASE.get(canonical_auth_flow(auth), "OAuth2 bearer token")
-    return AnswerSummary(
-        endpoints=[
-            Endpoint(method=e.get("method"), path=e.get("path"), api_version=e.get("api_version"))
-            for e in gt.get("endpoints", [])
-        ],
-        auth_flow=auth,
-        required_scopes=[str(s) for s in gt.get("required_scopes") or []],
-        key_parameters=[
-            str(p["name"]) for p in gt.get("key_parameters") or []
-            if isinstance(p, dict) and p.get("name")
-        ],
-    )
-
-
-def _collect(control: TaskControl, score: TaskScore, path_label: str) -> None:
+def _collect(control: TaskControl, score: TaskScore, path_label: str, dimensions) -> None:
     """Fold one TaskScore into the control: any applicable dimension below 1.0 is a problem."""
-    for name in DIMENSIONS:
+    for name in dimensions:
         dim = score.dim(name)
         if dim is None:
             control.problems.append(f"{path_label}: dimension '{name}' was not scored at all")
@@ -129,8 +69,13 @@ def _collect(control: TaskControl, score: TaskScore, path_label: str) -> None:
             )
 
 
-def check_task(task: dict, base_prefix: list[str] | None = None) -> TaskControl:
-    """Round-trip one task. Takes a plain dict so a caller can hand it deliberately hostile input."""
+def check_task(task: dict, base_prefix: list[str] | None = None, contract=None) -> TaskControl:
+    """Round-trip one task. Takes a plain dict so a caller can hand it deliberately hostile input.
+
+    `contract` defaults to the API contract, so every existing caller — including a test handing in
+    a bare dict with no pack — behaves exactly as it did before ADR-0044.
+    """
+    contract = contract or API_CONTRACT
     control = TaskControl(task_id=str(task.get("id") or "(unnamed task)"))
     gt = task.get("ground_truth")
     if not isinstance(gt, dict):
@@ -138,54 +83,39 @@ def check_task(task: dict, base_prefix: list[str] | None = None) -> TaskControl:
         control.problems.append("task has no ground_truth mapping")
         return control
 
-    answer = answer_from_ground_truth(task)
+    answer = contract.answer_from_ground_truth(task)
 
     # Path 1 — direct: the scorer against an answer object built straight from ground truth.
-    control.direct = score_task(task, answer, base_prefix)
-    _collect(control, control.direct, "direct")
+    control.direct = contract.score_task(task, answer, base_prefix)
+    _collect(control, control.direct, "direct", contract.dimensions)
 
     # Path 2 — text: the same answer serialized to a block and parsed back, which is the path a
     # real response takes. This is what proves the answer key is expressible in the contract.
-    control.block_text = render_block(answer)
-    result = parse(control.block_text)
+    control.block_text = contract.render_block(answer)
+    result = contract.parse(control.block_text)
     if result.is_failure:
         control.problems.append(
             f"parsed: ground truth rendered as an answer block does not parse — "
             f"{result.failure.reason}"
         )
     else:
-        control.parsed = score_task(task, result.summary, base_prefix)
-        _collect(control, control.parsed, "parsed")
+        control.parsed = contract.score_task(task, result.summary, base_prefix)
+        _collect(control, control.parsed, "parsed", contract.dimensions)
 
-    # Blocking: a login style the scorer cannot name is a scoring hole, not a thin instrument.
-    # auth_flow would score 1.0 for any answer that also names nothing recognizable, so the
-    # dimension reads as applicable while testing nothing (ADR-0011). The fix is always a new
-    # style in `scorer._AUTH_STYLES`, never a rewrite of the vendor's documented prose.
-    if canonical_auth_flow(gt.get("auth_flow")) == UNKNOWN_AUTH:
-        control.problems.append(
-            "auth_flow names no login style the scorer recognizes, so the dimension scores 1.0 for "
-            "any answer that also names none — it would read as applicable while measuring nothing. "
-            f"Teach the style to scorer._AUTH_STYLES (known: {_KNOWN_STYLES})"
-        )
-
-    # Blocking: a declared set of acceptable login styles is checked here, before any grid, because
-    # a bad declaration never fails loudly at scoring time — it silently changes what counts as a
-    # correct answer. Each rule is argued in `scorer.alternate_problems` (ADR-0023).
-    control.problems.extend(alternate_problems(gt))
+    # Blocking checks the contract runs before any grid may burn. For the API cohort these are
+    # ADR-0011's unnameable login style and ADR-0023's alternate-style declaration rules; for the
+    # docs cohort, a task that declares no scorable value at all. Both answer the same question —
+    # can every dimension this task will be scored on actually be tested?
+    control.problems.extend(contract.roundtrip_problems(task))
 
     # Non-blocking notes: shapes that score but measure less than they appear to.
-    raw_params = gt.get("key_parameters") or []
-    if raw_params and not any(
-        isinstance(p, dict) and p.get("required") is True for p in raw_params
-    ):
-        control.notes.append(
-            "no key_parameter is marked `required: true`, so the key_parameters dimension is n/a "
-            "for this task and measures nothing"
-        )
-    # Defensive: `auth_flow` is always applicable today, so an all-n/a task is unreachable. The
-    # guard stands so that a future n/a rule cannot quietly create tasks that pass by measuring
-    # nothing at all.
-    applicable = [d for d in DIMENSIONS if d not in control.na_dimensions]
+    control.notes.extend(contract.roundtrip_notes(task))
+
+    # Defensive: `auth_flow` is always applicable today, so an all-n/a task is unreachable for the
+    # API cohort. The guard stands so that a future n/a rule cannot quietly create tasks that pass
+    # by measuring nothing at all — and for the docs cohort, where several classes are legitimately
+    # n/a per task, it is the backstop behind the contract's own check.
+    applicable = [d for d in contract.dimensions if d not in control.na_dimensions]
     if not applicable:
         control.problems.append(
             "every dimension is n/a — this task would pass the control vacuously and measure nothing"
@@ -206,6 +136,11 @@ def check_pack(pack: Pack) -> list[TaskControl]:
     except Exception as exc:  # unreadable/invalid task YAML is a control failure, not a crash
         return [TaskControl(task_id="(suite)", ok=False, problems=[f"tasks could not be loaded: {exc}"])]
 
+    try:
+        contract = contract_for(pack)
+    except KeyError as exc:
+        return [TaskControl(task_id="(suite)", ok=False, problems=[str(exc)])]
+
     controls: list[TaskControl] = []
     for task in tasks:
         if not isinstance(task, dict):
@@ -214,7 +149,7 @@ def check_pack(pack: Pack) -> list[TaskControl]:
             ))
             continue
         try:
-            controls.append(check_task(task, getattr(pack, "base_prefix_segments", None)))
+            controls.append(check_task(task, getattr(pack, "base_prefix_segments", None), contract))
         except Exception as exc:
             controls.append(TaskControl(
                 task_id=str(task.get("id") or "(unnamed task)"), ok=False,

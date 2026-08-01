@@ -1,0 +1,15 @@
+# Synthetic docs-cohort manifest. `pages` is what the model is shown; `anchors` is what the answer
+# key is cited to (ADR-0034). Here they are the same documents, which is the ordinary case for a
+# cohort whose ground truth IS a value stated in the page the reader is given.
+budget_tokens: 2000
+tasks:
+  pick-controller:
+    pages:
+      - url: https://library.example.invalid/xr-td001.pdf
+        role: api-reference
+        note: XR series technical data
+  check-pairing:
+    pages:
+      - url: https://library.example.invalid/xr-um001.pdf
+        role: api-reference
+        note: XR series user manual
