@@ -81,13 +81,15 @@ def test_the_matcher_finds_paths_that_are_really_there():
         except Exception:                       # a pack that cannot be loaded at all
             uncached.append(pack_dir.name)
             continue
-        # `audit_docs_truncation` does not raise on a missing cached page — it records the failure
-        # as `error` on the task and moves on. So the readable signal is a record WITHOUT one; a
-        # pack whose every task errored was never actually read, and counting it as audited is what
-        # turned "there is no cache here" into "the matcher is broken".
-        readable = [r for r in records if not r.get("error")]
-        (audited if readable else uncached).append(pack_dir.name)
-        documented += sum(1 for r in readable if r["documented"])
+        # The signal is `searchable` — cached text at least as long as the shortest spelling being
+        # looked for — and not the absence of an `error`, nor a non-zero byte count. Both weaker
+        # forms were tried and both still reported "the matcher is broken" against a runner that
+        # simply had no cache: a pack whose pages all failed to fetch raises nothing and returns
+        # an empty string, and one whose docs host serves a JavaScript shell extracts to a SINGLE
+        # BYTE, which is non-zero and searches for nothing (ADR-0043).
+        searchable = [r for r in records if r.get("searchable")]
+        (audited if searchable else uncached).append(pack_dir.name)
+        documented += sum(1 for r in searchable if r["documented"])
     if not audited:
         pytest.skip(
             f"no pack on disk has a fetched docs cache ({len(uncached)} checked), so this control "

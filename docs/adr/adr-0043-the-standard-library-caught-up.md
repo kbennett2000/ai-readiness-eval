@@ -97,11 +97,25 @@ That is the identical shape CI found in the private repository's `test_anchors_a
 the day before, and it is worth naming as a class: **a control that cannot distinguish *absent* from
 *broken* reports the alarming one.**
 
-Now the two are counted apart, using the audit's own signal — `audit_docs_truncation` does not raise
-on a missing page, it records `error` on the task — so a pack whose every record carries an `error`
-is *uncached*, not *audited*. With no audited pack the control **skips**, naming what it could not
-check and pointing at the hazard entry; with at least one, zero is still a failure and says which
-packs did have a cache.
+Counting them apart took three attempts, and the two failures are the more useful record.
+
+**There are three ways to have nothing to search, and only one of them raises.** A missing cache file
+raises `FileNotFoundError`, which `audit_docs_truncation` records as `error` on the task. A pack whose
+every manifest page failed to fetch returns an **empty string and raises nothing** — that is a
+published finding, not a fault. And a pack whose docs host serves a JavaScript shell extracts to a
+**single byte**, which is neither an error nor empty.
+
+The first fix keyed on the absence of an `error` and CI stayed red. The second keyed on a non-zero
+byte count and CI stayed red, on the one-byte pack. Both were reasoned; neither was run against a
+checkout that actually looked like CI's. What settled it was building one — `git archive HEAD` of the
+private packs into a temp directory, which reproduces a clean checkout by definition — and running
+the suite against it. The answer arrived in one command and had been guessed wrong twice.
+
+The signal is now `searchable`, recorded per record by the audit: **the cached text is at least as
+long as the shortest spelling being looked for.** That takes no magic number and states the actual
+question — below that length a miss is arithmetic, not evidence. With no searchable record in any
+pack the control **skips**, naming what it could not check and pointing at the hazard entry; with at
+least one, zero is still a failure and says which packs did have a cache.
 
 The skip is not free, and the registry says so rather than the summary line implying coverage:
 `the-truncation-sweep-is-unexercised-without-a-docs-cache` records that the entire file — every
@@ -111,6 +125,8 @@ truncation assertion, not just this one — verifies nothing on a CI runner.
 
 - `core/robots.py` — docstring corrected; **no code change**, no behaviour change, no rule moved.
 - `core/tests/test_robots.py` — one test replaced by two; the pinned table untouched.
+- `core/conditions.py` — `audit_docs_truncation` records `full_len` and `searchable` per record.
+  Additive; no existing field, verdict or caller behaviour changes.
 - `core/tests/test_docs_truncation.py` — absent-vs-broken separated.
 - `docs/hazards.yaml` — `the-truncation-sweep-is-unexercised-without-a-docs-cache` (ungated, queued)
   and `a-tracked-claim-about-a-dependency-can-stop-being-true` (gated).

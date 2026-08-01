@@ -2536,6 +2536,13 @@ entries:
       one. It now skips with a named reason instead — which is correct, and is also the point of
       this entry: the file's other assertions do not skip. They pass, on nothing, and the summary
       line calls that green.
+
+      A second, narrower case rides along and is NOT closed by a cache existing. A pack whose docs
+      host serves a JavaScript shell has a cache whose extracted text is a single byte, and one
+      whose every manifest page failed to fetch has a cache that is empty — both are published
+      findings rather than faults, and in both the sweep is vacuous on that pack even on a
+      developer machine. The `searchable` field makes it visible per record; nothing reports the
+      per-pack total.
     status: ungated
     ungated_reason: >
       The gate would have to be "a docs cache exists", and on CI it does not and cannot. Committing
