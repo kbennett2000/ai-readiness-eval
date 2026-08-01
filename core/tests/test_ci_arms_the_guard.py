@@ -328,6 +328,50 @@ def test_the_names_only_reporter_still_fails_on_an_empty_report():
     assert problems and count == 0
 
 
+# ------------------------------------------------ a skipped job is a passing required check ---
+
+
+def test_no_job_can_be_skipped_wholesale():
+    """GitHub counts a SKIPPED job as a PASSING required status check.
+
+    That is a documented behaviour, not a quirk, and it makes any job-level `if:` a way to satisfy
+    the privacy gate without running it — the same vacuous pass the rest of this file guards against,
+    relocated into the branch-protection layer where nothing in the tree can see it.
+
+    The first draft carried exactly such a condition, to keep fork pull requests from failing on a
+    secret they cannot read. It was harmless while nothing required the check and became a hole the
+    moment `main` was protected. The case is real; the mechanism is now a first step that FAILS.
+    """
+    for job_name, job in _workflow()["jobs"].items():
+        assert "if" not in job, (
+            f"job '{job_name}' has a job-level 'if:'. A skipped job satisfies a required status "
+            f"check, so this is a green privacy gate that ran nothing. Fail in a step instead."
+        )
+
+
+@pytest.mark.parametrize("job_name", sorted(_workflow()["jobs"]))
+def test_a_fork_pull_request_fails_rather_than_skipping(job_name):
+    """The converse: having banned the skip, the fork case must still be handled, and handled by
+    failing. A job that simply had the condition deleted would run unarmed on a fork and report
+    whatever an unreachable name list reports."""
+    steps = _workflow()["jobs"][job_name]["steps"]
+    guarded = [
+        s for s in steps
+        if "head.repo.full_name != github.repository" in str(s.get("if", ""))
+    ]
+    assert guarded, (
+        f"job '{job_name}' has no step that detects a fork pull request. Fork runs cannot read "
+        f"PACKS_REPO_TOKEN, so without this the job runs unarmed or fails obscurely."
+    )
+    assert any("exit 1" in str(s.get("run", "")) for s in guarded), (
+        f"job '{job_name}' detects a fork pull request but does not fail on it"
+    )
+    assert steps.index(guarded[0]) == 0, (
+        f"job '{job_name}' checks for a fork after doing other work; it must be the first step so "
+        f"the failure is unambiguous and nothing runs half-armed before it"
+    )
+
+
 def test_there_is_no_job_that_runs_the_suite_without_the_private_packs():
     """The first draft had one, and it was red on `main` for a reason already known.
 
