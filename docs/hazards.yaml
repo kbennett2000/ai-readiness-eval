@@ -2621,3 +2621,70 @@ entries:
       - core/tests/test_docs_fetch_pdf.py::test_a_missing_extractor_raises_rather_than_returning_nothing
       - core/tests/test_docs_fetch_pdf.py::test_the_extractor_version_is_recorded_on_the_page
       - core/tests/test_docs_fetch_pdf.py::test_a_pdf_served_as_octet_stream_is_still_extracted_as_a_pdf
+  - id: a-dimension-with-a-task-is-not-a-dimension-tested-well
+    adr: adr-0045-a-dimension-with-no-task.md
+    hazard: |
+      The coverage gate asks whether each declared dimension has AT LEAST ONE task. It says nothing
+      about whether that task is a good one, and an answer key always matches itself (ADR-0010), so
+      a dimension exercised by a single weak or near-duplicate task now passes a gate that reads, to
+      a card's reader, as "this dimension was measured". Gated below for the fault it CAN see —
+      the empty column, and the empty pack that would otherwise pass by having nothing to check —
+      with this residual stated rather than implied by the gate's existence, which is the ADR-0010
+      pattern: record precisely what a control does not prove.
+    status: gated
+    gated_by:
+      - core/tests/test_dimension_coverage.py::test_a_dimension_with_no_task_blocks_in_the_docs_cohort
+      - core/tests/test_dimension_coverage.py::test_a_pack_with_no_tasks_cannot_pass_by_having_nothing_to_check
+  - id: twelve-published-packs-are-warned-and-not-repaired
+    adr: adr-0045-a-dimension-with-no-task.md
+    hazard: |
+      Run over every pack on disk, the coverage gate found a declared dimension with no task in 13
+      of 18 packs — 11 on `required_scopes`, one on `auth_flow`, one on `firmware_version`. Their
+      published overalls are therefore means over fewer dimensions than their contract declares. The
+      api cohort is ADVISORY, so twelve packs stay green while carrying the condition.
+    status: ungated
+    ungated_reason: |
+      Blocking the api cohort would have failed twelve already-published packs over a pre-existing
+      condition, and a gate that fails everything on the day it lands is a gate someone switches
+      off. Repairing them in-cycle would mean adding tasks to twelve published packs on the strength
+      of a gate written the same day, which MOVES numbers — the opposite of what this is for.
+    fix_queued_to: |
+      Issue #82, which carries the per-pack measurement and the two honest resolutions (a real task
+      and a re-run, or a written `unexercised_dimensions` reason). The display half — printing the
+      scored-dimension count beside every published overall, so an n/a column travels with the
+      number instead of being inferable only from a gate log — is issue #73, which stays open and is
+      deliberately not folded into ADR-0045.
+  - id: the-docs-dimension-set-was-derived-from-one-vendors-shape
+    adr: adr-0045-a-dimension-with-no-task.md
+    hazard: |
+      Two of the docs contract's three dimensions (`firmware_version`, `software_version`) presume a
+      programmable device. The cohort's second target has no such thing anywhere on its surface, so
+      it could exercise at most one of three. A dimension set that fits one vendor and not the next
+      is an instrument shaped by whoever arrived first, and every docs overall is then a mean over
+      whichever dimensions a vendor happens to support.
+    status: ungated
+    ungated_reason: |
+      A revision now would be argued from ONE vendor's material, which is precisely the post-hoc
+      instrument change pre-registration exists to prevent (ADR-0044 was written before its first
+      pack's tasks for that reason). No test can decide whether a dimension set generalises; only
+      more measured vendors can.
+    fix_queued_to: |
+      Issue #83. ADR-0045 decision 4 forecloses revising on one vendor and states the bar: at least
+      two vendors' MEASURED material. The unscored-observation channel (decision 3) is what makes
+      that evidence collectible in the meantime — recorded, reported, never scored — so the
+      argument, when it comes, rests on data rather than on intuition.
+  - id: an-unscored-observation-is-one-adr-away-from-being-a-score
+    adr: adr-0045-a-dimension-with-no-task.md
+    hazard: |
+      The observation channel records a value class per run without scoring it. The structural
+      guarantees hold for as long as the key stays out of `contract.dimensions`; nothing prevents a
+      later cycle from promoting a key whose numbers already look good, which would be a dimension
+      chosen by its result. The tests below gate the SEPARATION, which is the mechanical half: a
+      declared key cannot reach a score, and the score is identical whether the observation is
+      right, wrong or absent. They cannot gate the JUDGEMENT of a future promotion; ADR-0045
+      decision 4 sets its bar in writing instead.
+    status: gated
+    gated_by:
+      - core/tests/test_dimension_coverage.py::test_an_observation_key_can_never_become_a_dimension
+      - core/tests/test_dimension_coverage.py::test_a_wrong_observation_cannot_lower_a_score
+      - core/tests/test_dimension_coverage.py::test_an_observation_name_that_collides_with_a_contract_key_is_refused

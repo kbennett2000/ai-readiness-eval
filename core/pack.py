@@ -63,6 +63,14 @@ class Pack:
     spec_ref_file_prefix: str | None = None       # constrain task spec_ref.file paths to a spec subtree
     expected_task_ids: list[str] | None = None     # completeness check for `validate`
     na_categories: dict | None = None              # {taxonomy category: one-line reason}
+    # {contract dimension: written reason} — a dimension this pack's tasks deliberately do not
+    # exercise (ADR-0045). A REASON, never a boolean: the tolerance is granted to a pack that asked
+    # for it in writing, where a reviewer can disagree with the argument.
+    unexercised_dimensions: dict | None = None
+    # {observation key: written reason} — a value class recorded per run and NEVER scored
+    # (ADR-0045). Adds a key to the answer block and a field to `TaskScore.exhibit`; it can never
+    # become a dimension, contribute to `overall`, or appear in a scored table.
+    unscored_observations: dict | None = None
     # OPT-IN endpoint-address tolerance (ADR-0017). A path prefix the scorer may ignore on either
     # side of an endpoint comparison, for a vendor whose documentation and whose machine-readable
     # description disagree about where the base URL ends. Empty for every pack that does not declare
@@ -141,6 +149,10 @@ class Pack:
             spec_ref_file_prefix=cfg.get("spec_ref_file_prefix"),
             expected_task_ids=(list(cfg["expected_task_ids"]) if cfg.get("expected_task_ids") else None),
             na_categories=(dict(cfg["na_categories"]) if cfg.get("na_categories") else None),
+            unexercised_dimensions=(dict(cfg["unexercised_dimensions"])
+                                    if cfg.get("unexercised_dimensions") else None),
+            unscored_observations=(dict(cfg["unscored_observations"])
+                                   if cfg.get("unscored_observations") else None),
             endpoint_base_prefix=cfg.get("endpoint_base_prefix") or None,
             task_groups=(dict(cfg["task_groups"]) if cfg.get("task_groups") else None),
             answer_surfaces_config=(dict(cfg["answer_surfaces"])

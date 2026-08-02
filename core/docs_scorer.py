@@ -189,6 +189,17 @@ def score_task(task: dict, answer: DocsAnswer, base_prefix=None) -> TaskScore:
         "firmware_hedge": hedge_count(answer.firmware_version),
         "software_hedge": hedge_count(answer.software_version),
     }
+    # A pack's declared unscored observations (ADR-0045), recorded beside the other exhibits and
+    # never read by any branch above. They arrive namespaced so that reading the exhibit tells a
+    # reviewer which figures the contract computed and which a pack asked for.
+    if answer.observations:
+        result.exhibit["observed"] = {k: v for k, v in answer.observations.items()}
+        # What the task's own key says the answer should have been, so the pair can be compared
+        # after the fact without re-reading every task file. Absent when the task declares none.
+        expected = {k: (str(gt["observations"][k]) if (gt.get("observations") or {}).get(k) else None)
+                    for k in answer.observations}
+        if any(v is not None for v in expected.values()):
+            result.exhibit["observed_expected"] = expected
     return result
 
 
@@ -206,6 +217,11 @@ def answer_from_ground_truth(task: dict, *, canonical_auth: bool = False) -> Doc
         firmware_version=(str(gt["firmware_version"]) if gt.get("firmware_version") else None),
         software_version=(str(gt["software_version"]) if gt.get("software_version") else None),
         publication=(str(publication.get("number")) if publication.get("number") else None),
+        # The round-trip control renders this answer back into a block and re-parses it, so the
+        # declared observations have to survive the trip. They are never scored, so they can never
+        # make the control pass — only a missing key could make it fail, which is the safe direction.
+        observations={k: (str(v) if v is not None else None)
+                      for k, v in (gt.get("observations") or {}).items()},
     )
 
 
