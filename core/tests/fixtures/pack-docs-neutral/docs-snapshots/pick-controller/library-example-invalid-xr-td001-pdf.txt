@@ -1,0 +1,11 @@
+Northwind Controls — XR Series Controllers Technical Data
+Publication XR-TD001C
+
+Controller selection
+XR series controllers: XR-8100 (2 MB user memory), XR-8200 (4 MB user memory),
+XR-8300 (8 MB user memory). Conformal-coated variants carry the -K suffix and
+extended-temperature variants carry the -XT suffix; both are separately orderable
+parts with their own environmental ratings.
+
+Each controller ships with a removable terminal block and requires a compatible
+power supply from the same series.

@@ -1,0 +1,20 @@
+id: check-pairing
+category: daily-automation
+job_category: verify-compatibility
+prompt: >-
+  For a Northwind Controls XR series controller, what controller firmware revision and what
+  Northwind Studio version are required for redundancy?
+ground_truth:
+  firmware_version: "12.003"
+  software_version: "30"
+  publication:
+    number: XR-UM001
+    revision: B
+    url: https://library.example.invalid/xr-um001.pdf
+    quote: >-
+      Redundancy requires controller firmware revision 12.003 or later with the Northwind Studio
+      application version 30 and later.
+  success_shape: The answer names firmware 12.003 and Studio version 30, paired.
+  common_failure_modes:
+    - Naming firmware 12 alone, which is less precise than the revision the publication states.
+    - Pairing the right firmware with a Studio version from a different capability's row.

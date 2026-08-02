@@ -47,7 +47,8 @@ def fetched(monkeypatch) -> list:
 
     def fake(url, **_kw):
         calls.append(url)
-        return f"<html><body>{BODY}</body></html>"
+        # `_fetch` extracts beside the bytes now (ADR-0044), so its stub returns a Document.
+        return docs_fetch.Document(text=BODY, kind="html", extracted_by="core.html_text")
 
     monkeypatch.setattr(docs_fetch, "_fetch_with_retry", fake)
     return calls

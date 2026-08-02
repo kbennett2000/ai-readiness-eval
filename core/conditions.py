@@ -12,10 +12,10 @@ import json
 import tempfile
 from abc import ABC, abstractmethod
 
+from .contract import contract_for
 from .docs_fetch import ROLE_PRIORITY
 from .model import CliPolicy, deny_all_policy
 from .pack import Pack
-from .prompt import build_prompt
 
 _CHARS_PER_TOKEN = 4  # keep in step with scorer/specsize token estimates
 
@@ -72,12 +72,21 @@ class Condition(ABC):
 
 
 class NoContextCondition(Condition):
-    """Floor reference: the model gets the task prompt (+ answer contract) and nothing else."""
+    """Floor reference: the model gets the task prompt (+ answer contract) and nothing else.
+
+    Takes a pack so it can ask which answer contract to append (ADR-0044). The argument is optional
+    and defaults to the API contract, so every existing caller — and every test that builds this
+    condition with no arguments — is unchanged.
+    """
 
     name = "no-context"
 
+    def __init__(self, pack: Pack | None = None):
+        from .contract import API_CONTRACT
+        self._contract = contract_for(pack) if pack is not None else API_CONTRACT
+
     def build_messages(self, task: dict) -> list[dict]:
-        return [{"role": "user", "content": build_prompt(task["prompt"])}]
+        return [{"role": "user", "content": self._contract.build_prompt(task["prompt"])}]
 
 
 class PublicDocsCondition(Condition):
@@ -94,6 +103,7 @@ class PublicDocsCondition(Condition):
         self._pack = pack
         self._manifest_override = manifest  # loaded lazily so construction is cheap
         self._label = pack.public_docs_source_label
+        self._contract = contract_for(pack)
 
     @property
     def _manifest(self) -> dict:
@@ -155,10 +165,12 @@ class PublicDocsCondition(Condition):
             blocks.append(header + text)
             used += len(header) + len(text)
         joined = "\n".join(blocks)
-        return (
-            f"You have been given excerpts from {self._label} below. "
-            "Use them to answer accurately.\n" + joined
-        )
+        # The preamble is the CONTRACT's, not this module's (ADR-0044). The API cohort's sentence is
+        # emitted verbatim and unchanged — altering it would change what every archived API run was
+        # asked, which is why public #67's repair belongs to a deliberate re-baseline and not here.
+        # The docs cohort's is empty: that cohort is built without the excerpt promise from day one,
+        # so it never tells a model it has been handed documentation that was not retrieved.
+        return self._contract.context_preamble(self._label) + joined
 
     def full_text(self, task_id: str) -> str:
         """Every cached page for a task, concatenated, with NO budget applied.
@@ -170,7 +182,7 @@ class PublicDocsCondition(Condition):
 
     def build_messages(self, task: dict) -> list[dict]:
         context = self.build_context(task["id"])
-        content = context + "\n\n" + build_prompt(task["prompt"])
+        content = context + "\n\n" + self._contract.build_prompt(task["prompt"])
         return [{"role": "user", "content": content}]
 
 
@@ -188,6 +200,7 @@ class McpCondition(Condition):
     name = "mcp"
 
     def __init__(self, pack: Pack, mcp_config: str | None = None):
+        self._contract = contract_for(pack)
         ctx = pack.context_layer
         if ctx is None:
             raise ValueError(
@@ -201,7 +214,7 @@ class McpCondition(Condition):
         self._mcp_config = mcp_config or _sterile_mcp_config(ctx)
 
     def build_messages(self, task: dict) -> list[dict]:
-        return [{"role": "user", "content": build_prompt(task["prompt"])}]
+        return [{"role": "user", "content": self._contract.build_prompt(task["prompt"])}]
 
     def cli_policy(self) -> CliPolicy:
         # Deny every built-in tool EXCEPT the discovery meta-tool (needed to surface the deferred MCP
@@ -234,7 +247,7 @@ def build_registry(pack: Pack) -> dict[str, Condition]:
     """Build the condition registry for a pack. A pack with no context layer omits `mcp`
     (two-condition mode)."""
     registry: dict[str, Condition] = {
-        "no-context": NoContextCondition(),
+        "no-context": NoContextCondition(pack),
         "public-docs": PublicDocsCondition(pack),
     }
     if pack.context_layer is not None:
@@ -259,29 +272,6 @@ def available_conditions() -> list[str]:
 # Truncation audit — the docs condition must not measure our own budget
 # --------------------------------------------------------------------------------------------- #
 
-def _path_spellings(path: str, base_prefixes) -> list[str]:
-    """The literal forms a documentation page might use for one ground-truth path.
-
-    Only the base-prefix pairs, because that is the one rewriting a vendor is entitled to do and this
-    project already models it (ADR-0013/0017): a spec may write the whole address while a guide writes
-    the fragment after the base URL. No normalization beyond that, deliberately — see the docstring of
-    `audit_docs_truncation` for why an approximate matcher is safe here and a clever one would not be.
-
-    A pack may declare more than one prefix (ADR-0039); each contributes its own pair. Accepts a bare
-    string for the single-prefix packs that predate that widening.
-    """
-    if isinstance(base_prefixes, str):
-        base_prefixes = [base_prefixes]
-    out = [path]
-    for base_prefix in base_prefixes or []:
-        pre = "/" + base_prefix.strip("/")
-        if path.startswith(pre):
-            out.append(path[len(pre):] or "/")
-        else:
-            out.append(pre.rstrip("/") + path)
-    return [s for s in dict.fromkeys(out) if s]
-
-
 def audit_docs_truncation(pack: Pack) -> list[dict]:
     """Where did the token budget delete an answer the cached page actually contained?
 
@@ -304,11 +294,17 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
     manufacture a loss, and a false truncation report would send a cycle hunting a budget bug that does
     not exist.
 
-    Returns one record per (task, endpoint). A caller treats `truncated: True` as the defect.
+    WHAT "THE ANSWER" IS depends on the cohort, so the search terms come from the pack's answer
+    contract rather than from this module (ADR-0044). For the API cohort an item is a ground-truth
+    endpoint path and its base-prefix spellings; for the docs cohort it is a ground-truth VALUE — a
+    catalog number, a firmware revision — because on that surface the value IS the answer. The
+    question asked of both is identical: is the thing we are about to score against still inside the
+    text we injected?
+
+    Returns one record per (task, item). A caller treats `truncated: True` as the defect.
     """
     condition = PublicDocsCondition(pack)
-    prefix = getattr(pack, "declared_base_prefixes", None) or \
-        getattr(pack, "endpoint_base_prefix", None)
+    contract = contract_for(pack)
     records: list[dict] = []
     for task in pack.load_tasks():
         task_id = task["id"]
@@ -316,18 +312,16 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
             full = condition.full_text(task_id)
             injected = condition.build_context(task_id)
         except (KeyError, FileNotFoundError) as exc:
-            records.append({"task_id": task_id, "path": None, "documented": False,
+            records.append({"task_id": task_id, "item": None, "documented": False,
                             "injected": False, "truncated": False, "error": str(exc)})
             continue
-        for ep in task["ground_truth"]["endpoints"]:
-            path = ep.get("path")
-            if not path:
+        for item, spellings in contract.ground_truth_terms(task, pack):
+            if not spellings:
                 continue
-            spellings = _path_spellings(path, prefix)
             in_full = any(s in full for s in spellings)
             in_injected = any(s in injected for s in spellings)
             records.append({
-                "task_id": task_id, "path": path,
+                "task_id": task_id, "item": item,
                 "documented": in_full, "injected": in_injected,
                 "truncated": bool(in_full and not in_injected),
                 # How much cached text this verdict was reached against, and whether that verdict
@@ -350,5 +344,5 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
 
 
 def truncation_losses(pack: Pack) -> list[dict]:
-    """Just the defects from `audit_docs_truncation` — paths the budget deleted."""
+    """Just the defects from `audit_docs_truncation` — the items the budget deleted."""
     return [r for r in audit_docs_truncation(pack) if r.get("truncated")]

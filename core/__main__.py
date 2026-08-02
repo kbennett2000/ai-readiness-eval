@@ -19,12 +19,14 @@ import os
 import sys
 from pathlib import Path
 
-from . import answer_block, conditions
+from . import answer_block, conditions  # noqa: F401 (answer_block re-exported for callers)
+from .contract import API_CONTRACT, contract_for, score_fields
+from .contract import score_response as _contract_score_response
 from .env import get_config, load_env
 from .model import AnthropicModel, ClaudeCliModel, MockModel, ModelError
 from .pack import Pack
 from .report import write_reports
-from .scorer import DIMENSIONS, format_failure_score, score_task
+from .scorer import DIMENSIONS  # noqa: F401 (re-exported; the API cohort's dimension names)
 
 EXIT_OK = 0
 EXIT_ERROR = 2
@@ -53,15 +55,14 @@ def _results_dir(pack: Pack) -> Path:
 
 
 def _record(task_id: str, run_index: int, score, resp, *,
-            tool_discipline: dict | None = None, parsed=None, mock: bool = False) -> dict:
-    dims = {d: (score.dim(d).score if score.dim(d) else None) for d in DIMENSIONS}
+            tool_discipline: dict | None = None, parsed=None, mock: bool = False,
+            contract=None) -> dict:
     rec = {
         "task_id": task_id,
         "run_index": run_index,
         "format_failure": score.format_failure,
         "failure_reason": score.failure_reason,
-        "dimensions": dims,
-        "endpoint_matches": score.endpoint_matches,
+        **score_fields(score, contract or API_CONTRACT),
         "input_tokens": resp.input_tokens,
         "output_tokens": resp.output_tokens,
         "cost_usd": getattr(resp, "cost_usd", 0.0),
@@ -112,11 +113,9 @@ def may_reuse_archived_run(prev: dict, *, is_mock: bool) -> tuple[bool, str]:
     return True, ""
 
 
-def _score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None):
-    parsed = answer_block.parse(raw_text)
-    if parsed.is_failure:
-        return format_failure_score(task["id"], parsed.failure.reason), parsed
-    return score_task(task, parsed.summary, base_prefix), parsed
+def _score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None,
+                    contract=None):
+    return _contract_score_response(task, raw_text, contract or API_CONTRACT, base_prefix)
 
 
 # --------------------------------------------------------------------------- #
@@ -125,20 +124,22 @@ def _score_response(task: dict, raw_text: str, base_prefix: list[str] | None = N
 # response so format-failure handling is demonstrated. Never committed as a baseline.
 # --------------------------------------------------------------------------- #
 
-def _mock_block_for_task(task: dict) -> str:
-    from .answer_block import render_block
-    from .roundtrip import answer_from_ground_truth
-
+def _mock_block_for_task(task: dict, contract=None) -> str:
     # Shares one serializer with the round-trip control (ADR-0010) so the mock provider cannot drift
     # from the thing that gates it. `canonical_auth=True` is a mock-only convenience: the control
-    # itself deliberately emits the ground truth's own auth prose verbatim.
-    answer = answer_from_ground_truth(task, canonical_auth=True)
-    answer.required_scopes = [s.split("#", 1)[0].strip() for s in answer.required_scopes]
-    answer.required_scopes = [s for s in answer.required_scopes if s]
-    return render_block(answer, preamble=f"Here is how you would approach **{task['id']}**.\n\n")
+    # itself deliberately emits the ground truth's own auth prose verbatim, and a contract without an
+    # auth dimension ignores the flag.
+    contract = contract or API_CONTRACT
+    answer = contract.answer_from_ground_truth(task, canonical_auth=True)
+    scopes = getattr(answer, "required_scopes", None)
+    if scopes is not None:
+        answer.required_scopes = [s for s in
+                                  (x.split("#", 1)[0].strip() for x in scopes) if s]
+    return contract.render_block(
+        answer, preamble=f"Here is how you would approach **{task['id']}**.\n\n")
 
 
-def _build_mock_responses(tasks: list[dict]) -> dict[str, str]:
+def _build_mock_responses(tasks: list[dict], contract=None) -> dict[str, str]:
     # NOT a round-trip control: the last task is deliberately broken so format-failure handling is
     # exercised. The control that requires every task to score its own ground truth is the
     # `roundtrip` gate (ADR-0010).
@@ -151,7 +152,7 @@ def _build_mock_responses(tasks: list[dict]) -> dict[str, str]:
                 "but I'm not including a structured block here."
             )
         else:
-            responses[task["id"]] = _mock_block_for_task(task)
+            responses[task["id"]] = _mock_block_for_task(task, contract)
     return responses
 
 
@@ -283,6 +284,7 @@ def format_failure_breaker(records: list[dict], threshold: float,
 
 def cmd_run(args: argparse.Namespace) -> int:
     pack = _load_pack(args)
+    contract = contract_for(pack)
     condition = conditions.get_condition(args.condition, pack)
     only = set(args.tasks.split(",")) if args.tasks else None
     tasks = pack.load_tasks(only)
@@ -302,7 +304,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     client, mock, provider, sampling = None, None, args.provider, None
     if args.mock:
-        mock = MockModel(_build_mock_responses(tasks))
+        mock = MockModel(_build_mock_responses(tasks, contract))
         provider, sampling = "mock", "n/a"
         model_name = "mock-model"
     elif args.provider == "cli":
@@ -444,9 +446,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                 reported_models.add(resp.model_reported)
             total_cost += getattr(resp, "cost_usd", 0.0)
             total_ms += getattr(resp, "duration_ms", 0)
-            score, parsed = _score_response(task, resp.text, pack.base_prefix_segments)
+            score, parsed = _score_response(task, resp.text, pack.base_prefix_segments, contract)
             rec = _record(task["id"], run_index, score, resp, tool_discipline=discipline,
-                          parsed=parsed, mock=mock is not None)
+                          parsed=parsed, mock=mock is not None, contract=contract)
             records.append(rec)
             run_path.write_text(json.dumps(rec, indent=2))
             status = "FMT-FAIL" if score.format_failure else "scored"
@@ -477,7 +479,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "final_all_ok": all(r.get("tool_discipline", {}).get("ok", True) for r in records),
     }
 
-    agg = write_reports(out_dir, records, metadata)
+    agg = write_reports(out_dir, records, metadata, contract)
     print(f"\nWrote {out_dir}/summary.md and scores.json")
     print(f"Overall accuracy: "
           f"{'n/a' if agg['overall_accuracy'] is None else f'{agg['overall_accuracy'] * 100:.0f}%'}"

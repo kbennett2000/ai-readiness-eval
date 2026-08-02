@@ -133,7 +133,9 @@ def test_fetch_all_retrieves_anchors_as_well_as_pages(tmp_path, monkeypatch):
 
     def _fake(url, **_kw):
         fetched.append(url)
-        return f"<html><body>{'documentation body ' * 30}</body></html>"
+        # `_fetch` extracts beside the bytes now (ADR-0044), so its stub returns a Document.
+        return docs_fetch.Document(text="documentation body " * 30, kind="html",
+                                   extracted_by="core.html_text")
 
     monkeypatch.setattr(docs_fetch, "_fetch_with_retry", _fake)
     pack = _pack_citing_an_anchor(tmp_path)

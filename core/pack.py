@@ -90,6 +90,14 @@ class Pack:
     # long ones live in a pinned sibling file that can carry their provenance.
     answer_surfaces_config: dict | None = None
 
+    # Which answer contract this pack is measured under (ADR-0044). `api` is the default and is what
+    # every pack written before that ADR gets without declaring anything, so no published number can
+    # move by this field existing. It is NOT a free-text label: `contract.contract_for` refuses a
+    # cohort it has no contract for rather than falling back, because a pack scored on six
+    # dimensions its ground truth does not have would report every one of them n/a and pass green
+    # while measuring nothing.
+    cohort: str = "api"
+
     @classmethod
     def load(cls, pack_dir: str | Path) -> "Pack":
         root = Path(pack_dir).resolve()
@@ -137,7 +145,14 @@ class Pack:
             task_groups=(dict(cfg["task_groups"]) if cfg.get("task_groups") else None),
             answer_surfaces_config=(dict(cfg["answer_surfaces"])
                                     if cfg.get("answer_surfaces") else None),
+            cohort=str(cfg.get("cohort") or "api"),
         )
+
+    @property
+    def contract(self):
+        """This pack's `AnswerContract` (ADR-0044). Imported lazily to keep the import graph acyclic."""
+        from .contract import contract_for
+        return contract_for(self)
 
     @property
     def answer_surfaces(self):
@@ -159,7 +174,7 @@ class Pack:
 
         One string declares one prefix; a list declares several (ADR-0039). Callers that compare
         PATHS want `base_prefix_segments`; this property exists for the one caller that compares
-        literal documentation text (`conditions._path_spellings`).
+        literal documentation text (`contract._path_spellings`).
         """
         p = self.endpoint_base_prefix
         if not p:

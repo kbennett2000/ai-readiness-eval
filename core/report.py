@@ -9,16 +9,20 @@ from __future__ import annotations
 import json
 from statistics import mean
 
+from .contract import API_CONTRACT
 from .scorer import DIMENSIONS
 
-_DIM_LABELS = {
-    "endpoint": "endpoint",
-    "method": "method",
-    "api_version": "version",
-    "auth_flow": "auth",
-    "required_scopes": "scopes",
-    "key_parameters": "params",
-}
+# The API cohort's dimension labels, kept as a module constant because tools outside this repo import
+# it by name. Every renderer below now takes its dimensions and labels from a CONTRACT (ADR-0044) and
+# defaults to the API one, so a caller that passes nothing gets byte-identical output.
+_DIM_LABELS = dict(API_CONTRACT.dim_labels)
+
+
+def _dims_and_labels(contract):
+    """`(dimensions, labels)` for a renderer. `None` means the API contract, exactly as before."""
+    if contract is None:
+        return list(DIMENSIONS), _DIM_LABELS
+    return list(contract.dimensions), contract.dim_labels
 
 
 def _fmt_cell(value) -> str:
@@ -27,13 +31,14 @@ def _fmt_cell(value) -> str:
     return f"{value * 100:.0f}%"
 
 
-def aggregate(records: list[dict]) -> dict:
+def aggregate(records: list[dict], contract=None) -> dict:
     """Compute per-task and overall aggregates from run records.
 
     A run with format_failure contributes to the format-failure count and is
     excluded from dimension means (its dimensions are absent). A dimension that is
     n/a for a task (score None) is excluded from that dimension's mean.
     """
+    dimensions, _labels = _dims_and_labels(contract)
     task_ids: list[str] = []
     for r in records:
         if r["task_id"] not in task_ids:
@@ -46,7 +51,7 @@ def aggregate(records: list[dict]) -> dict:
         n_fmt = sum(1 for r in runs if r.get("format_failure"))
         scored = [r for r in runs if not r.get("format_failure")]
         dim_means: dict[str, float | None] = {}
-        for dim in DIMENSIONS:
+        for dim in dimensions:
             vals = [
                 r["dimensions"][dim] for r in scored
                 if r.get("dimensions", {}).get(dim) is not None
@@ -62,7 +67,7 @@ def aggregate(records: list[dict]) -> dict:
     # Overall per-dimension mean across all scored runs (all tasks pooled).
     overall: dict[str, float | None] = {}
     scored_all = [r for r in records if not r.get("format_failure")]
-    for dim in DIMENSIONS:
+    for dim in dimensions:
         vals = [
             r["dimensions"][dim] for r in scored_all
             if r.get("dimensions", {}).get(dim) is not None
@@ -83,9 +88,9 @@ def aggregate(records: list[dict]) -> dict:
     }
 
 
-def render_summary_md(agg: dict, metadata: dict) -> str:
-    dims = list(DIMENSIONS)
-    header = "| task | " + " | ".join(_DIM_LABELS[d] for d in dims) + " | fmt-fail |"
+def render_summary_md(agg: dict, metadata: dict, contract=None) -> str:
+    dims, labels = _dims_and_labels(contract)
+    header = "| task | " + " | ".join(labels[d] for d in dims) + " | fmt-fail |"
     sep = "|" + "---|" * (len(dims) + 2)
     lines = [
         f"# Eval results — {metadata.get('condition', '?')}",
@@ -166,9 +171,9 @@ def _delta_cell(a, b) -> str:
 
 
 def render_comparison_md(label_a: str, agg_a: dict, meta_a: dict,
-                         label_b: str, agg_b: dict, meta_b: dict) -> str:
+                         label_b: str, agg_b: dict, meta_b: dict, contract=None) -> str:
     """Side-by-side comparison of two conditions (e.g. no-context vs public-docs)."""
-    dims = list(DIMENSIONS)
+    dims, labels = _dims_and_labels(contract)
     task_ids = list(dict.fromkeys(agg_a["task_ids"] + agg_b["task_ids"]))
     lines = [
         f"# Condition comparison — {label_a} vs {label_b}",
@@ -188,7 +193,7 @@ def render_comparison_md(label_a: str, agg_a: dict, meta_a: dict,
     ]
     for d in dims:
         a, b = agg_a["overall_dimensions"][d], agg_b["overall_dimensions"][d]
-        lines.append(f"| {_DIM_LABELS[d]} | {_fmt_cell(a)} | {_fmt_cell(b)} | {_delta_cell(a, b)} |")
+        lines.append(f"| {labels[d]} | {_fmt_cell(a)} | {_fmt_cell(b)} | {_delta_cell(a, b)} |")
     oa, ob = agg_a["overall_accuracy"], agg_b["overall_accuracy"]
     lines.append(f"| **overall** | {_fmt_cell(oa)} | {_fmt_cell(ob)} | {_delta_cell(oa, ob)} |")
     lines += [
@@ -207,7 +212,7 @@ def render_comparison_md(label_a: str, agg_a: dict, meta_a: dict,
         lines.append(f"| {tid} | {_fmt_cell(aa)} | {_fmt_cell(ab)} | {_delta_cell(aa, ab)} |")
 
     lines += ["", "## Per-task × per-dimension (A / B)", "",
-              "| task | " + " | ".join(_DIM_LABELS[d] for d in dims) + " | fmt A/B |",
+              "| task | " + " | ".join(labels[d] for d in dims) + " | fmt A/B |",
               "|" + "---|" * (len(dims) + 2)]
     for tid in task_ids:
         da = agg_a["per_task"].get(tid, {}).get("dimensions", {})
@@ -222,7 +227,7 @@ def render_comparison_md(label_a: str, agg_a: dict, meta_a: dict,
 
 
 def render_group_comparison_md(label_a: str, roll_a: dict, label_b: str, roll_b: dict,
-                               groups: dict, note: str | None = None) -> str:
+                               groups: dict, note: str | None = None, contract=None) -> str:
     """Two conditions × a pack's declared task groups, dimension by dimension (ADR-0026).
 
     `roll_a`/`roll_b` are `category.rollup_by_group` outputs for the same grouping; `groups` is the
@@ -231,6 +236,7 @@ def render_group_comparison_md(label_a: str, roll_a: dict, label_b: str, roll_b:
     This renderer exists so a group split is GENERATED rather than typed. Cycle 19's whole finding
     was that hand-maintained derived numbers go stale silently while the gated ones stay right.
     """
+    dims, labels = _dims_and_labels(contract)
     lines = [f"# Task-group comparison — {label_a} vs {label_b}", ""]
     if note:
         lines += [f"> {note}", ""]
@@ -255,9 +261,9 @@ def render_group_comparison_md(label_a: str, roll_a: dict, label_b: str, roll_b:
         if rationale:
             lines += [f"{str(rationale).strip()}", ""]
         lines += [f"| dimension | {label_a} | {label_b} | delta |", "|---|---|---|---|"]
-        for d in DIMENSIONS:
+        for d in dims:
             va, vb = a.get("dimensions", {}).get(d), b.get("dimensions", {}).get(d)
-            lines.append(f"| {_DIM_LABELS[d]} | {_fmt_cell(va)} | {_fmt_cell(vb)} | "
+            lines.append(f"| {labels[d]} | {_fmt_cell(va)} | {_fmt_cell(vb)} | "
                          f"{_delta_cell(va, vb)} |")
         oa, ob = a.get("overall"), b.get("overall")
         lines.append(f"| **overall** | {_fmt_cell(oa)} | {_fmt_cell(ob)} | {_delta_cell(oa, ob)} |")
@@ -267,11 +273,12 @@ def render_group_comparison_md(label_a: str, roll_a: dict, label_b: str, roll_b:
     return "\n".join(lines)
 
 
-def render_multi_comparison_md(entries: list[tuple[str, dict, dict]], note: str | None = None) -> str:
+def render_multi_comparison_md(entries: list[tuple[str, dict, dict]], note: str | None = None,
+                               contract=None) -> str:
     """N-condition side-by-side (e.g. no-context vs public-docs vs mcp). `entries` is an ordered list
     of (label, aggregate, metadata); the LAST entry is treated as the 'after' and gets deltas vs each
     prior condition. Includes the per-condition tool-discipline summary when present in metadata."""
-    dims = list(DIMENSIONS)
+    dims, dim_labels = _dims_and_labels(contract)
     labels = [e[0] for e in entries]
     aggs = [e[1] for e in entries]
     metas = [e[2] for e in entries]
@@ -307,7 +314,7 @@ def render_multi_comparison_md(entries: list[tuple[str, dict, dict]], note: str 
         return f"| {name} | " + " | ".join(cells) + " | " + " | ".join(deltas) + " |"
 
     for d in dims:
-        lines.append(_row(_DIM_LABELS[d], [a["overall_dimensions"][d] for a in aggs]))
+        lines.append(_row(dim_labels[d], [a["overall_dimensions"][d] for a in aggs]))
     lines.append(_row("**overall**", [a["overall_accuracy"] for a in aggs]))
     lines.append("| format failures | "
                  + " | ".join(f"{a['format_failures']}/{a['total_runs']}" for a in aggs)
@@ -322,7 +329,7 @@ def render_multi_comparison_md(entries: list[tuple[str, dict, dict]], note: str 
 
     # Per-task × per-dimension, cells "v1 / v2 / v3".
     lines += ["", f"## Per-task × per-dimension ({' / '.join(labels)})", "",
-              "| task | " + " | ".join(_DIM_LABELS[d] for d in dims) + " |",
+              "| task | " + " | ".join(dim_labels[d] for d in dims) + " |",
               "|" + "---|" * (len(dims) + 1)]
     for tid in task_ids:
         cells = []
@@ -337,20 +344,20 @@ def render_multi_comparison_md(entries: list[tuple[str, dict, dict]], note: str 
 def render_delta_table_md(new_entries: list[tuple[str, dict, dict]],
                           baseline_entries: list[tuple[str, dict, dict]],
                           new_label: str = "cycle-7 sterile",
-                          base_label: str = "cycle-6") -> str:
+                          base_label: str = "cycle-6", contract=None) -> str:
     """Per-condition, per-dimension delta of NEW minus BASELINE, matched by condition name.
 
     Quantifies what the ambient crib sheet (CLAUDE.md) was worth to each condition: a large negative
     number means that condition leaned on CLAUDE.md and the true-cold score is lower. Reuses
     `_delta_cell`'s `"+N pts"` convention (delta = new − base)."""
-    dims = list(DIMENSIONS)
+    dims, labels = _dims_and_labels(contract)
     base_by = {meta.get("condition", lbl): agg for lbl, agg, meta in baseline_entries}
     lines = [
         f"## Delta vs {base_label}: what the crib sheet (CLAUDE.md) was worth", "",
         f"> {new_label} − {base_label}, per condition per dimension (matched by condition name). "
         f"Positive = {new_label} scored higher; negative = the condition leaned on ambient CLAUDE.md.",
         "",
-        "| condition | " + " | ".join(_DIM_LABELS[d] for d in dims) + " | overall |",
+        "| condition | " + " | ".join(labels[d] for d in dims) + " | overall |",
         "|" + "---|" * (len(dims) + 2),
     ]
     for lbl, agg, meta in new_entries:
@@ -366,14 +373,14 @@ def render_delta_table_md(new_entries: list[tuple[str, dict, dict]],
     return "\n".join(lines)
 
 
-def write_reports(out_dir, records: list[dict], metadata: dict) -> dict:
+def write_reports(out_dir, records: list[dict], metadata: dict, contract=None) -> dict:
     """Write summary.md + scores.json into out_dir. Returns the aggregate dict."""
     from pathlib import Path
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    agg = aggregate(records)
-    (out / "summary.md").write_text(render_summary_md(agg, metadata))
+    agg = aggregate(records, contract)
+    (out / "summary.md").write_text(render_summary_md(agg, metadata, contract))
     (out / "scores.json").write_text(
         json.dumps({"metadata": metadata, "aggregate": agg, "runs": records}, indent=2, sort_keys=True)
     )

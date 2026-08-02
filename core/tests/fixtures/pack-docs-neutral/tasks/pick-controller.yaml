@@ -1,0 +1,17 @@
+id: pick-controller
+category: foundational
+job_category: select-hardware
+prompt: >-
+  For a Northwind Controls XR series controller, which catalog number gives 8 MB of user memory?
+ground_truth:
+  catalog_numbers:
+    - XR-8300
+  publication:
+    number: XR-TD001
+    revision: C
+    url: https://library.example.invalid/xr-td001.pdf
+    quote: "XR series controllers: XR-8100 (2 MB), XR-8200 (4 MB), XR-8300 (8 MB)."
+  success_shape: The answer names XR-8300 and cites the technical data publication.
+  common_failure_modes:
+    - Naming XR-8200, which is the 4 MB part one line above it in the same table.
+    - Naming the conformal-coated variant XR-8300-K, which is a different orderable part.

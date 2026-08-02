@@ -16,24 +16,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import answer_block
+from . import answer_block  # noqa: F401 (kept for callers importing it from here)
 from .archive import reconcile_runs
+from .contract import API_CONTRACT, contract_for, score_fields
+from .contract import score_response as _score_response
 from .pack import Pack
 from .report import write_reports
-from .scorer import DIMENSIONS, format_failure_score, score_task
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
-def score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None):
+def score_response(task: dict, raw_text: str, base_prefix: list[str] | None = None,
+                   contract=None):
     """Parse + score one archived raw response. A format failure is a distinct outcome, never zeroed.
 
-    Returns (score, parse_result) so the caller can record an ADR-0014 repair.
+    Returns (score, parse_result) so the caller can record an ADR-0014 repair. `contract` defaults
+    to the API contract (ADR-0044), so every existing caller is unchanged.
     """
-    parsed = answer_block.parse(raw_text)
-    if parsed.is_failure:
-        return format_failure_score(task["id"], parsed.failure.reason), parsed
-    return score_task(task, parsed.summary, base_prefix), parsed
+    return _score_response(task, raw_text, contract or API_CONTRACT, base_prefix)
 
 
 def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = None,
@@ -46,18 +46,19 @@ def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = No
     if not files:
         raise FileNotFoundError(f"no run files in {runs_dir}")
     raw_records = [json.loads(f.read_text()) for f in files]
+    contract = contract_for(pack)
     tasks_by_id = pack.tasks_by_id()
     records: list[dict] = []
     for rr in raw_records:
         task = tasks_by_id.get(rr["task_id"])
         rec = dict(rr)
         if task is not None:
-            score, parsed = score_response(task, rr.get("raw_response", ""), pack.base_prefix_segments)
+            score, parsed = score_response(task, rr.get("raw_response", ""),
+                                           pack.base_prefix_segments, contract)
             rec["format_failure"] = score.format_failure
             rec["failure_reason"] = score.failure_reason
-            rec["dimensions"] = {dm: (score.dim(dm).score if score.dim(dm) else None)
-                                 for dm in DIMENSIONS}
-            rec["endpoint_matches"] = score.endpoint_matches
+            rec.pop("exhibit", None)   # re-decided below, for the ADR-0014 reason given further on
+            rec.update(score_fields(score, contract))
             # Clear before re-deciding: `dict(rr)` carries the archived value forward, so a
             # conditionally-set key would otherwise survive a rebuild in which the repair no
             # longer fires — a stale `true` that could never be cleared (ADR-0014).
@@ -113,7 +114,7 @@ def rebuild_report(results_dir: str | Path, pack: Pack, *, note: str | None = No
             metadata[carried] = prior[carried]
     if note:
         metadata["rebuild_note"] = note
-    agg = write_reports(d, records, metadata)
+    agg = write_reports(d, records, metadata, contract)
 
     # ADR-0033. Every value this function just recomputed is now in scores.json and nowhere else; the
     # run records still carry whatever the scorer said the day the grid ran. `cmd_run` resumes a grid

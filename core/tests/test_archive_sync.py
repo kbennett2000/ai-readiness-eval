@@ -202,6 +202,10 @@ def test_every_field_a_live_run_writes_is_classified():
 
     class _Score:
         format_failure, failure_reason, endpoint_matches = False, None, []
+        # ADR-0044. Non-empty on purpose: the field is written CONDITIONALLY, so a stub that left it
+        # empty would exercise the branch where it never appears and this guard would pass without
+        # ever seeing it — which is the whole failure mode the guard exists to catch.
+        exhibit = {"publication": "ABC-XX001"}
 
         def dim(self, _d):
             return None
