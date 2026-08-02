@@ -125,6 +125,100 @@ def check_task(task: dict, base_prefix: list[str] | None = None, contract=None) 
     return control
 
 
+def dimension_coverage(pack: Pack, contract, task_controls: list[TaskControl]) -> TaskControl:
+    """Does every dimension this contract declares have at least one task? (ADR-0045)
+
+    THE CONVERSE OF THE ROUND-TRIP CONTROL, AND IT HAD TO BE ASKED SEPARATELY. `check_task` asks
+    whether each TASK can score something; a task whose every dimension is n/a blocks there. Nothing
+    asked whether each DIMENSION has a task, so a pack could declare three dimensions, exercise two,
+    and publish an overall that is the mean of two while its card, its contract and its results table
+    all said three. That is what happened (public #81), and every gate passed.
+
+    It is the vacuous-green shape this project keeps closing, one level up: the existing guards are
+    about an empty ROW, and this is the same fault about an empty COLUMN. Harder to see, too — the
+    cell reads `n/a`, a word this project uses legitimately and often.
+
+    A pack may declare a dimension unexercised, but only in writing. The reason is the whole point:
+    "this vendor publishes no firmware revision" is a legitimate finding a reviewer can check and
+    disagree with, and silence is not. Same bargain as `short_text_ok` (ADR-0021) and
+    `auth_flow_not_corroborable` (ADR-0041).
+
+    A STALE DECLARATION BLOCKS TOO, and that direction matters more than it looks: a pack that later
+    adds a firmware task keeps a pack.yaml saying it has none, and the next reader believes the file.
+
+    TWO SEVERITIES, AND THE SPLIT IS THE ARGUMENT.
+
+    * A dimension with no task and no declaration is COHORT-SCOPED (`contract.coverage_blocks`).
+      Running this gate over every pack on disk for the first time found the condition in 13 of 18,
+      so blocking every cohort would have failed eleven already-published packs over something this
+      cycle is not repairing. `docs` blocks; `api` warns, with the count recorded in ADR-0045 and
+      each pack filed. A warning that names the dimension is still the thing that was missing.
+    * A DECLARATION that is wrong — an unknown name, a blank reason, or one contradicted by a task —
+      blocks in EVERY cohort. Those exist only because a pack opted in, so no existing pack is
+      touched, and a false statement in a pack file is worse than the silence it replaced.
+    """
+    declared = dict(getattr(pack, "unexercised_dimensions", None) or {})
+    scored = [c for c in task_controls if c.task_id != "(suite)"]
+    exercised = {
+        d for d in contract.dimensions
+        if any(d not in c.na_dimensions for c in scored)
+    }
+    problems: list[str] = []       # blocking
+    coverage: list[str] = []       # blocking only where `contract.coverage_blocks`
+    notes: list[str] = []
+
+    unknown = sorted(set(declared) - set(contract.dimensions))
+    if unknown:
+        problems.append(
+            f"unexercised_dimensions names {', '.join(unknown)}, which the '{contract.name}' "
+            f"contract does not declare (its dimensions are {', '.join(contract.dimensions)})"
+        )
+
+    if not scored:
+        problems.append("the pack has no tasks, so no dimension can be exercised by one")
+
+    for dim in contract.dimensions:
+        reason = str(declared.get(dim, "")).strip()
+        if dim in exercised:
+            if dim in declared:
+                problems.append(
+                    f"pack.yaml declares '{dim}' unexercised, but a task does exercise it — a stale "
+                    "declaration is a false statement about the pack, so it blocks rather than "
+                    "being ignored"
+                )
+            continue
+        if dim not in declared:
+            coverage.append(
+                f"no task exercises '{dim}', which the '{contract.name}' contract declares and the "
+                "overall is a mean over. Add a task, or declare it in pack.yaml under "
+                "`unexercised_dimensions` with a written reason a reviewer can disagree with"
+            )
+        elif not reason:
+            problems.append(
+                f"'{dim}' is declared unexercised with no written reason. The reason is what makes "
+                "the tolerance reviewable; a bare key grants it for free"
+            )
+        else:
+            # Echoed, not merely accepted: a declaration filed where nobody reads it is the decay
+            # mode ADR-0015 exists to catch.
+            notes.append(f"'{dim}' unexercised by declaration — {reason}")
+
+    if getattr(contract, "coverage_blocks", False):
+        problems += coverage
+    else:
+        notes += [f"WARNING (advisory for the '{contract.name}' cohort): {c}" for c in coverage]
+
+    n = len(exercised)
+    if not problems:
+        notes.append(
+            f"{n} of {len(contract.dimensions)} declared dimension(s) exercised by a task"
+            + ("" if n == len(contract.dimensions) else
+               f"; every published overall for this pack is a mean over those {n}")
+        )
+    return TaskControl(task_id="(dimension-coverage)", ok=not problems,
+                       problems=problems, notes=notes)
+
+
 def check_pack(pack: Pack) -> list[TaskControl]:
     """Round-trip every task in a pack. Never raises: a broken task becomes a reported problem.
 
@@ -155,6 +249,8 @@ def check_pack(pack: Pack) -> list[TaskControl]:
                 task_id=str(task.get("id") or "(unnamed task)"), ok=False,
                 problems=[f"round-trip raised {type(exc).__name__}: {exc}"],
             ))
+
+    controls.append(dimension_coverage(pack, contract, controls))
 
     # A pack that declares published surfaces (ADR-0037) must classify its OWN ground truth as the
     # surface it says it measures. Same register as the round-trip above and for the same reason: an

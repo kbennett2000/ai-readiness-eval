@@ -24,7 +24,8 @@ measured and never in how honestly it is measured.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import partial
 from typing import Callable
 
 from . import answer_block, docs_answer, docs_scorer, prompt, roundtrip_api, scorer, taxonomy
@@ -123,6 +124,17 @@ class AnswerContract:
     #: Whether a truncated-away ground-truth value BLOCKS the pipeline or merely warns. See
     #: `factory.check_truncation` for the argument; it is a property of the cohort, not of a pack.
     truncation_blocks: bool = False
+    #: Whether a declared dimension that NO task exercises blocks the pipeline or is reported as a
+    #: warning (ADR-0045). Cohort-scoped for a measured reason, not a convenient one: when the gate
+    #: was first run over every pack on disk, 13 of 18 already had such a dimension, so blocking the
+    #: api cohort would have failed eleven published packs over a pre-existing condition this cycle
+    #: is not repairing. The count is in ADR-0045 and each pack is filed. `docs` blocks from the
+    #: start, because it has one measured pack and the next one is being authored now.
+    coverage_blocks: bool = False
+    #: Keys a PACK declared as unscored observations (ADR-0045), bound by `contract_for`. Empty on
+    #: every base contract. These are recorded per run and are structurally incapable of scoring:
+    #: they are not in `dimensions`, so no aggregate, table or overall can reach them.
+    observations: tuple[str, ...] = ()
     notes: str = field(default="")
 
 
@@ -168,6 +180,7 @@ DOCS_CONTRACT = AnswerContract(
     # A docs answer IS the value the manual states, so a value the budget cropped away is not a
     # harder question — it is an unanswerable one. See `factory.check_truncation`.
     truncation_blocks=True,
+    coverage_blocks=True,
     notes="Three dimensions over discrete engineering values published as manuals (ADR-0044).",
 )
 
@@ -224,4 +237,47 @@ def contract_for(pack) -> AnswerContract:
             f"answer contract (known: {known}). A cohort is added in core with an ADR, never "
             f"assumed from a pack."
         )
-    return CONTRACTS[name]
+    return bind_observations(CONTRACTS[name], getattr(pack, "unscored_observations", None))
+
+
+def bind_observations(base: AnswerContract, observations: dict | None) -> AnswerContract:
+    """Return `base` with a pack's declared unscored observations bound in (ADR-0045).
+
+    Returns `base` ITSELF when a pack declares none — identity, not a copy — so every pack that
+    predates this field keeps the exact contract object it had, and `contract is API_CONTRACT`
+    stays true for the whole API cohort.
+
+    A declared key that collides with a scored dimension or with a contract key raises, because the
+    two failure modes a silent overwrite would produce are both invisible: a dimension quietly fed
+    from an unscored channel, or an observation quietly scored. Raised as `KeyError` so the
+    round-trip gate reports it as a written block rather than crashing the dispatcher.
+    """
+    keys = tuple(str(k) for k in (observations or {}))
+    if not keys:
+        return base
+    if base.name != "docs":
+        raise KeyError(
+            f"cohort '{base.name}' has no unscored-observation channel, but the pack declares "
+            f"{', '.join(keys)}. The channel exists for the docs contract only (ADR-0045); adding "
+            "it to another cohort is an ADR, not a pack field."
+        )
+    clash = [k for k in keys if k in base.dimensions or k in docs_answer.KEYS]
+    if clash:
+        raise KeyError(
+            f"unscored_observations names {', '.join(sorted(clash))}, which the contract already "
+            "defines. An observation is recorded and never scored, so a name that collides with a "
+            "scored dimension or a contract key would make one silently stand in for the other."
+        )
+    blank = [k for k in keys if not str((observations or {})[k]).strip()]
+    if blank:
+        raise KeyError(
+            f"unscored_observations names {', '.join(sorted(blank))} with no written reason. The "
+            "reason is what a reviewer disagrees with; a bare key is a value class arriving in the "
+            "archive without anyone having decided it should."
+        )
+    return replace(
+        base,
+        observations=keys,
+        build_prompt=partial(docs_answer.build_prompt, observations=dict(observations or {})),
+        parse=partial(docs_answer.parse, observation_keys=keys),
+    )

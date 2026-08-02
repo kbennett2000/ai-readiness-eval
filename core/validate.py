@@ -189,6 +189,16 @@ def build_docs_schema() -> dict:
                             "quote": {"type": "string", "minLength": 1},
                         },
                     },
+                    # A pack's declared UNSCORED observations (ADR-0045): {key: expected value}.
+                    # Values are strings for the same reason the versions above are — a bare
+                    # `1250.0` is a YAML float and would be rewritten before anyone read it. WHICH
+                    # keys are legal is checked by the contract against `unscored_observations`,
+                    # not here, because only the pack knows what it declared.
+                    "observations": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": {"type": "string", "minLength": 1},
+                    },
                     "success_shape": {"type": "string", "minLength": 1},
                     "common_failure_modes": {"type": "array", "minItems": 1},
                 },

@@ -25,7 +25,7 @@ TWO THINGS THIS CONTRACT DOES DIFFERENTLY, BOTH DELIBERATE AND BOTH RECORDED IN 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
@@ -74,9 +74,35 @@ Output the `answer-summary` block exactly once, as the very last thing in your r
 """
 
 
-def build_prompt(task_prompt: str) -> str:
-    """Return the task prompt with the docs-cohort answer contract appended."""
-    return task_prompt.rstrip() + "\n" + DOCS_ANSWER_BLOCK_SUFFIX
+def observation_lines(observations: dict | None) -> str:
+    """The block-suffix fragment for a pack's declared unscored observations (ADR-0045).
+
+    Empty string when a pack declares none, which is what keeps the already-measured pack's prompt
+    BYTE-IDENTICAL. ADR-0014 established that a prompt cannot be edited retroactively — an archive
+    stops being an answer to the prompt that produced it — so this channel had to be additive or
+    not exist.
+    """
+    keys = [str(k) for k in (observations or {})]
+    if not keys:
+        return ""
+    width = max(len(k) for k in keys) + 2
+    lines = "".join(
+        f"  {k + ':':<{width}}# {str((observations or {})[k]).strip().splitlines()[0]}\n"
+        for k in keys
+    )
+    return (
+        "\nAlso report, in the same block:\n\n" + lines +
+        "\nThese are recorded for reference and are NOT part of how the answer is judged. "
+        "Answer them as accurately as you can, and write null if you cannot.\n"
+    )
+
+
+def build_prompt(task_prompt: str, observations: dict | None = None) -> str:
+    """Return the task prompt with the docs-cohort answer contract appended.
+
+    `observations` defaults to None, so every existing caller renders the frozen suffix unchanged.
+    """
+    return task_prompt.rstrip() + "\n" + DOCS_ANSWER_BLOCK_SUFFIX + observation_lines(observations)
 
 
 @dataclass
@@ -87,6 +113,9 @@ class DocsAnswer:
     firmware_version: str | None
     software_version: str | None
     publication: str | None
+    #: {declared observation key: literal text}. Recorded, never scored (ADR-0045). Empty for a
+    #: pack that declares none, which is every pack measured before that ADR.
+    observations: dict = field(default_factory=dict)
 
 
 def _scalar(node) -> str | None:
@@ -115,7 +144,7 @@ def _sequence(node) -> list[str]:
     return [s for s in out if s]
 
 
-def parse(response_text: str) -> ParseResult:
+def parse(response_text: str, observation_keys: tuple = ()) -> ParseResult:
     """Extract and validate the docs answer-summary block from a model response.
 
     Shares `ParseResult` / `FormatFailure` with the API contract so every caller that distinguishes
@@ -150,13 +179,21 @@ def parse(response_text: str) -> ParseResult:
             failure=FormatFailure("answer-summary block is not a YAML mapping", block_text)
         )
 
+    # An observation key is read only if the PACK declared it. A model volunteering an undeclared
+    # key is ignored rather than recorded: what gets archived has to be what was asked for, or the
+    # exhibit becomes a place data arrives without a decision.
+    extra = tuple(str(k) for k in observation_keys)
     fields: dict[str, object] = {}
     for key_node, value_node in root.value:
         key = _scalar(key_node)
-        if key in KEYS:
+        if key in KEYS or key in extra:
             fields[key] = value_node
 
-    if not fields:
+    # Format failure is judged on the CONTRACT's keys alone. An answer carrying only observation
+    # keys did not answer the question it was scored on, and calling that well-formed would let a
+    # declared observation rescue a block from the failure count — a pack improving its own
+    # format-failure rate by declaring an extra key is exactly the wrong incentive.
+    if not any(k in fields for k in KEYS):
         return ParseResult(
             failure=FormatFailure(
                 "answer-summary block carries none of the contract's keys "
@@ -169,6 +206,7 @@ def parse(response_text: str) -> ParseResult:
         firmware_version=_scalar(fields.get("firmware_version")),
         software_version=_scalar(fields.get("software_version")),
         publication=_scalar(fields.get("publication")),
+        observations={k: _scalar(fields.get(k)) for k in extra},
     )
     return ParseResult(summary=summary, block_text=block_text)
 
@@ -186,5 +224,8 @@ def render_block(summary: DocsAnswer, *, preamble: str = "") -> str:
         "software_version": summary.software_version,
         "publication": summary.publication,
     }
+    # Rendered after the contract's keys, so a pack declaring none produces a byte-identical block
+    # and the round-trip control's inverse property holds for the observations too.
+    block.update({str(k): v for k, v in (summary.observations or {}).items()})
     body = yaml.safe_dump(block, sort_keys=False, default_flow_style=False, allow_unicode=True)
     return f"{preamble}```answer-summary\n{body}```\n"
