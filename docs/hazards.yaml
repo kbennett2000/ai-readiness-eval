@@ -2649,9 +2649,11 @@ entries:
       off. Repairing them in-cycle would mean adding tasks to twelve published packs on the strength
       of a gate written the same day, which MOVES numbers — the opposite of what this is for.
     fix_queued_to: |
-      Filed per pack. The display half — printing the scored-dimension count beside every published
-      overall, so an n/a column travels with the number instead of being inferable only from a gate
-      log — is public issue #73, which stays open and is deliberately not folded into ADR-0045.
+      Issue #82, which carries the per-pack measurement and the two honest resolutions (a real task
+      and a re-run, or a written `unexercised_dimensions` reason). The display half — printing the
+      scored-dimension count beside every published overall, so an n/a column travels with the
+      number instead of being inferable only from a gate log — is issue #73, which stays open and is
+      deliberately not folded into ADR-0045.
   - id: the-docs-dimension-set-was-derived-from-one-vendors-shape
     adr: adr-0045-a-dimension-with-no-task.md
     hazard: |
@@ -2667,10 +2669,10 @@ entries:
       pack's tasks for that reason). No test can decide whether a dimension set generalises; only
       more measured vendors can.
     fix_queued_to: |
-      ADR-0045 decision 4 forecloses revising on one vendor and states the bar: at least two
-      vendors' MEASURED material. The unscored-observation channel (decision 3) is what makes that
-      evidence collectible in the meantime — recorded, reported, never scored — so the argument,
-      when it comes, rests on data rather than on intuition.
+      Issue #83. ADR-0045 decision 4 forecloses revising on one vendor and states the bar: at least
+      two vendors' MEASURED material. The unscored-observation channel (decision 3) is what makes
+      that evidence collectible in the meantime — recorded, reported, never scored — so the
+      argument, when it comes, rests on data rather than on intuition.
   - id: an-unscored-observation-is-one-adr-away-from-being-a-score
     adr: adr-0045-a-dimension-with-no-task.md
     hazard: |
