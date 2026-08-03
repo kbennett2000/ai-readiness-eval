@@ -2745,3 +2745,91 @@ entries:
       armed suite and imports the generator from here, so the sentence cannot drift from the code
       even though this file cannot watch it happen. The same limit is already recorded for the
       prospect tokens and the docs manifests.
+
+  # ------------------------------------------------------------------------------ ADR-0047 ---
+
+  - id: a-well-known-path-sweep-is-meaningless-without-its-baseline
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      A host that answers HTTP 200 for every path answers 200 at `/openapi.json` too. A well-known
+      path sweep run against such a host reports a specification at every path it probes, and the
+      report is correctly formatted, plausible, and false. It was one unexecuted habit away from
+      being published in a card: the prior recon's ADR records the exact sentence it would have
+      printed. The hazard is not that the check is hard — it is that the check is EASY to skip and
+      nothing noticed when it was.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_the_probe_cannot_be_called_without_a_baseline
+      - core/tests/test_controls.py::test_a_host_that_200s_everything_reports_no_specification
+      - core/tests/test_controls.py::test_without_an_established_baseline_a_spec_is_reported_as_unverified
+      - core/tests/test_controls.py::test_a_host_that_answers_two_bad_paths_differently_establishes_no_baseline
+      - core/tests/test_controls.py::test_run_controls_establishes_the_baseline_before_it_sweeps
+
+  - id: a-control-can-be-relabelled-without-being-obeyed
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      The robots rule inside the sweep is a CONDUCT claim that reaches a published card, and the
+      difference between honouring it and labelling it is invisible to any assertion about the
+      returned verdict. A refactor that kept the `disallowed` label while still issuing the request
+      would leave every test green and every card wrong about what this project did.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_a_disallowed_path_is_recorded_and_never_requested
+
+  - id: a-probe-count-says-nothing-about-what-was-never-probed
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      `paths_probed: 15, specs_found: 0` reads as a fact about a vendor and is a fact about a run:
+      one user agent, one date, one list of paths, and only the paths robots permitted. A
+      `disallowed` verdict and an `honest-404` are different in the record and identical in any
+      summary that adds them up — so a host hiding a real specification behind a Disallowed path
+      and a host publishing none produce the same headline number.
+    status: ungated
+    ungated_reason: |
+      No test can stop a reader summing two verdict counts, and no test can search a place the
+      instrument is forbidden to look. The generated block keeps the verdicts separate and names the
+      directive verbatim, which is the most a machine can do here; the rest is a claim about
+      inference, which is what ADR-0038 decision 6 exists to state in prose.
+    fix_queued_to: |
+      Not queued, and probably not queueable. The nearest useful thing is a convention that any
+      count of "paths serving no specification" is published beside its `disallowed` count rather
+      than folded into it, which ADR-0047's "what this does not do" states and no gate enforces.
+
+  - id: a-fetch-path-can-report-garbage-as-substantial-text
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      `urllib` sends no `Accept-Encoding` and does not decompress, but a host or CDN may compress
+      anyway — and one does. Undecompressed bytes decoded with `errors="replace"` produce U+FFFD,
+      and the failure ADDS length: 11,569 B of gzip became 20,176 B of replacement characters, which
+      cleared the 200 B `MIN_TEXT_BYTES` floor by two orders of magnitude. Every length-based guard
+      in this project is defeated by it, in the direction that looks like success. It was found by
+      the ADR-0047 reachability control CERTIFYING ITS OWN FAILURE — the probe whose job is to prove
+      the fetcher works reported 20 KB of "substantial text" from a host it had failed to read.
+      Zero of 143 cached cohort pages are affected, so no published number moves; the hazard is what
+      the next docs host that compresses would have done.
+    status: gated
+    gated_by:
+      - core/tests/test_docs_fetch.py::test_a_gzipped_page_is_decompressed_before_extraction
+      - core/tests/test_docs_fetch.py::test_a_body_that_does_not_survive_decoding_is_an_error_not_a_page
+      - core/tests/test_docs_fetch.py::test_a_stray_replacement_character_does_not_condemn_a_real_page
+      - core/tests/test_controls.py::test_a_gzipped_body_is_decompressed_rather_than_decoded_as_garbage
+      - core/tests/test_controls.py::test_the_transport_decompresses_a_declared_content_encoding
+      - core/tests/test_controls.py::test_an_undecodable_reachability_control_is_inconclusive_not_a_pass
+
+  - id: the-controls-do-not-honour-a-crawl-delay
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      `core/docs_fetch.py` paces itself from a pack's declared delay (ADR-0009). `core/controls.py`
+      does not: it issues its 17 requests as fast as the host answers, and a host declaring
+      `Crawl-delay: 10` in the group we fall under gets a burst instead. The first target measured
+      with these controls was paced by a wrapper around the injected `get`, by hand — which is
+      precisely the "run it by hand and remember to" shape this ADR exists to end, reintroduced one
+      function further out.
+    status: ungated
+    ungated_reason: |
+      No test can observe a real host's crawl delay, and a unit test asserting that `run_controls`
+      sleeps would pin an implementation rather than the conduct. The honest fix is a `delay_seconds`
+      parameter read from the host's own robots.txt, which `core.robots` already parses and discards.
+    fix_queued_to: |
+      Issue #87. Recorded the same cycle it was noticed rather than after a second hand-paced recon,
+      because the hand-pacing worked and that is exactly what makes it easy to keep doing.

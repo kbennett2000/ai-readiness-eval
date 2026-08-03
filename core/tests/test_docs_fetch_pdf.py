@@ -66,6 +66,9 @@ class _Resp:
         self.headers = type("H", (), {
             "get_content_charset": lambda _s: "utf-8",
             "get_content_type": lambda _s, ct=content_type: ct,
+            # A real response object has this; the stub grew it when `_fetch` started reading
+            # Content-Encoding (ADR-0047). Returning the default means "no transfer encoding".
+            "get": lambda _s, k, d=None: d,
         })()
 
     def read(self):

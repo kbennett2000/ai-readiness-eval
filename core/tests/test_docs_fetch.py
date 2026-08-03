@@ -133,7 +133,10 @@ def test_request_carries_the_user_agent_header(monkeypatch):
 
     class _Resp:
         headers = type("H", (), {"get_content_charset": lambda self: "utf-8",
-                                 "get_content_type": lambda self: "text/html"})()
+                                 "get_content_type": lambda self: "text/html",
+                                 # A real response object has this; the stub grew it when _fetch
+                                 # started reading Content-Encoding (ADR-0047).
+                                 "get": lambda self, k, d=None: d})()
 
         def read(self):
             return b"<p>x</p>"
@@ -182,7 +185,10 @@ def test_empty_body_on_a_success_status_is_an_error_not_a_snapshot(monkeypatch):
     class _Resp:
         status = 202
         headers = type("H", (), {"get_content_charset": lambda self: "utf-8",
-                                 "get_content_type": lambda self: "text/html"})()
+                                 "get_content_type": lambda self: "text/html",
+                                 # A real response object has this; the stub grew it when _fetch
+                                 # started reading Content-Encoding (ADR-0047).
+                                 "get": lambda self, k, d=None: d})()
 
         def read(self):
             return b""
@@ -424,3 +430,77 @@ def test_the_floor_is_a_floor_and_not_a_haircut(tmp_path, monkeypatch):
                                        sleep=lambda s: None)
         assert summary["t1"][0][2].startswith(expected), \
             f"{len(html_to_text(html).encode())} B should be {expected}"
+
+
+def test_a_gzipped_page_is_decompressed_before_extraction(monkeypatch):
+    """The pack fetch path had the same hole as the control (ADR-0047).
+
+    No cohort page was affected — 0 of 143 cached snapshots carry replacement characters — so this
+    is a regression test for a trap, not a repair of a published number. The trap is real: the next
+    docs host that compresses without being asked would have had its documentation injected as
+    mojibake, and every downstream gate would have seen a large, clean-hashing snapshot.
+    """
+    import gzip
+
+    body = b"<h1>Accounts</h1><p>" + b"documented prose. " * 30 + b"</p>"
+
+    class _Resp:
+        status = 200
+        headers = type("H", (), {
+            "get_content_charset": lambda self: "utf-8",
+            "get_content_type": lambda self: "text/html",
+            "get": lambda self, k, d=None: "gzip" if k == "Content-Encoding" else d})()
+
+        def read(self):
+            return gzip.compress(body)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(docs_fetch.urllib.request, "urlopen", lambda req, timeout=30: _Resp())
+    doc = docs_fetch._fetch("https://d/accounts")
+    assert "Accounts" in doc.text and "�" not in doc.text
+
+
+def test_a_body_that_does_not_survive_decoding_is_an_error_not_a_page(monkeypatch):
+    """Mojibake ADDS bytes, so MIN_TEXT_BYTES can never catch it. This is the check that can."""
+    import gzip
+
+    class _Resp:
+        status = 200
+        headers = type("H", (), {
+            "get_content_charset": lambda self: "utf-8",
+            "get_content_type": lambda self: "text/html",
+            # The host compressed the body and did NOT say so — nothing can undo that, so the
+            # decode guard is the only thing standing between garbage and a committed snapshot.
+            "get": lambda self, k, d=None: d})()
+
+        def read(self):
+            return gzip.compress(b"<p>" + b"real documentation. " * 200 + b"</p>")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(docs_fetch.urllib.request, "urlopen", lambda req, timeout=30: _Resp())
+    import pytest
+    with pytest.raises(docs_fetch.UndecodableDocument):
+        docs_fetch._fetch("https://d/accounts")
+
+
+def test_an_unhandled_encoding_is_left_alone_rather_than_guessed_at():
+    assert docs_fetch._decompress(b"abc", "exotic-v9") == b"abc"
+    assert docs_fetch._decompress(b"abc", None) == b"abc"
+    assert docs_fetch._decompress(b"abc", "identity") == b"abc"
+
+
+def test_a_stray_replacement_character_does_not_condemn_a_real_page():
+    """The guard must not fire on the ordinary case: one bad byte in a long code sample."""
+    raw = ("<p>" + "documented prose. " * 200 + "\udcff</p>").encode("utf-8", "surrogateescape")
+    text = docs_fetch._decode(raw, "utf-8", "https://d/x")
+    assert "documented prose" in text
