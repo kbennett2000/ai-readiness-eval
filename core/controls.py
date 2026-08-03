@@ -33,7 +33,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from . import robots as robots_mod
-from .docs_fetch import MIN_TEXT_BYTES, pdf_to_text
+from .docs_fetch import MAX_REPLACEMENT_RATIO, MIN_TEXT_BYTES, _decompress, pdf_to_text
 from .html_text import html_to_text
 
 USER_AGENT = robots_mod.USER_AGENT
@@ -207,10 +207,12 @@ def _http_probe(url: str, user_agent: str = USER_AGENT, timeout: int = 30):
     req = urllib.request.Request(url, headers={"User-Agent": user_agent})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return (getattr(resp, "status", None), resp.read(),
+            return (getattr(resp, "status", None),
+                    _decompress(resp.read(), resp.headers.get("Content-Encoding")),
                     (resp.headers.get_content_type() or "").lower())
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read(), (exc.headers.get_content_type() or "").lower()
+        return (exc.code, _decompress(exc.read(), exc.headers.get("Content-Encoding")),
+                (exc.headers.get_content_type() or "").lower())
 
 
 def _probe(url: str, *, user_agent: str = USER_AGENT, get=_http_probe) -> Response:
@@ -223,6 +225,14 @@ def _probe(url: str, *, user_agent: str = USER_AGENT, get=_http_probe) -> Respon
         return Response(url=url, status=status, raw_bytes=len(raw), text=pdf_to_text(raw),
                         content_type=content_type, raw_text="")
     decoded = raw.decode("utf-8", errors="replace")
+    # A body this module could not decode is an ERROR, not a thin page. Reported rather than raised,
+    # because a control's job is to describe what happened; but never reported as text, because the
+    # failure ADDS bytes and would otherwise clear the ADR-0021 floor as "substantial documentation".
+    if decoded and decoded.count("�") / len(decoded) > MAX_REPLACEMENT_RATIO:
+        return Response(url=url, status=status, raw_bytes=len(raw), text="",
+                        content_type=content_type, raw_text="",
+                        error=f"undecodable: {len(raw)} B is mostly replacement characters "
+                              f"(compressed or mis-declared, not text)")
     return Response(url=url, status=status, raw_bytes=len(raw), text=html_to_text(decoded),
                     content_type=content_type, raw_text=decoded)
 

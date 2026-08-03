@@ -337,3 +337,78 @@ def test_run_controls_establishes_the_baseline_before_it_sweeps():
     well_known = [u for u in get.calls if "/openapi.json" in u]
     assert nonsense and well_known
     assert get.calls.index(well_known[0]) > get.calls.index(nonsense[-1])
+
+
+# --- the bug this cycle found, in both fetch paths ---------------------------------------------- #
+
+def _gzipped(body: bytes) -> bytes:
+    import gzip
+    return gzip.compress(body)
+
+
+def test_a_gzipped_body_is_decompressed_rather_than_decoded_as_garbage():
+    """The control that certified its own failure (ADR-0047).
+
+    A host returned `Content-Encoding: gzip` without being asked. Nothing decompressed it, and
+    11,569 B of gzip decoded with errors="replace" into 20,176 B of U+FFFD — which cleared the
+    200 B floor by two orders of magnitude and was reported as "substantial text", from the very
+    control whose job is to prove the fetcher works.
+    """
+    import gzip as _gzip
+
+    payload = REAL_PAGE
+    calls = []
+
+    def get(url, user_agent=controls.USER_AGENT, timeout=30):
+        calls.append(url)
+        return 200, _gzip.compress(payload), "text/html"
+
+    # `_probe` receives already-decompressed bytes from `_http_probe`; this stub stands in for a
+    # transport that did NOT decompress, which is the state the bug was found in.
+    r = controls._probe("https://example.test/", get=get)
+    assert r.error and "replacement characters" in r.error
+    assert r.text == "", "undecodable bytes must never be reported as text"
+    assert r.below_text_floor
+
+
+def test_the_transport_decompresses_a_declared_content_encoding():
+    """`_http_probe` itself must undo the encoding, so `_probe` sees real bytes."""
+    import gzip as _gzip
+
+    class _Resp:
+        status = 200
+        headers = type("H", (), {
+            "get_content_type": lambda self: "text/html",
+            "get": lambda self, k, d=None: "gzip" if k == "Content-Encoding" else d})()
+
+        def read(self):
+            return _gzip.compress(REAL_PAGE)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    import urllib.request as _u
+    real = _u.urlopen
+    try:
+        _u.urlopen = lambda req, timeout=30: _Resp()
+        status, raw, ctype = controls._http_probe("https://example.test/")
+    finally:
+        _u.urlopen = real
+    assert raw == REAL_PAGE, "the declared Content-Encoding was not undone"
+
+
+def test_an_undecodable_reachability_control_is_inconclusive_not_a_pass():
+    """The failure mode exactly: garbage that is LONGER than the floor must not read as a pass."""
+    import gzip as _gzip
+
+    r = controls.reachability_control(
+        "https://unrelated.test/",
+        get=lambda url, user_agent=controls.USER_AGENT, timeout=30: (
+            200, _gzip.compress(b"x" * 40_000), "text/html"))
+    assert r.error is not None
+    report = controls.ControlReport(baseline=controls.Baseline("https://example.test/"),
+                                    reachability=r)
+    assert "INCONCLUSIVE" in controls.as_record(report)["fetcher_control"]["verdict"]

@@ -14,12 +14,14 @@ a client-rendered page will render client-side again in sixty seconds).
 from __future__ import annotations
 
 import datetime
+import gzip
 import hashlib
 import re
 import shutil
 import subprocess
 import time
 import urllib.request
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +47,28 @@ MIN_TEXT_BYTES = 200
 # retry made while throttled appears to restart it. Fewer, longer waits clear it; rapid retries
 # do not. The linear schedule below therefore reaches a 180s gap before giving up.
 MIN_BACKOFF_SECONDS = 60
+
+
+# A decoded body may be this fraction of U+FFFD before it is treated as not-a-document. Replacement
+# characters appear in ordinary pages occasionally (a stray byte in a code sample); a body that is
+# ONE PART IN TWENTY replacement characters was not decoded, it was guessed at.
+MAX_REPLACEMENT_RATIO = 0.05
+
+
+class UndecodableDocument(RuntimeError):
+    """A body that arrived whole and did not survive decoding (ADR-0047).
+
+    Found by a control certifying its own failure: an unrelated host used to prove the fetcher WORKS
+    returned `Content-Encoding: gzip` without being asked, nothing here decompressed it, and 11,569
+    bytes of gzip decoded — with `errors="replace"` — into 20,176 bytes of U+FFFD that cleared the
+    `MIN_TEXT_BYTES` floor by two orders of magnitude and was reported as substantial documentation.
+
+    Both halves are fixed: `_decompress` handles the declared encoding, and this exception catches
+    everything it cannot — brotli without the module, a lying `Content-Encoding`, a mis-declared
+    charset. The floor alone could never have caught it, because the failure ADDS bytes. A quieter
+    guard would have been worse than none: garbage that passes a length check is indistinguishable
+    from prose to every gate downstream of it.
+    """
 
 
 class EmptyDocument(RuntimeError):
@@ -186,13 +210,50 @@ class Document:
     extracted_by: str    # the tool that produced `text`, for the manifest
 
 
+def _decompress(raw: bytes, content_encoding: str | None) -> bytes:
+    """Undo the transfer encoding a host applied, declared or not.
+
+    `urllib` sends no `Accept-Encoding` and does not decompress, but a host or CDN may compress
+    anyway — and one does. An unhandled encoding is left alone rather than guessed at; the
+    replacement-character check below is what catches whatever this cannot.
+    """
+    enc = (content_encoding or "").strip().lower()
+    if not enc or enc == "identity":
+        return raw
+    try:
+        if enc == "gzip":
+            return gzip.decompress(raw)
+        if enc in ("deflate", "zlib"):
+            try:
+                return zlib.decompress(raw)
+            except zlib.error:
+                return zlib.decompress(raw, -zlib.MAX_WBITS)   # raw deflate, no zlib header
+        if enc == "br":
+            import brotli  # optional; absent on a default install
+            return brotli.decompress(raw)
+    except Exception:
+        return raw          # left as received; the decode guard reports it
+    return raw
+
+
+def _decode(raw: bytes, charset: str, url: str) -> str:
+    text = raw.decode(charset, errors="replace")
+    if text:
+        ratio = text.count("�") / len(text)
+        if ratio > MAX_REPLACEMENT_RATIO:
+            raise UndecodableDocument(
+                f"{len(raw)} B decoded as {charset} is {ratio:.0%} replacement characters — the body "
+                f"is compressed or mis-declared, not text ({url})")
+    return text
+
+
 def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> Document:
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         content_type = (resp.headers.get_content_type() or "").lower()
         status = getattr(resp, "status", None)
-        raw = resp.read()
+        raw = _decompress(resp.read(), resp.headers.get("Content-Encoding"))
     if not raw.strip():
         raise EmptyDocument(f"HTTP {status} with an empty body (throttled or non-document response)")
     # The magic bytes are checked as well as the declared type: a literature host that serves its
@@ -200,7 +261,7 @@ def _fetch(url: str, timeout: int = 30, user_agent: str | None = None) -> Docume
     # through the HTML parser and record the result as a page.
     if content_type == "application/pdf" or raw[:5] == b"%PDF-":
         return Document(text=pdf_to_text(raw), kind="pdf", extracted_by=pdf_extractor_version())
-    return Document(text=html_to_text(raw.decode(charset, errors="replace")),
+    return Document(text=html_to_text(_decode(raw, charset, url)),
                     kind="html", extracted_by="core.html_text")
 
 
