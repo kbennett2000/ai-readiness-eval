@@ -641,14 +641,24 @@ def test_the_bounded_name_field_round_trips_through_a_save(tmp_path):
 def test_every_real_opted_in_token_fires_on_its_proper_noun_only(index):
     """Per-token coverage of the REAL list, alongside the mechanism tests above.
 
-    This one is allowed to be empty — opting in is a deliberate per-target choice, so asserting the
-    list is non-empty would make removing the last opted-in target a build failure. The mechanism's
-    own coverage does not depend on this test having anything to iterate, which is what keeps the
-    empty case honest rather than vacuous.
+    The list is legitimately empty when no target has opted in, so this test must handle that — but
+    it must NOT do so by skipping. ADR-0042 armed the guard precisely because a skip reports green,
+    and `tools/assert_guard_ran.py` fails an armed run containing one. The first draft of this test
+    skipped and said so in ADR-0049 as a deliberate decision; CI rejected it, correctly, and the ADR
+    is corrected in place rather than quietly. It passed locally only because this cycle's own queue
+    entry made the list non-empty, while CI clones the packs repo at `main`, where it is not.
+
+    So the empty case asserts the invariant that holds when it is empty, and the run stays honest:
+    every case executes, none is skipped, and nothing is asserted about tokens that do not exist.
     """
     prospects = _require_prospects()
     if not prospects.name_cased_bounded_tokens:
-        pytest.skip("no target has opted a name token into whole-word matching")
+        assert prospects.name_cased_bounded_pattern is None, (
+            "no target declared a whole-word name token, so the bounded pattern must be None; a "
+            "pattern built from an empty list would match either everything or nothing, and both "
+            "are silent failures"
+        )
+        return
     token = prospects.name_cased_bounded_tokens[index]
     assert prospects.name_cased_bounded_pattern.search(f"cycle-37-{token}"), \
         f"bounded token #{index} is listed but never fires"

@@ -123,8 +123,21 @@ ADR-0042 found in a skipped guard.
 
 So the seven rules are exercised against a **synthetic queue driven through the real `_load_prospects`**
 — not a hand-built fixture, which could pass while the loader was broken. Per-token coverage of the real
-list exists too, and is allowed to skip when the list is empty, because asserting non-emptiness there
-would make removing the last opted-in target a build failure.
+list exists too, and does not assert non-emptiness, because that would make removing the last opted-in
+target a build failure.
+
+**A correction, left visible because it was a decision and not a slip.** This decision originally read
+*"and is allowed to skip when the list is empty"*, and the per-token test skipped accordingly. That is
+wrong, and **CI rejected it**: ADR-0042 armed this guard precisely because *a skip reports green*, and
+`tools/assert_guard_ran.py` fails an armed run containing one. Two of this project's own rules were in
+direct contradiction and this ADR shipped the losing side of it.
+
+It passed locally for a reason worth writing down: this cycle's own queue entry made the real list
+non-empty, while **CI clones the packs repo at `main`**, where the entry does not exist until the
+private PR merges. A local green and a CI red were both correct about different trees. The empty case
+now asserts the invariant that holds when it is empty — the compiled pattern must be `None`, since a
+pattern built from an empty alternation matches either everything or nothing and both are silent
+failures — so every case executes and none is skipped.
 
 Every rule was verified by breaking it: the boundary, the `search()` wiring, the clash check, the
 `to_dict` round-trip, the per-token opt-in (by making bounding global), the `_KNOWN` field list, and the
