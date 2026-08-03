@@ -442,3 +442,137 @@ def test_a_refused_host_can_never_report_a_specification():
     assert get.calls == []
     assert {f.verdict for f in findings} == {controls.DISALLOWED}
     assert not [f for f in findings if f.verdict == controls.SPEC]
+
+
+# --- pacing: the delay is derived from the host, not remembered by a cycle (ADR-0048) ---------- #
+
+def _sleeper():
+    """A recording stand-in for `time.sleep`. Conduct is asserted against this call log, which is what
+    makes the hazard entry's objection — that such a test would pin an implementation — not apply."""
+    waits = []
+
+    def sleep(seconds):
+        waits.append(seconds)
+
+    sleep.waits = waits
+    return sleep
+
+
+PACED_ROBOTS = "User-agent: *\nDisallow: /nowhere/\nCrawl-delay: 10\n"
+
+
+def test_the_controls_wait_between_probes_at_the_rate_the_host_declared():
+    """Seventeen requests to one host. The wait is owed BETWEEN them, and the robots.txt retrieval is
+    a request to that same host, so every probe after it owes one — 17 waits, not 16."""
+    sleep = _sleeper()
+    get = _host({})
+    report = controls.run_controls("https://example.test/", get=get, sleep=sleep,
+                                   robots_get=_robots(PACED_ROBOTS), max_total_wait=10_000)
+
+    issued = len(controls.NONSENSE_PATHS) + len(controls.WELL_KNOWN_SPEC_PATHS)
+    assert len(get.calls) == issued
+    assert sleep.waits == [10.0] * issued
+    assert report.pacer.source == controls.DELAY_ROBOTS and report.pacer.seconds == 10.0
+
+
+def test_a_host_that_declares_nothing_is_not_paced():
+    sleep = _sleeper()
+    controls.run_controls("https://example.test/", get=_host({}), sleep=sleep, robots_get=_robots(""))
+    assert sleep.waits == []
+
+
+def test_the_seam_between_the_two_controls_is_paced_too():
+    """One pacer, built once and passed down. Two pacers would each treat their own first request as
+    owing nothing, so the last baseline probe and the first sweep probe would fire back to back — the
+    one gap a per-function pacer structurally cannot see."""
+    sleep = _sleeper()
+    get = _host({})
+    controls.run_controls("https://example.test/", get=get, sleep=sleep,
+                          robots_get=_robots(PACED_ROBOTS), nonsense_paths=("/nope-1", "/nope-2"),
+                          paths=("/openapi.json",), max_total_wait=10_000)
+    assert sleep.waits == [10.0, 10.0, 10.0], "a probe fired without waiting after the one before it"
+
+
+def test_a_refused_path_costs_no_wait_because_no_request_was_made():
+    """Pacing a request nobody issued would be theatre, and would make the record overstate its own
+    conduct. Asserted on BOTH logs: zero fetches and zero waits."""
+    refuse_all = RobotsPolicy(host="example.test", directives=[("disallow", "/")],
+                              source="robots.txt", crawl_delay=10.0)
+    sleep, get = _sleeper(), _host({})
+    baseline = controls.soft_404_baseline("https://example.test/", policy=refuse_all, get=get,
+                                          sleep=sleep)
+    controls.well_known_spec_probe("https://example.test/", baseline=baseline, policy=refuse_all,
+                                   get=get, sleep=sleep)
+    assert get.calls == [] and sleep.waits == []
+
+
+def test_an_explicit_delay_overrides_the_one_the_host_declared():
+    sleep = _sleeper()
+    report = controls.run_controls("https://example.test/", get=_host({}), sleep=sleep,
+                                   robots_get=_robots(PACED_ROBOTS), delay_seconds=0)
+    assert sleep.waits == []
+    assert report.pacer.source == controls.DELAY_EXPLICIT
+    assert any("OVERRIDES" in n for n in report.notes), (
+        "overriding a host's declared rate is a decision and must appear in the record")
+
+
+def test_a_direct_caller_of_the_sweep_is_paced_without_asking_for_it():
+    """The hazard was not that `run_controls` bursts — it was that pacing lived outside the module.
+    A caller reaching straight for the sweep gets the host's rate with no argument of its own."""
+    sleep = _sleeper()
+    get = _host({})
+    controls.well_known_spec_probe("https://example.test/", baseline=controls.Baseline("x"),
+                                   paths=("/openapi.json", "/swagger.json"), get=get, sleep=sleep,
+                                   robots_get=_robots(PACED_ROBOTS))
+    assert sleep.waits == [10.0, 10.0]
+
+
+def test_a_wait_longer_than_the_budget_refuses_before_issuing_any_request():
+    """A host is free to declare an hour. Seventeen probes at that rate is a hang in an unattended
+    cycle, and the tempting repair — pace faster than asked — is the one option this refuses to take.
+    Nothing is requested, so nothing is claimed either way."""
+    sleep, get = _sleeper(), _host({})
+    with pytest.raises(controls.PacingRefused) as exc:
+        controls.run_controls("https://example.test/", get=get, sleep=sleep,
+                              robots_get=_robots("User-agent: *\nDisallow: /x/\nCrawl-delay: 3600\n"))
+    assert get.calls == [] and sleep.waits == []
+    assert "3600" in str(exc.value)
+
+
+def test_the_budget_is_raised_deliberately_or_not_at_all():
+    sleep, get = _sleeper(), _host({})
+    report = controls.run_controls("https://example.test/", get=get, sleep=sleep,
+                                   paths=("/openapi.json",), nonsense_paths=("/nope",),
+                                   robots_get=_robots("User-agent: *\nDisallow: /x/\nCrawl-delay: 400\n"),
+                                   max_total_wait=1_000)
+    assert sleep.waits == [400.0, 400.0]
+    assert report.pacer.waited == 800.0
+
+
+def test_the_record_cannot_overstate_the_pacing_that_happened():
+    """`delay_source` is the checkable half of the claim: 'we waited' and 'we waited because the host
+    asked us to' are different statements, and a record carrying only the first is not evidence."""
+    sleep = _sleeper()
+    paced = controls.as_record(controls.run_controls(
+        "https://example.test/", get=_host({}), sleep=sleep, robots_get=_robots(PACED_ROBOTS),
+        paths=("/openapi.json",), nonsense_paths=("/nope",)))
+    assert paced["pacing"] == {"delay_seconds": 10.0, "delay_source": controls.DELAY_ROBOTS,
+                               "requests_issued": 3, "total_waited_seconds": 20.0}
+
+    # A DIFFERENT host: policy is cached per (host, agent), so reusing example.test here would read
+    # back the paced policy above and this half of the assertion would be about the cache.
+    unpaced = controls.as_record(controls.run_controls(
+        "https://unpaced.test/", get=_host({}), sleep=_sleeper(), robots_get=_robots(""),
+        paths=("/openapi.json",), nonsense_paths=("/nope",)))
+    assert unpaced["pacing"]["delay_source"] == controls.DELAY_NONE
+    assert unpaced["pacing"]["total_waited_seconds"] == 0.0
+
+
+def test_the_unrelated_reachability_host_is_not_paced_by_the_targets_rate():
+    """One host's declared rate is not an instruction the next host issued. A single request to a
+    different host waits on nobody's behalf."""
+    sleep = _sleeper()
+    controls.run_controls("https://example.test/", unrelated_url="https://other.test/page",
+                          get=_host({}), sleep=sleep, robots_get=_robots(PACED_ROBOTS),
+                          paths=("/openapi.json",), nonsense_paths=("/nope",))
+    assert sleep.waits == [10.0, 10.0], "the unrelated host was paced by the target's declared delay"

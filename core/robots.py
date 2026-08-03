@@ -45,6 +45,11 @@ WHAT IS DELIBERATE, because each of these is a judgement and not a lookup:
     (`public_docs.user_agent`, ADR-0007); one does, to a browser string. The policy it is judged against
     has to be the policy for the agent it presents itself as, or the annotation would describe a request
     nobody made.
+  * **`Crawl-delay` is a directive in this file too, and it is now kept** (ADR-0048). It is not part of
+    RFC 9309 and Google ignores it; this project does not, because the question here is not what a search
+    crawler may skip but what a vendor asked an automated reader to do. Obeying the `Disallow` in a file
+    while discarding the rate limit three lines below it was never a considered position — it was what
+    happened when the parser kept two field names and dropped every other. See `parse`.
 """
 from __future__ import annotations
 
@@ -88,13 +93,20 @@ class Verdict:
 
 @dataclass
 class RobotsPolicy:
-    """One host's rules, as they apply to one user agent."""
+    """One host's rules, as they apply to one user agent.
+
+    `crawl_delay` is the seconds the governing group asked a reader to wait between requests, or None
+    where the host asked for nothing. None and 0.0 are different answers and are kept apart: 0.0 is a
+    host that considered the question and declared no delay, None is a host that never raised it. A
+    caller that collapses them cannot tell "unpaced by permission" from "unpaced by default".
+    """
     host: str
     directives: list[tuple[str, str]] = field(default_factory=list)  # [("disallow", "/wfm/"), ...]
     agent_group: str = "*"
     source: str = SOURCE_ABSENT
     fetched_on: str | None = None
     body: str = ""
+    crawl_delay: float | None = None
 
     def verdict(self, url: str) -> Verdict:
         if self.source == SOURCE_UNREACHABLE:
@@ -146,15 +158,46 @@ def _match_length(pattern: str, path: str) -> int | None:
     return len(body.replace("*", ""))
 
 
-def parse(text: str, user_agent: str = USER_AGENT) -> tuple[list[tuple[str, str]], str]:
-    """Parse a robots.txt body and return (directives, agent_group) for `user_agent`.
+def _crawl_delay(value: str) -> float | None:
+    """One `Crawl-delay` value, or None where the host did not state a usable number.
+
+    A malformed or negative value is None rather than 0.0 on purpose: 0.0 would read downstream as "the
+    host permits an unpaced burst", which is a permission this file never granted. The unparseable case
+    is an absence of instruction, and the conservative reading of an absence here is to fall back to the
+    caller's own default rather than to invent a green light out of a typo.
+    """
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if seconds != seconds or seconds in (float("inf"), float("-inf")) or seconds < 0:
+        return None
+    return seconds
+
+
+def parse(text: str,
+          user_agent: str = USER_AGENT) -> tuple[list[tuple[str, str]], str, float | None]:
+    """Parse a robots.txt body and return (directives, agent_group, crawl_delay) for `user_agent`.
 
     Group selection follows the deployed convention rather than a strict token equality: a group name
     matches when it is a case-insensitive substring of the agent string, longest name wins, and `*` is
     the fallback. Strict equality would put a browser-string override (ADR-0007) into the `*` group even
     where a host names that browser explicitly.
+
+    `Crawl-delay` is read per group and returned for the group that governs (ADR-0048), so a delay a host
+    declares for `*` never leaks into a group that names us, and vice versa. Two rules about it are
+    deliberate:
+
+      * **A `crawl-delay` line neither opens nor closes a rules group.** Only `allow`/`disallow` set
+        `in_rules`, exactly as before. A host writing `User-agent` / `Disallow` / `Crawl-delay` /
+        `User-agent` states two groups; treating the delay as a rule would re-cut them into one and
+        silently reassign the second agent's directives.
+      * **A group that states the delay twice gets the SLOWEST of them.** Duplicates are malformed and
+        no convention rules on them, so the tie is broken towards the host: obeying the longer wait can
+        only ever be more polite than what was asked, and the other direction cannot say that.
     """
     groups: dict[str, list[tuple[str, str]]] = {}
+    delays: dict[str, float] = {}
     current: list[str] = []
     in_rules = False
     for raw in text.splitlines():
@@ -173,6 +216,11 @@ def parse(text: str, user_agent: str = USER_AGENT) -> tuple[list[tuple[str, str]
             in_rules = True
             for agent in current:
                 groups[agent].append((field_name, value))
+        elif field_name == "crawl-delay" and current:
+            seconds = _crawl_delay(value)
+            if seconds is not None:
+                for agent in current:
+                    delays[agent] = max(delays.get(agent, seconds), seconds)
 
     agent_l = user_agent.lower()
     best = None
@@ -182,7 +230,7 @@ def parse(text: str, user_agent: str = USER_AGENT) -> tuple[list[tuple[str, str]
         if name in agent_l and (best is None or len(name) > len(best)):
             best = name
     chosen = best if best is not None else "*"
-    return groups.get(chosen, []), chosen
+    return groups.get(chosen, []), chosen, delays.get(chosen)
 
 
 def robots_url(url: str) -> str:
@@ -219,14 +267,16 @@ def policy_from_response(host: str, status: int, body: str, *, user_agent: str =
         return RobotsPolicy(host, [], "*", SOURCE_UNREACHABLE, today, "")
     if status >= 400:
         return RobotsPolicy(host, [], "*", SOURCE_ABSENT, today, "")
-    directives, agent_group = parse(body, user_agent)
+    directives, agent_group, delay = parse(body, user_agent)
     if not directives and not body.strip():
         return RobotsPolicy(host, [], agent_group, SOURCE_ABSENT, today, "")
     if not directives:
         # A 200 that is not a robots file (one cohort host serves its JS shell here). No rule was
         # stated, so no rule is applied — but the body is kept so the record shows what arrived.
-        return RobotsPolicy(host, [], agent_group, SOURCE_ABSENT, today, body)
-    return RobotsPolicy(host, directives, agent_group, SOURCE_RULES, today, body)
+        # A delay found here still travels: a host may state a rate and no fetch rule, and that is an
+        # instruction about conduct even though `source` records that no permission rule was applied.
+        return RobotsPolicy(host, [], agent_group, SOURCE_ABSENT, today, body, delay)
+    return RobotsPolicy(host, directives, agent_group, SOURCE_RULES, today, body, delay)
 
 
 _CACHE: dict[tuple[str, str], RobotsPolicy] = {}
