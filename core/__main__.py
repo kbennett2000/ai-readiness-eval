@@ -566,6 +566,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="re-read each host and report drift; change nothing")
     ar.set_defaults(func=cmd_annotate_robots)
 
+    from .controls import MAX_TOTAL_WAIT_SECONDS  # for the help text, so the default cannot go stale
     ctl = sub.add_parser("controls",
                          help="run the recon controls against a host — soft-404 baseline, unrelated-"
                               "host reachability, well-known specification paths (ADR-0047)")
@@ -574,6 +575,13 @@ def build_parser() -> argparse.ArgumentParser:
                      help="a URL on an UNRELATED host, fetched through the same fetcher, so a thin "
                           "result at base_url can be attributed to base_url rather than to us")
     ctl.add_argument("--json", action="store_true", help="emit JSON instead of the YAML record block")
+    ctl.add_argument("--delay", type=float, metavar="SECONDS",
+                     help="override the host's declared Crawl-delay (ADR-0048). Omit and the host's "
+                          "own rate governs; pass 0 to state deliberately that no pacing applies")
+    ctl.add_argument("--max-wait", type=float, metavar="SECONDS",
+                     help="refuse to start if the projected total wait exceeds this (default "
+                          f"{MAX_TOTAL_WAIT_SECONDS:.0f}s). Raising it is a decision; pacing "
+                          "faster than a host asked is not an option this command offers")
     ctl.set_defaults(func=cmd_controls)
 
     cmp = sub.add_parser("compare", help="side-by-side comparison report for 2+ results dirs")
@@ -743,12 +751,25 @@ def cmd_controls(args: argparse.Namespace) -> int:
     Exit code is EXIT_ERROR when the controls did not establish what they exist to establish (no
     baseline, or a reachability control that returned nothing), because in that state every downstream
     verdict is unattributable and the operator must fix the inputs before reading the numbers.
+
+    A run refused for exceeding its wait budget (ADR-0048) also exits EXIT_ERROR, with the arithmetic
+    printed. That is a blocked run, not a failed one, and the distinction is in the message rather than
+    the code: nothing was requested, so nothing is known either way.
     """
     import yaml
 
     from . import controls as controls_mod
 
-    report = controls_mod.run_controls(args.base_url, unrelated_url=args.unrelated)
+    kwargs = {}
+    if args.delay is not None:
+        kwargs["delay_seconds"] = args.delay
+    if args.max_wait is not None:
+        kwargs["max_total_wait"] = args.max_wait
+    try:
+        report = controls_mod.run_controls(args.base_url, unrelated_url=args.unrelated, **kwargs)
+    except controls_mod.PacingRefused as exc:
+        print(f"# REFUSED: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     record = controls_mod.as_record(report)
     if args.json:
         print(json.dumps(record, indent=2, sort_keys=False))

@@ -2820,16 +2820,112 @@ entries:
     adr: adr-0047-a-control-that-was-run-twice-is-code.md
     hazard: |
       `core/docs_fetch.py` paces itself from a pack's declared delay (ADR-0009). `core/controls.py`
-      does not: it issues its 17 requests as fast as the host answers, and a host declaring
-      `Crawl-delay: 10` in the group we fall under gets a burst instead. The first target measured
+      did not: it issued its 17 requests as fast as the host answers, and a host declaring
+      `Crawl-delay: 10` in the group we fall under got a burst instead. The first target measured
       with these controls was paced by a wrapper around the injected `get`, by hand — which is
       precisely the "run it by hand and remember to" shape this ADR exists to end, reintroduced one
       function further out.
+
+      CLOSED by ADR-0048 (issue #87), and the objection this entry recorded was answered rather than
+      overtaken. It read: "No test can observe a real host's crawl delay, and a unit test asserting
+      that `run_controls` sleeps would pin an implementation rather than the conduct. The honest fix
+      is a `delay_seconds` parameter read from the host's own robots.txt, which `core.robots` already
+      parses and discards." Two of those three clauses were wrong. `core.robots` did not parse the
+      value — there was no branch for it and it was never seen. And the pinning objection holds only
+      for a test that patches `time.sleep`; with the sleep injected, conduct is asserted against the
+      CALL LOG, which is the same move that made this ADR's robots tests assert on calls rather than
+      verdicts. Kept in full rather than deleted, because an objection that turned out to be
+      answerable is worth more on the record than a tidy entry.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_the_controls_wait_between_probes_at_the_rate_the_host_declared
+      - core/tests/test_controls.py::test_the_seam_between_the_two_controls_is_paced_too
+      - core/tests/test_controls.py::test_a_direct_caller_of_the_sweep_is_paced_without_asking_for_it
+      - core/tests/test_controls.py::test_a_refused_path_costs_no_wait_because_no_request_was_made
+      - core/tests/test_controls.py::test_the_record_cannot_overstate_the_pacing_that_happened
+      - core/tests/test_robots.py::test_a_declared_crawl_delay_reaches_the_policy
+
+  - id: a-rate-directive-can-re-cut-the-permission-groups
+    adr: adr-0048-a-declared-rate-limit-is-an-instruction.md
+    hazard: |
+      Teaching the parser a third field name puts that field in a position to change what the first
+      two mean. If `crawl-delay` closed a rules group the way `allow`/`disallow` open one, then on a
+      body reading `User-agent: <us>` / `Crawl-delay: 5` / `User-agent: *` / `Disallow: /`, our named
+      group would hold no rule at all — which `policy_from_response` reads as an absent robots.txt,
+      i.e. unrestricted. A rate-limit directive would have converted a site-wide refusal into
+      permission, silently, on a host that wrote `Disallow: /` in plain sight.
+
+      This is the hazard of the FIX rather than of the defect, and it is the reason the parse change
+      is four lines in one branch instead of a general "keep every directive" rewrite. The same shape
+      returns for any further field added to `parse`.
+    status: gated
+    gated_by:
+      - core/tests/test_robots.py::test_a_crawl_delay_line_does_not_re_cut_the_rules_groups
+      - core/tests/test_robots.py::test_a_delay_after_a_rule_still_ends_its_group_at_the_next_agent_line
+      - core/tests/test_robots.py::test_the_wildcard_delay_does_not_reach_a_group_that_names_us_and_states_none
+      - core/tests/test_robots.py::test_an_unusable_delay_is_absent_rather_than_zero
+
+  - id: a-control-reads-like-instrumentation-and-instrumentation-feels-exempt
+    adr: adr-0048-a-declared-rate-limit-is-an-instruction.md
+    hazard: |
+      `reachability_control` called `_probe` directly and consulted no robots.txt, so it would have
+      issued a request to whatever unrelated host a recon named without asking that host anything.
+      It is the THIRD function in `core/controls.py` to have needed the check said out loud —
+      ADR-0047 records the baseline probe missing it while the sweep had it, and this one missed it
+      while both the others had it. Two is a bug; three is a shape, and the cause is nameable: a
+      control reads like instrumentation rather than retrieval, and instrumentation feels exempt. It
+      is not. It issues a request to somebody's server, and being an unrelated third party is not
+      consent.
+
+      Caught by reading the module before pointing it at a real host, which is not a mechanism.
+      The mechanism is the sweep below, which asserts the rule over every fetching entry point at
+      once instead of wherever someone remembered — plus a companion that derives the entry-point
+      list from the source with `ast`, because a sweep is only as good as the list it iterates and
+      that list was the part living in memory.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_every_control_that_fetches_consults_robots_first
+      - core/tests/test_controls.py::test_the_list_of_fetching_entry_points_is_complete
+      - core/tests/test_controls.py::test_a_refused_reachability_host_is_not_a_passing_control
+
+  - id: the-two-fetchers-take-their-rate-from-different-places
+    adr: adr-0048-a-declared-rate-limit-is-an-instruction.md
+    hazard: |
+      After ADR-0048 there are two paced fetchers reading the same `robots.txt` and taking their rate
+      from different places. `core/controls.py` uses the host's declared `Crawl-delay`;
+      `core/docs_fetch.py` still uses the delay the PACK declares (ADR-0009), which no gate compares
+      against what the host asked for. A pack declaring 0.5s against a host declaring 10s is
+      compliant with this project's own config and not with the vendor's instruction, and nothing
+      says so.
     status: ungated
     ungated_reason: |
-      No test can observe a real host's crawl delay, and a unit test asserting that `run_controls`
-      sleeps would pin an implementation rather than the conduct. The honest fix is a `delay_seconds`
-      parameter read from the host's own robots.txt, which `core.robots` already parses and discards.
+      Not fixed here on purpose. `docs_fetch`'s delay is pinned per pack and is part of the recorded
+      retrieval conditions under which thirteen measured packs were fetched; reaching into robots for
+      it would change those conditions retroactively for every archived snapshot. The narrow fix — a
+      validator warning when a pack's declared delay undercuts its host's — is a different change
+      with a different blast radius, and it needs the host's delay recorded per pack first, which
+      nothing does yet.
     fix_queued_to: |
-      Issue #87. Recorded the same cycle it was noticed rather than after a second hand-paced recon,
-      because the hand-pacing worked and that is exactly what makes it easy to keep doing.
+      Not queued. Filed nowhere, deliberately: the useful version of this is a `validate` rule, and
+      it cannot be written until manifests carry the host's declared delay. Recorded here so the
+      inconsistency is a known one rather than a discovery.
+
+  - id: nothing-paces-a-retrieval-made-outside-core
+    adr: adr-0048-a-declared-rate-limit-is-an-instruction.md
+    hazard: |
+      The pacing added here governs `core.controls` and nothing else. A recon that reaches for
+      `WebFetch`, `curl`, or a scratch script — which is how every sitemap sweep and hostname probe
+      in this cohort has been run — is paced by whoever wrote it, exactly as before. ADR-0047 moved
+      the CONTROLS into code and this ADR moved their PACING into code; the surrounding recon is
+      still conduct a cycle has to remember, and that is the residue both ADRs leave.
+    status: ungated
+    ungated_reason: |
+      A gate would have to observe retrievals this project does not make through its own transports,
+      which nothing in the tree can see. The only honest mechanism is a recon that routes everything
+      through `core`, and no such entry point exists — a sitemap sweep is not a control and does not
+      belong in `controls.py`.
+    fix_queued_to: |
+      Not queued. The candidate is a `core recon` command owning sitemap enumeration and hostname
+      probing so both inherit the pacer, which is a larger change than any single recon has needed.
+      Written down rather than opened, because filing an issue for work nobody has argued for is the
+      flattering move ADR-0015 exists to refuse.

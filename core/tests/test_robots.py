@@ -199,6 +199,105 @@ def test_a_new_agent_line_after_rules_starts_a_new_group():
     assert p.allows("https://h.invalid/ours/x") is False
 
 
+# --- Crawl-delay is a directive in this file too (ADR-0048) ----------------- #
+
+def test_a_declared_crawl_delay_reaches_the_policy():
+    """The whole of the defect: this value was parsed by nothing and reached nobody."""
+    p = _policy("User-agent: *\nDisallow: /x/\nCrawl-delay: 10\n")
+    assert p.crawl_delay == 10.0
+
+
+def test_a_host_that_declares_no_delay_reports_none_rather_than_zero():
+    """None is 'never raised'; 0.0 is 'considered and declined'. A caller must be able to tell."""
+    assert _policy("User-agent: *\nDisallow: /x/\n").crawl_delay is None
+    assert _policy("User-agent: *\nDisallow: /x/\nCrawl-delay: 0\n").crawl_delay == 0.0
+
+
+def test_the_delay_is_read_from_the_group_that_governs_us():
+    body = ("User-agent: *\nDisallow: /everyone-else/\nCrawl-delay: 30\n\n"
+            "User-agent: ai-readiness-eval-docs\nDisallow: /us/\nCrawl-delay: 2\n")
+    assert _policy(body).crawl_delay == 2.0
+    # ...and the wildcard delay is what an agent falling back to `*` gets, not ours.
+    assert _policy(body, agent="some-other-crawler").crawl_delay == 30.0
+
+
+def test_a_delay_in_a_group_that_does_not_govern_us_does_not_leak():
+    body = ("User-agent: ai-readiness-eval-docs\nDisallow: /us/\n\n"
+            "User-agent: Chrome\nDisallow: /b/\nCrawl-delay: 45\n")
+    assert _policy(body).crawl_delay is None
+    assert _policy(body, agent=BROWSER_UA).crawl_delay == 45.0
+
+
+def test_the_wildcard_delay_does_not_reach_a_group_that_names_us_and_states_none():
+    """A named group REPLACES the wildcard group — this module already asserts that for rules, and the
+    delay follows the same semantics or the policy is half one group and half another, which is a thing
+    no host wrote. A host that names us and gives us no rate has given us no rate.
+
+    Written after a deliberate `delays.get(chosen) or delays.get("*")` fallback survived the first
+    version of these tests: every case there gave OUR group a delay, so the leak had nowhere to show.
+    """
+    body = ("User-agent: *\nDisallow: /everyone-else/\nCrawl-delay: 30\n\n"
+            "User-agent: ai-readiness-eval-docs\nDisallow: /us/\n")
+    p = _policy(body)
+    assert p.agent_group == "ai-readiness-eval-docs"
+    assert p.crawl_delay is None
+
+
+def test_a_crawl_delay_line_does_not_re_cut_the_rules_groups():
+    """Only allow/disallow open a rules group; a rate directive is not a rule and does not close the
+    agent list. The case below is where the two readings diverge, and it is a fetch PERMISSION that
+    turns on it: with `crawl-delay` ending the agent list, our named group holds no rule at all, the
+    policy reads as an absent robots.txt, and this host's `Disallow: /` never reaches us.
+
+    That is the whole reason the flag is left alone. A rate-limit directive must not be able to hand
+    this project a green light on a host that wrote `Disallow: /` three lines further down.
+    """
+    body = ("User-agent: ai-readiness-eval-docs\nCrawl-delay: 5\n"
+            "User-agent: *\nDisallow: /\n")
+    p = _policy(body)
+    assert p.allows("https://h.invalid/anything") is False, (
+        "a Crawl-delay line split the group and turned a site-wide Disallow into permission")
+
+
+def test_a_delay_after_a_rule_still_ends_its_group_at_the_next_agent_line():
+    body = ("User-agent: alpha\nDisallow: /alpha/\nCrawl-delay: 5\n"
+            "User-agent: ai-readiness-eval-docs\nDisallow: /ours/\n")
+    p = _policy(body)
+    assert p.agent_group == "ai-readiness-eval-docs"
+    assert p.allows("https://h.invalid/alpha/x") is True
+    assert p.allows("https://h.invalid/ours/x") is False
+    assert p.crawl_delay is None, "a delay declared for another agent was applied to us"
+
+
+def test_a_group_stating_the_delay_twice_gets_the_slower_of_them():
+    """Malformed, and no convention rules on it. The tie breaks towards the host: waiting longer than
+    asked can only be more polite, and the other direction cannot say that."""
+    assert _policy("User-agent: *\nDisallow: /x/\nCrawl-delay: 2\nCrawl-delay: 9\n").crawl_delay == 9.0
+    assert _policy("User-agent: *\nDisallow: /x/\nCrawl-delay: 9\nCrawl-delay: 2\n").crawl_delay == 9.0
+
+
+@pytest.mark.parametrize("value", ["soon", "", "-5", "10s", "nan", "inf"])
+def test_an_unusable_delay_is_absent_rather_than_zero(value):
+    """0.0 would read downstream as 'the host permits an unpaced burst' — a permission a typo did not
+    grant. An unparseable value is an absence of instruction, and falls back to the caller's default."""
+    p = _policy(f"User-agent: *\nDisallow: /x/\nCrawl-delay: {value}\n")
+    assert p.crawl_delay is None
+
+
+def test_a_delay_survives_a_body_that_states_no_fetch_rule():
+    """A host may state a rate and no Allow/Disallow. `source` records that no permission rule was
+    applied; the rate is still an instruction and still travels."""
+    p = _policy("User-agent: *\nCrawl-delay: 7\n")
+    assert p.source == robots.SOURCE_ABSENT
+    assert p.crawl_delay == 7.0
+
+
+@pytest.mark.parametrize("status", [404, 500, robots.STATUS_NO_HOST, robots.STATUS_NETWORK_FAILURE])
+def test_a_host_that_stated_nothing_declares_no_delay(status):
+    """No body, no directive. A default invented here would be a rate this host never asked for."""
+    assert _policy("", status=status).crawl_delay is None
+
+
 def test_comments_and_blank_lines_are_ignored():
     body = "# a comment\n\nUser-agent: *   # trailing\nDisallow: /x/  # why\n"
     assert _policy(body).allows("https://h.invalid/x/y") is False
