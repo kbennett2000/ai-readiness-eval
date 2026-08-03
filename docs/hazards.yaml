@@ -2977,3 +2977,52 @@ entries:
       without pretending to know the compound forms. It is not filed because it has not been argued
       for by anything but this ADR, and opening an issue so the registry can cite one is the
       flattering move ADR-0015 refuses.
+
+  # ------------------------------------------------------------------------------ ADR-0050 ---
+
+  - id: raw-spec-is-scored-against-the-document-its-answer-key-cites
+    adr: adr-0050-a-specification-is-not-documentation.md
+    hazard: >
+      The `raw-spec` condition injects the vendor's own machine-readable specification. For the
+      vendor that forced it, that specification is also the artifact its ground truth is anchored to
+      — so the condition is scored against its own source, and its column is a CEILING (can the model
+      read what it was handed) rather than a measurement of what a model knows. Published beside
+      `no-context` and `public-docs` without that sentence, a high number reads as readiness. ADR-0034
+      made this failure unrepresentable for `public-docs` by putting anchors in their own list; this
+      condition deliberately does the thing that ruling prevents, so the protection has to move from
+      the structure to the disclosure.
+    status: gated
+    gated_by:
+      - core/tests/test_raw_spec_condition.py::test_an_undeclared_overlap_is_refused
+      - core/tests/test_raw_spec_condition.py::test_a_declared_overlap_passes
+      - core/tests/test_raw_spec_condition.py::test_an_empty_reason_is_not_a_reason
+      - core/tests/test_raw_spec_condition.py::test_a_disclosure_that_is_not_true_is_refused
+      - core/tests/test_raw_spec_condition.py::test_the_gate_refuses_an_undeclared_overlap
+      - core/tests/test_raw_spec_condition.py::test_a_spec_document_never_reaches_the_prompt_under_public_docs
+
+  - id: the-shared-budget-decides-the-raw-spec-column
+    adr: adr-0050-a-specification-is-not-documentation.md
+    hazard: |
+      `raw-spec` spends the same token budget as `public-docs`, deliberately, so the comparison is
+      artifact-against-prose rather than generous-against-stingy. But specification documents run
+      40 KB-280 KB against a budget sized for prose pages, so this column truncates BY CONSTRUCTION,
+      and a low number can mean "the model could not use the spec" or "the answer was past the cut"
+      — which are opposite findings that produce the same transcript. This is the ADR-0013 fault
+      class arriving through a door that was opened on purpose.
+    status: ungated
+    ungated_reason: |
+      The audit measures the loss per task and the `disclosure` gate reports it, but nothing BLOCKS
+      on it and nothing should. Blocking would force the budget up until the column stopped
+      truncating, which is exactly the equalisation the shared-budget ruling refuses; the alternative
+      — a per-condition budget — buys the column instead of measuring it. So the honest state is a
+      reported loss, not a prevented one, and calling that gated would be true about a test and false
+      about the world.
+    drift_pin:
+      - core/tests/test_raw_spec_condition.py::test_raw_spec_spends_the_same_budget_as_public_docs
+      - core/tests/test_raw_spec_condition.py::test_the_shared_budget_actually_truncates_a_large_document
+    fix_queued_to: |
+      Not queued, and the thing to queue is not a fix. What would resolve the ambiguity is a second
+      run of the same pack at a budget large enough to fit every document whole, published as a
+      sensitivity check beside the first rather than instead of it: two numbers, one of which is
+      known to have been bought. That is a study, it costs a second grid, and it is not filed because
+      no published number depends on it until this condition has run more than once.

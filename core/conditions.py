@@ -13,7 +13,7 @@ import tempfile
 from abc import ABC, abstractmethod
 
 from .contract import contract_for
-from .docs_fetch import ROLE_PRIORITY
+from .docs_fetch import ANCHOR_KEY, INJECTED_KEY, ROLE_PRIORITY, SPEC_KEY
 from .model import CliPolicy, deny_all_policy
 from .pack import Pack
 
@@ -21,7 +21,7 @@ _CHARS_PER_TOKEN = 4  # keep in step with scorer/specsize token estimates
 
 # The condition names this module knows how to build, in report order. Which ones a given pack
 # actually exposes depends on whether it declares a context layer (see build_registry).
-KNOWN_CONDITIONS = ("no-context", "public-docs", "mcp")
+KNOWN_CONDITIONS = ("no-context", "public-docs", "raw-spec", "mcp")
 
 
 def _sterile_mcp_config(ctx) -> str:
@@ -89,21 +89,33 @@ class NoContextCondition(Condition):
         return [{"role": "user", "content": self._contract.build_prompt(task["prompt"])}]
 
 
-class PublicDocsCondition(Condition):
-    """Inject the vendor's own documentation (cached snapshot) as context (ADR-0005 lineage).
+class _InjectedTextCondition(Condition):
+    """Shared machinery for every condition that injects cached first-party text under a budget.
 
-    Loads the per-task pages from the pack's committed manifest + the gitignored cache, orders them
-    by role priority, enforces the token budget (dropping lowest-priority pages first, then
-    truncating the tail of the last kept page), and prepends the labelled context to the task.
+    Two conditions do that — `public-docs` and `raw-spec` (ADR-0050) — and they differ in exactly
+    three things: which manifest list they read, what they label the block, and which budget applies.
+    Everything else (the robots re-check at point of use, the missing-cache ruling, the drop-then-
+    truncate assembly, the unbudgeted `full_text` the truncation audit compares against) is one
+    behaviour and is written once.
+
+    **`manifest_key` is the whole safety property.** ADR-0034 made "show the model the answer key's
+    own source" unrepresentable for `public-docs` by putting anchors in a separate list rather than
+    behind a `pages[].inject: false` flag. Subclassing preserves that: each subclass names exactly
+    one key as a class attribute, so the list a condition can reach is fixed at class-definition
+    time and cannot be widened by a manifest, a role string, or a config value.
     """
 
-    name = "public-docs"
+    #: The manifest task-entry list this condition injects. Exactly one, per class.
+    manifest_key: str
 
     def __init__(self, pack: Pack, manifest: dict | None = None):
         self._pack = pack
         self._manifest_override = manifest  # loaded lazily so construction is cheap
-        self._label = pack.public_docs_source_label
+        self._label = self._label_for(pack)
         self._contract = contract_for(pack)
+
+    def _label_for(self, pack: Pack) -> str:
+        raise NotImplementedError
 
     @property
     def _manifest(self) -> dict:
@@ -121,8 +133,9 @@ class PublicDocsCondition(Condition):
     def _pages_for(self, task_id: str) -> list[dict]:
         entry = (self._manifest.get("tasks") or {}).get(task_id)
         if not entry:
-            raise KeyError(f"public-docs manifest has no entry for task '{task_id}'")
-        return sorted(entry.get("pages", []), key=lambda p: self._role_rank(p.get("role", "")))
+            raise KeyError(f"{self.name} manifest has no entry for task '{task_id}'")
+        return sorted(entry.get(self.manifest_key, []) or [],
+                      key=lambda p: self._role_rank(p.get("role", "")))
 
     def _load_text(self, task_id: str, page: dict) -> str:
         # ADR-0036, and it is checked HERE rather than only at fetch time on purpose. Refusing to
@@ -186,6 +199,61 @@ class PublicDocsCondition(Condition):
         return [{"role": "user", "content": content}]
 
 
+class PublicDocsCondition(_InjectedTextCondition):
+    """Inject the vendor's own documentation (cached snapshot) as context (ADR-0005 lineage).
+
+    Loads the per-task pages from the pack's committed manifest + the gitignored cache, orders them
+    by role priority, enforces the token budget (dropping lowest-priority pages first, then
+    truncating the tail of the last kept page), and prepends the labelled context to the task.
+
+    Reads `pages` and ONLY `pages`. Not `anchors` (ADR-0034), not `spec_documents` (ADR-0050).
+    """
+
+    name = "public-docs"
+    manifest_key = INJECTED_KEY
+
+    def _label_for(self, pack: Pack) -> str:
+        return pack.public_docs_source_label
+
+
+class RawSpecCondition(_InjectedTextCondition):
+    """Inject the vendor's OWN machine-readable specification, uncurated (ADR-0050).
+
+    The question this exists to answer is the one the MCP posture sweep deferred and issue #54
+    filed: does handing a model the vendor's own specification close the gap its prose documentation
+    leaves, or is there a residue that only a curated layer closes? The reference pack's curated
+    context layer is worth +25 points over its documentation; nothing has ever measured what the
+    RAW artifact is worth, which is why `public-docs` must not quietly become it.
+
+    Two rules make the answer readable rather than flattering:
+
+    **The budget is `public-docs`'s, unchanged.** It reads `public_docs_budget_tokens` through the
+    inherited `_budget` deliberately. Give this column more room than the one beside it and the
+    comparison measures how generous we were feeling, not the difference between an artifact and a
+    page. Specification documents are large, so truncation is expected and often decisive — the
+    truncation audit reports what did not fit, and that report is part of the finding rather than a
+    defect to engineer away.
+
+    **Document-level selection is retrieval; operation-level selection is curation.** A pack may say
+    which spec document a task is shown — the same choice `public-docs` already makes about pages —
+    and may NOT slice inside one to the operation a task asks about. Slicing is what the curated
+    layer does, and a condition that did both would answer neither question. Nothing here can slice:
+    this class only ever reads whole cached documents, exactly as `public-docs` reads whole pages.
+    """
+
+    name = "raw-spec"
+    manifest_key = SPEC_KEY
+
+    def _label_for(self, pack: Pack) -> str:
+        if pack.raw_spec is None:
+            raise ValueError(
+                f"pack '{pack.vendor_id}' has no raw_spec block; the 'raw-spec' condition is "
+                "unavailable for it. A pack declares the condition or does not have it — there is "
+                "no default label, because a block headed with a guessed name would put a "
+                "specification in front of a model under a heading that says 'documentation'.")
+        return pack.raw_spec.source_label
+
+
 class McpCondition(Condition):
     """The fix: the model gets the task prompt (same as no-context) plus the pack's context-layer
     MCP tools — and nothing else (ADR-0007/0008 lineage).
@@ -245,11 +313,18 @@ class McpCondition(Condition):
 
 def build_registry(pack: Pack) -> dict[str, Condition]:
     """Build the condition registry for a pack. A pack with no context layer omits `mcp`
-    (two-condition mode)."""
+    (two-condition mode), and one with no `raw_spec` block omits `raw-spec` (ADR-0050).
+
+    Both optional conditions are gated on the pack DECLARING them, not on the manifest happening to
+    carry a list — a manifest that grew a `spec_documents` entry by accident would otherwise add a
+    column to a cohort table, and a column is a claim.
+    """
     registry: dict[str, Condition] = {
         "no-context": NoContextCondition(pack),
         "public-docs": PublicDocsCondition(pack),
     }
+    if pack.raw_spec is not None:
+        registry["raw-spec"] = RawSpecCondition(pack)
     if pack.context_layer is not None:
         registry["mcp"] = McpCondition(pack)
     return registry
@@ -272,7 +347,7 @@ def available_conditions() -> list[str]:
 # Truncation audit — the docs condition must not measure our own budget
 # --------------------------------------------------------------------------------------------- #
 
-def audit_docs_truncation(pack: Pack) -> list[dict]:
+def audit_docs_truncation(pack: Pack, condition: "_InjectedTextCondition | None" = None) -> list[dict]:
     """Where did the token budget delete an answer the cached page actually contained?
 
     `public-docs` drops low-priority pages and then truncates the tail of the last one it keeps. When
@@ -302,10 +377,17 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
     text we injected?
 
     Returns one record per (task, item). A caller treats `truncated: True` as the defect.
+
+    `condition` defaults to `public-docs` and may be any injecting condition (ADR-0050). The audit
+    was always written against `full_text` + `build_context` and the contract's ground-truth terms,
+    and never against anything specific to documentation — so covering a second injecting condition
+    is a parameter, not a second implementation. The alternative was a copy of this function per
+    condition, which is how the two would drift and how one of them would quietly stop being run.
     """
-    condition = PublicDocsCondition(pack)
+    condition = condition if condition is not None else PublicDocsCondition(pack)
     contract = contract_for(pack)
     records: list[dict] = []
+    name = condition.name
     for task in pack.load_tasks():
         task_id = task["id"]
         try:
@@ -313,7 +395,8 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
             injected = condition.build_context(task_id)
         except (KeyError, FileNotFoundError) as exc:
             records.append({"task_id": task_id, "item": None, "documented": False,
-                            "injected": False, "truncated": False, "error": str(exc)})
+                            "injected": False, "truncated": False, "error": str(exc),
+                            "condition": name})
             continue
         for item, spellings in contract.ground_truth_terms(task, pack):
             if not spellings:
@@ -322,6 +405,14 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
             in_injected = any(s in injected for s in spellings)
             records.append({
                 "task_id": task_id, "item": item,
+                # Which condition this verdict is about (ADR-0050). Two injecting conditions now
+                # produce records of the same shape, and a report that merged them without this
+                # field would read as one audit of one corpus.
+                "condition": name,
+                # What was injected against what existed, so a pack can DECLARE what did not fit
+                # rather than describe it. For a specification these two routinely differ by an
+                # order of magnitude, and the difference is the finding, not a defect.
+                "injected_len": len(injected),
                 "documented": in_full, "injected": in_injected,
                 "truncated": bool(in_full and not in_injected),
                 # How much cached text this verdict was reached against, and whether that verdict
@@ -343,6 +434,88 @@ def audit_docs_truncation(pack: Pack) -> list[dict]:
     return records
 
 
-def truncation_losses(pack: Pack) -> list[dict]:
+def truncation_losses(pack: Pack, condition: "_InjectedTextCondition | None" = None) -> list[dict]:
     """Just the defects from `audit_docs_truncation` — the items the budget deleted."""
-    return [r for r in audit_docs_truncation(pack) if r.get("truncated")]
+    return [r for r in audit_docs_truncation(pack, condition) if r.get("truncated")]
+
+
+def audit_spec_truncation(pack: Pack) -> list[dict]:
+    """The same audit, run against `raw-spec` (ADR-0050). Empty for a pack that does not declare it.
+
+    Separate from the `public-docs` call rather than folded into it, because the two answer different
+    questions about different corpora and a caller must be able to report them apart. A pack whose
+    documentation is a JavaScript shell and whose specification is complete will show `documented:
+    False` everywhere in one and `truncated: True` in the other, and averaging those would describe
+    neither.
+    """
+    if pack.raw_spec is None:
+        return []
+    return audit_docs_truncation(pack, RawSpecCondition(pack))
+
+
+def spec_disclosure(pack: Pack) -> list[dict]:
+    """Per task: does `raw-spec` inject the very document the answer key is cited to (ADR-0050)?
+
+    This is the sharp one, and issue #54 named it before this condition existed: where a task's
+    `spec_documents` and its `anchors` are the same URL, the condition is **scored against its own
+    source**. Its number is then a CEILING — can the model read what it was handed — and not a
+    measurement of what a model knows about the vendor.
+
+    That is not a defect to be prevented. For a vendor whose only citable first-party artifact IS
+    its specification, refusing the overlap would mean either anchoring ground truth to something
+    weaker or not running the condition at all. What is refused is the overlap going UNSAID: the
+    verdict is computed from the manifest rather than remembered, so a card cannot omit it and a
+    reviewer cannot be left to infer it from two lists that happen to match.
+
+    Returns one record per task. `check_spec_disclosure` turns them into a gate.
+    """
+    if pack.raw_spec is None:
+        return []
+    manifest = pack.docs_manifest()
+    out: list[dict] = []
+    for task in pack.load_tasks():
+        entry = (manifest.get("tasks") or {}).get(task["id"]) or {}
+        specs = {p["url"] for p in (entry.get(SPEC_KEY) or []) if p.get("url")}
+        anchors = {p["url"] for p in (entry.get(ANCHOR_KEY) or []) if p.get("url")}
+        shared = sorted(specs & anchors)
+        out.append({
+            "task_id": task["id"],
+            "spec_documents": sorted(specs),
+            "overlapping_anchors": shared,
+            "scored_against_own_source": bool(shared),
+            "declared_reason": (pack.raw_spec.scored_against_own_source or {}).get(task["id"]),
+        })
+    return out
+
+
+def check_spec_disclosure(pack: Pack) -> tuple[bool, str]:
+    """Gate: every task scored against its own source has to say so, in writing.
+
+    A written reason and not a boolean, for the same argument ADR-0045 made about an unexercised
+    dimension and ADR-0031 made about a waiver flag: a flag records that someone clicked past the
+    question, and a sentence records what they thought — which is the thing a reviewer can disagree
+    with. `True` would be satisfiable by a pack that never considered it.
+    """
+    records = spec_disclosure(pack)
+    missing = [r["task_id"] for r in records
+               if r["scored_against_own_source"] and not (r["declared_reason"] or "").strip()]
+    if missing:
+        return False, (
+            f"{len(missing)} task(s) inject a spec document that is also their ground-truth anchor, "
+            f"so `raw-spec` is scored against its own source, and the pack does not say so: "
+            f"{', '.join(missing)}. Declare raw_spec.scored_against_own_source.<task_id> with the "
+            f"reason a reviewer would need to read this column as a ceiling rather than a "
+            f"measurement.")
+    stale = [r["task_id"] for r in records
+             if not r["scored_against_own_source"] and (r["declared_reason"] or "").strip()]
+    if stale:
+        return False, (
+            f"{len(stale)} task(s) declare raw_spec.scored_against_own_source but their spec "
+            f"documents and anchors do not overlap: {', '.join(stale)}. A disclosure that is not "
+            f"true is worse than none — it teaches a reader to discount the ones that are.")
+    n = sum(1 for r in records if r["scored_against_own_source"])
+    if not records:
+        return True, "pack declares no raw-spec condition; nothing to disclose"
+    return True, (f"{n}/{len(records)} task(s) are scored against their own source, each with a "
+                  f"written reason" if n else
+                  f"0/{len(records)} tasks overlap: raw-spec injects no document its answer key cites")

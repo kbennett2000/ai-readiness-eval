@@ -32,8 +32,8 @@ from .report import _DIM_LABELS  # noqa: F401 (API labels; card rendering reads 
 from .scorer import DIMENSIONS  # noqa: F401 (API dimensions; card rendering reads the contract's)
 
 # Pipeline stages, in order. A target advances through these; its `status` records how far it got.
-STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "truncation", "mock", "canary",
-          "grid", "compare", "card"]
+STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "truncation", "disclosure",
+          "mock", "canary", "grid", "compare", "card"]
 # A target is "done" (skipped by next_target) when it is finished or parked, in one of three senses:
 #   carded  — measured, a card exists. The pipeline put it here.
 #   blocked — a gate refused it, or it cannot be measured at all. The pipeline or an author put it here.
@@ -655,6 +655,54 @@ def check_truncation(pack: Pack) -> tuple[bool, str]:
     return True, f"{len(searchable)} searchable ground-truth item(s), none truncated away"
 
 
+def check_disclosure(pack: Pack) -> tuple[bool, str]:
+    """Disclosure gate: a `raw-spec` column that is scored against its own source has to say so.
+
+    A separate STAGE rather than a branch inside `check_truncation`, because they ask different
+    questions and only one of them is about a window. Truncation asks whether the answer survived
+    the budget; this asks whether the pack's own record admits what the column is. A pack can pass
+    either and fail the other, and a target resting at `disclosure` names which.
+
+    It is also where the `raw-spec` truncation audit is enforced, for a reason worth stating: a
+    specification is 40 KB–280 KB of text against a budget sized for prose pages, so this column
+    truncates by construction. That is NOT a defect — it is what a fixed budget does to a large
+    artifact, and equalising it by giving this column more room would mean the comparison measured
+    our generosity (ADR-0050). So the loss is REPORTED and never blocks: the gate's job is to make
+    sure the number arrives with the sentence that explains it.
+    """
+    from .conditions import audit_spec_truncation, check_spec_disclosure
+
+    if pack.raw_spec is None:
+        return True, "pack declares no raw-spec condition; nothing to disclose"
+
+    ok, detail = check_spec_disclosure(pack)
+    if not ok:
+        return False, detail
+
+    from .conditions import spec_disclosure
+    if not any(r["spec_documents"] for r in spec_disclosure(pack)):
+        return False, ("raw-spec is declared but no task names a spec document, so the condition "
+                       "would inject nothing and the column would be a second copy of no-context "
+                       "under a different heading — three conditions on the card, two experiments "
+                       "in the data")
+
+    try:
+        records = audit_spec_truncation(pack)
+    except Exception as exc:
+        return False, (f"the raw-spec truncation audit could not run: {type(exc).__name__}: {exc}. "
+                       f"A column whose injected text cannot be inspected cannot be published — "
+                       f"the whole point of this condition is that what did not fit is declared.")
+    losses = [r for r in records if r.get("truncated")]
+    searchable = [r for r in records if r.get("searchable")]
+    if not searchable:
+        return False, ("no task's cached spec document is long enough to contain its own answer. "
+                       "Run `fetch-docs`. An unread document and a document with nothing in it are "
+                       "different findings and only one of them is the vendor's (ADR-0043)")
+    return True, (f"{detail}; raw-spec injects {len(searchable)} searchable item(s), "
+                  f"{len(losses)} truncated away by the shared "
+                  f"{pack.public_docs_budget_tokens}-token budget and reported as such")
+
+
 # The deterministic gates, in the order the dispatcher runs them. Declaring them as data (rather than
 # inlining the order in `run_pipeline`) is what keeps STAGES and the dispatcher from drifting apart —
 # a test asserts these names are the leading prefix of STAGES.
@@ -668,6 +716,9 @@ GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
     # a real published artifact, and only then is it worth asking whether the text we inject still
     # contains it.
     ("truncation", check_truncation),
+    # After truncation, for the same shape of reason: the disclosure names what the raw-spec column
+    # is, and it is only worth naming once the text behind it has been shown to be there (ADR-0050).
+    ("disclosure", check_disclosure),
 )
 
 
