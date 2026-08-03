@@ -102,7 +102,35 @@ it — the hazard was never that `run_controls` bursts, it was that pacing lived
 - **The unrelated reachability host is not paced by the target's rate.** One host's declared rate is not
   an instruction the next host issued.
 
-## Decision 3 — an over-budget run is refused, never quietly paced faster
+## Decision 3 — the robots check belongs to every control at once, not to whoever remembered
+
+Found while reading this module before pointing it at a real host, which is the only reason it is in
+this ADR rather than in a later one: **`reachability_control` did not consult robots.txt.** It called
+`_probe` directly and would have issued a request to whatever unrelated host a recon named, without
+asking that host whether an automated reader was welcome.
+
+That is the **third** function in this module to need the check said out loud. ADR-0047 records the
+baseline probe missing it while the sweep had it. This one missed it while both the others had it. Two
+instances is a bug; three is a shape, and the shape has a cause worth naming: **a control reads like
+instrumentation rather than retrieval, and instrumentation feels exempt.** It is not. It issues a
+request to somebody's server, and being an unrelated third party is not consent.
+
+So the rule is now asserted **over every entry point at once** rather than wherever someone thought of
+it. `test_every_control_that_fetches_consults_robots_first` parametrises the module's fetching entry
+points and asserts, on the **call log**, that a `Disallow: /` host receives nothing from any of them.
+Its companion derives the same set from the source with `ast`, so a fourth control added later fails
+*there* instead of quietly escaping the sweep — the list the sweep iterates is the sweep's real
+weakness, and it is now checked against the code rather than against memory.
+
+Two further rulings fall out:
+
+- **The unrelated host owes its own robots.txt.** `run_controls` deliberately does not pass the
+  target's policy down to the reachability control; inventing permission for one server out of another
+  server's file is not a smaller error than not asking at all.
+- **A refused reachability control is not a passing one.** It joins the thin case in `notes`: an
+  absence of evidence about the fetcher, not evidence that the fetcher works.
+
+## Decision 4 — an over-budget run is refused, never quietly paced faster
 
 A host is free to declare `Crawl-delay: 3600`. Seventeen probes at that rate is seventeen hours, which
 in an unattended cycle is a hang — and the tempting repair is to pace faster than asked, or to cap the
@@ -115,7 +143,7 @@ stated. Nothing is requested, so nothing is claimed either way: that is a blocke
 one, and a recon records it as a host left unprobed. The budget is raised by a deliberate argument
 (`--max-wait`); pacing faster than a host asked is not an option the command offers.
 
-## Decision 4 — the record states the rate, its source, and what was actually waited
+## Decision 5 — the record states the rate, its source, and what was actually waited
 
 `as_record` emits `pacing: {delay_seconds, delay_source, requests_issued, total_waited_seconds}`, and
 `delay_source` is one of `robots` / `explicit` / `none-declared`. *"We paced"* and *"we paced because

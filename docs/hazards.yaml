@@ -2865,6 +2865,29 @@ entries:
       - core/tests/test_robots.py::test_the_wildcard_delay_does_not_reach_a_group_that_names_us_and_states_none
       - core/tests/test_robots.py::test_an_unusable_delay_is_absent_rather_than_zero
 
+  - id: a-control-reads-like-instrumentation-and-instrumentation-feels-exempt
+    adr: adr-0048-a-declared-rate-limit-is-an-instruction.md
+    hazard: |
+      `reachability_control` called `_probe` directly and consulted no robots.txt, so it would have
+      issued a request to whatever unrelated host a recon named without asking that host anything.
+      It is the THIRD function in `core/controls.py` to have needed the check said out loud —
+      ADR-0047 records the baseline probe missing it while the sweep had it, and this one missed it
+      while both the others had it. Two is a bug; three is a shape, and the cause is nameable: a
+      control reads like instrumentation rather than retrieval, and instrumentation feels exempt. It
+      is not. It issues a request to somebody's server, and being an unrelated third party is not
+      consent.
+
+      Caught by reading the module before pointing it at a real host, which is not a mechanism.
+      The mechanism is the sweep below, which asserts the rule over every fetching entry point at
+      once instead of wherever someone remembered — plus a companion that derives the entry-point
+      list from the source with `ast`, because a sweep is only as good as the list it iterates and
+      that list was the part living in memory.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_every_control_that_fetches_consults_robots_first
+      - core/tests/test_controls.py::test_the_list_of_fetching_entry_points_is_complete
+      - core/tests/test_controls.py::test_a_refused_reachability_host_is_not_a_passing_control
+
   - id: the-two-fetchers-take-their-rate-from-different-places
     adr: adr-0048-a-declared-rate-limit-is-an-instruction.md
     hazard: |

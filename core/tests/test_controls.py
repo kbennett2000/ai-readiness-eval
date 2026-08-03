@@ -576,3 +576,80 @@ def test_the_unrelated_reachability_host_is_not_paced_by_the_targets_rate():
                           get=_host({}), sleep=sleep, robots_get=_robots(PACED_ROBOTS),
                           paths=("/openapi.json",), nonsense_paths=("/nope",))
     assert sleep.waits == [10.0, 10.0], "the unrelated host was paced by the target's declared delay"
+
+
+# --- no control retrieves anything without asking first (ADR-0036, ADR-0048) -------------------- #
+
+REFUSE_ALL = RobotsPolicy(host="example.test", directives=[("disallow", "/")], source="robots.txt")
+
+
+def _refusing_robots():
+    def get(url, user_agent, timeout=25):
+        return 200, "User-agent: *\nDisallow: /\n"
+    return get
+
+
+# Every entry point in this module that can reach `_probe`. The companion test below derives the same
+# set from the source, so a fourth control cannot be added and left off this list.
+FETCHING_ENTRY_POINTS = ("soft_404_baseline", "reachability_control", "well_known_spec_probe",
+                         "run_controls")
+
+
+def _call_entry_point(name, get):
+    robots_get = _refusing_robots()
+    if name == "soft_404_baseline":
+        return controls.soft_404_baseline("https://example.test/", get=get, robots_get=robots_get)
+    if name == "reachability_control":
+        return controls.reachability_control("https://example.test/page", get=get,
+                                             robots_get=robots_get)
+    if name == "well_known_spec_probe":
+        return controls.well_known_spec_probe("https://example.test/", baseline=controls.Baseline("x"),
+                                              get=get, robots_get=robots_get)
+    if name == "run_controls":
+        return controls.run_controls("https://example.test/", unrelated_url="https://example.test/u",
+                                     get=get, robots_get=robots_get)
+    raise AssertionError(f"no call recipe for {name}")
+
+
+@pytest.mark.parametrize("name", FETCHING_ENTRY_POINTS)
+def test_every_control_that_fetches_consults_robots_first(name):
+    """Asserted on the CALL LOG. A version that recorded the refusal and fetched anyway would satisfy
+    any assertion about the result, which is why the result is not what is asserted.
+
+    This is the third function in this module to have needed it. ADR-0047 records the baseline probe
+    missing the check while the sweep had it; `reachability_control` missed it while both others had
+    it. A control reads like instrumentation rather than retrieval, and instrumentation feels exempt —
+    so the rule is asserted over every entry point at once rather than wherever someone remembered.
+    """
+    get = _host({})
+    _call_entry_point(name, get)
+    assert get.calls == [], f"{name} requested a URL its host forbids"
+
+
+def test_the_list_of_fetching_entry_points_is_complete():
+    """Derived from the source, so a fourth control added later fails HERE rather than silently
+    escaping the sweep above. The check above is only as good as the list it iterates."""
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(controls))
+    reaches = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+            called = {n.func.id for n in ast.walk(node)
+                      if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+            if called & {"_probe", *FETCHING_ENTRY_POINTS}:
+                reaches.add(node.name)
+    assert reaches == set(FETCHING_ENTRY_POINTS), (
+        f"public functions reaching a retrieval: {sorted(reaches)}; "
+        f"FETCHING_ENTRY_POINTS says {sorted(FETCHING_ENTRY_POINTS)}. Add the new one to the list "
+        f"and give it a call recipe, or the conduct sweep above passes over it.")
+
+
+def test_a_refused_reachability_host_is_not_a_passing_control():
+    """A refusal must not read as a working fetcher. It is an absence of evidence about the fetcher,
+    which is exactly what `run_controls` already says about a thin one."""
+    report = controls.run_controls("https://example.test/", unrelated_url="https://example.test/u",
+                                   get=_host({}), robots_get=_refusing_robots())
+    assert report.reachability.error and "robots-Disallowed" in report.reachability.error
+    assert any("did NOT return substantial text" in n for n in report.notes)

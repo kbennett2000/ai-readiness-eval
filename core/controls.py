@@ -377,17 +377,34 @@ def soft_404_baseline(base_url: str, *, paths: tuple[str, ...] = NONSENSE_PATHS,
     return Baseline(base_url=base_url, probes=tuple(probes))
 
 
-def reachability_control(url: str, *, user_agent: str = USER_AGENT, get=_http_probe) -> Response:
+def reachability_control(url: str, *, user_agent: str = USER_AGENT, get=_http_probe, policy=None,
+                         robots_get=None) -> Response:
     """Retrieve an unrelated host through the same fetcher, so "your fetcher is broken" is answerable.
 
     The caller chooses the URL, and the choice is part of the record: the useful control is a host that
     is expected to serve substantial server-rendered text, so a thin result HERE means the instrument,
     and a thin result THERE means the target.
 
+    ROBOTS APPLIES, and this is the THIRD function in this module to need that said. ADR-0047 records
+    the baseline probe missing it while the sweep had it; this one missed it while both others had it,
+    and was caught the same way — by reading the code before running it against a real host. The
+    asymmetry keeps recurring for a reason worth naming: a control reads like instrumentation rather
+    than retrieval, and instrumentation feels exempt. It is not. This issues a request to somebody's
+    server, and being an unrelated third party is not consent.
+
     Deliberately unpaced by the target's pacer: this is a single request to a DIFFERENT host, and one
     host's declared rate is not an instruction the next host issued. A caller probing an unrelated host
     repeatedly owes it its own pacer.
     """
+    if policy is None:
+        kwargs = {"user_agent": user_agent}
+        if robots_get is not None:
+            kwargs["get"] = robots_get
+        policy = robots_mod.fetch_policy(url, **kwargs)
+    verdict = policy.verdict(url)
+    if not verdict.allowed:
+        return Response(url=url, status=None, raw_bytes=0, text="",
+                        error=f"robots-Disallowed ({verdict.rule}); not requested")
     return _probe(url, user_agent=user_agent, get=get)
 
 
@@ -523,7 +540,10 @@ def run_controls(base_url: str, *, unrelated_url: str | None = None,
 
     baseline = soft_404_baseline(base_url, paths=nonsense_paths, user_agent=user_agent, get=get,
                                  policy=policy, pacer=pacer)
-    reach = (reachability_control(unrelated_url, user_agent=user_agent, get=get)
+    # NOT `policy=policy` — that is the target's robots.txt and this is a different host, which owes
+    # its own. Passing the target's would be inventing permission from an unrelated server's file.
+    reach = (reachability_control(unrelated_url, user_agent=user_agent, get=get,
+                                  robots_get=robots_get)
              if unrelated_url else None)
     findings = well_known_spec_probe(base_url, baseline=baseline, paths=paths, policy=policy,
                                      user_agent=user_agent, get=get, pacer=pacer)
