@@ -32,8 +32,8 @@ from .report import _DIM_LABELS  # noqa: F401 (API labels; card rendering reads 
 from .scorer import DIMENSIONS  # noqa: F401 (API dimensions; card rendering reads the contract's)
 
 # Pipeline stages, in order. A target advances through these; its `status` records how far it got.
-STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "truncation", "disclosure",
-          "mock", "canary", "grid", "compare", "card"]
+STAGES = ["recon", "validate", "prompts", "roundtrip", "anchoring", "substitution", "truncation",
+          "disclosure", "mock", "canary", "grid", "compare", "card"]
 # A target is "done" (skipped by next_target) when it is finished or parked, in one of three senses:
 #   carded  — measured, a card exists. The pipeline put it here.
 #   blocked — a gate refused it, or it cannot be measured at all. The pipeline or an author put it here.
@@ -331,6 +331,69 @@ def _ruling(value: object) -> str:
     return word if word in _RULINGS else ""
 
 
+def _refused_robots_hosts(pack: Pack) -> dict:
+    """{host: [urls]} for every manifest page whose robots.txt was REFUSED to us (ADR-0052).
+
+    Reads the annotation the fetcher already writes, so this needs no network and no new field: a
+    page records `robots_source` at fetch time, and `robots.txt-refused` is the state a 401/403 on
+    /robots.txt now produces instead of being folded into "no robots.txt".
+    """
+    from urllib.parse import urlparse
+    from .docs_fetch import _entry_items
+    from .robots import SOURCE_REFUSED
+    out: dict = {}
+    try:
+        manifest = pack.docs_manifest()
+    except (OSError, yaml.YAMLError):
+        return out
+    for entry in (manifest.get("tasks") or {}).values():
+        for _key, page in _entry_items(entry):
+            if page.get("robots_source") == SOURCE_REFUSED and page.get("url"):
+                out.setdefault(urlparse(page["url"]).netloc, []).append(page["url"])
+    return out
+
+
+def _check_robots_refusals(pack: Pack, specs: dict) -> tuple[bool, str]:
+    """Every host that REFUSED us its robots.txt has to be named, in writing, in specs.yaml.
+
+    RFC 9309 leaves such a host unrestricted, so this forbids no retrieval and moves no number. What
+    it forbids is silence. A 403 on /robots.txt is a server declining to tell an identified reader
+    what it permits, and a pack whose conduct record says only "no robots.txt" for that host has
+    published a true-sounding sentence about a thing that did not happen.
+
+    A written reason and not a boolean, the same argument as ADR-0031 and ADR-0045: the sentence is
+    what a reviewer can disagree with. The obvious sentence — "the host filters by user agent; a
+    conventional self-identifying agent was served the file and it declares no rules" — is exactly
+    the disclosure a reader of a `gated-docs` column needs, and it should cost a pack something to
+    write it.
+    """
+    refused = _refused_robots_hosts(pack)
+    declared = specs.get("robots_refusals") or {}
+    if not isinstance(declared, dict):
+        return False, ("specs.yaml robots_refusals must be a mapping of host -> written reason, "
+                       f"not {type(declared).__name__}")
+    # The stale check runs even when nothing refused, and that ordering is the point: a pack whose
+    # host stopped refusing keeps a sentence describing a refusal that no longer happens, and the
+    # early return would have called that "no host refused its robots.txt" and passed.
+    stale_now = sorted(h for h in declared if h not in refused and str(declared[h] or "").strip())
+    if stale_now:
+        return False, (
+            f"specs.yaml declares robots_refusals for {len(stale_now)} host(s) that did not "
+            f"refuse: {', '.join(stale_now)}. A disclosure that is not true is worse than none.")
+    if not refused:
+        return True, "no host refused its robots.txt"
+    missing = sorted(h for h in refused
+                     if not str(declared.get(h) or "").strip())
+    if missing:
+        return False, (
+            f"{len(missing)} host(s) answered 401/403 to a robots.txt request and the pack says "
+            f"nothing about it: {', '.join(missing)}. RFC 9309 leaves such a host unrestricted, so "
+            f"nothing here is forbidden — what is forbidden is recording a refusal as an absence. "
+            f"Declare specs.yaml robots_refusals.<host> with what was asked, what came back, and on "
+            f"what basis this project went on to read the host (ADR-0052).")
+    return True, f"{len(refused)} host(s) refused robots.txt, each declared in writing"
+
+
 def check_recon(pack: Pack) -> tuple[bool, str]:
     """Recon gate (step zero): can the method anchor this vendor at all, and on what terms?
 
@@ -392,6 +455,11 @@ def check_recon(pack: Pack) -> tuple[bool, str]:
     except (OSError, yaml.YAMLError) as exc:
         return False, f"specs.yaml unreadable: {exc}"
     finding = specs.get("spec_finding") or {}
+
+    # --- conduct first: a host that refused its robots.txt must be named (ADR-0052) ------------ #
+    ok, why = _check_robots_refusals(pack, specs)
+    if not ok:
+        return False, why
 
     # --- both findings must be present and readable ------------------------------------------- #
     raw_avail = finding.get("machine_readable_spec_available")
@@ -588,6 +656,70 @@ def check_anchoring(pack: Pack) -> tuple[bool, str]:
     return True, f"{n_spec} spec-anchored + {n_doc} doc-anchored endpoint(s) resolve"
 
 
+def check_substitution(pack: Pack) -> tuple[bool, str]:
+    """Substitution gate: two different URLs may not have returned the same document (ADR-0053).
+
+    A docs host can answer a path that does not exist with HTTP 200 and a real, substantial page —
+    usually the section index or a project overview. When it does, every gate this pipeline already
+    runs passes: the status is 200, the body is not empty (ADR-0009), the extracted text is far above
+    the 200 B floor (ADR-0021), and robots permits it. A manifest can therefore import the SAME
+    substitute page under ten distinct URLs, and `public-docs` will inject one page ten times while
+    the pack believes it injected ten. Nothing downstream can see it: the transcript of a model that
+    read a substitute is the transcript of a model that read a document.
+
+    The rule is deliberately narrow, and every clause of it is doing work:
+
+      * **Different URLs.** One URL cited by several tasks is the normal, correct case — a shared
+        concept page belongs in every task that needs it — and it is not a substitution.
+      * **Identical `content_hash`.** Not similar, not overlapping. The fetcher already writes the
+        sha256 of the extracted text, so this compares what a reader received and needs no heuristic
+        and no threshold that could be tuned toward a result.
+      * **At or above the ADR-0021 text floor.** Below it, a repeated body is the client-rendered
+        shell case, which ADR-0021 already governs and which packs already declare page by page with
+        a written `short_text_ok`. Re-litigating that here would fail two published packs for
+        something they disclosed correctly years of cycles ago.
+
+    Measured over every pack on disk before this was written: 0 trip it. That is the evidence it is a
+    guard against a hazard rather than a rule against existing work — and the near-miss that prompted
+    it was in a recon, where a probe for a specification returned 200 with 167 KB of the project's
+    overview page at four different addresses and briefly read as four findings.
+    """
+    from .docs_fetch import MIN_TEXT_BYTES, _entry_items
+
+    try:
+        manifest = pack.docs_manifest()
+    except (OSError, yaml.YAMLError) as exc:
+        return False, f"docs-manifest.yaml unreadable: {exc}"
+
+    by_hash: dict[str, dict[str, list[str]]] = {}
+    n_hashed = 0
+    for task_id, entry in (manifest.get("tasks") or {}).items():
+        for key, page in _entry_items(entry):
+            digest, url = page.get("content_hash"), page.get("url")
+            if not digest or not url or (page.get("byte_size") or 0) < MIN_TEXT_BYTES:
+                continue
+            n_hashed += 1
+            by_hash.setdefault(digest, {}).setdefault(url, []).append(f"{task_id}:{key}")
+
+    collisions = {h: urls for h, urls in by_hash.items() if len(urls) > 1}
+    if collisions:
+        lines = []
+        for digest, urls in sorted(collisions.items())[:3]:
+            shown = sorted(urls)[:4]
+            lines.append(f"{digest[:23]}… returned by {len(urls)} URLs incl. " + ", ".join(shown))
+        return False, (
+            f"{len(collisions)} group(s) of DIFFERENT manifest URLs returned byte-identical text "
+            f"above the {MIN_TEXT_BYTES} B floor, which means the host served a substitute page "
+            f"rather than the document each URL names: {'; '.join(lines)}. Re-check the host's "
+            f"behaviour for a path that cannot exist — a 200 with a real page is a soft 404, and "
+            f"the baseline has to be established at the path DEPTH each URL sits at, not only at "
+            f"the site root (ADR-0053).")
+    if not n_hashed:
+        return True, "no page above the text floor has a content hash yet; nothing to compare"
+    return True, (f"{n_hashed} fetched page(s) above the text floor, "
+                  f"{len(by_hash)} distinct document(s) — no URL returned another URL's page")
+
+
 def check_truncation(pack: Pack) -> tuple[bool, str]:
     """Truncation gate: is the answer we are about to score still inside the text we inject?
 
@@ -656,51 +788,69 @@ def check_truncation(pack: Pack) -> tuple[bool, str]:
 
 
 def check_disclosure(pack: Pack) -> tuple[bool, str]:
-    """Disclosure gate: a `raw-spec` column that is scored against its own source has to say so.
+    """Disclosure gate: an optional injecting column scored against its own source has to say so.
 
     A separate STAGE rather than a branch inside `check_truncation`, because they ask different
     questions and only one of them is about a window. Truncation asks whether the answer survived
     the budget; this asks whether the pack's own record admits what the column is. A pack can pass
     either and fail the other, and a target resting at `disclosure` names which.
 
-    It is also where the `raw-spec` truncation audit is enforced, for a reason worth stating: a
-    specification is 40 KB–280 KB of text against a budget sized for prose pages, so this column
-    truncates by construction. That is NOT a defect — it is what a fixed budget does to a large
-    artifact, and equalising it by giving this column more room would mean the comparison measured
-    our generosity (ADR-0050). So the loss is REPORTED and never blocks: the gate's job is to make
-    sure the number arrives with the sentence that explains it.
+    It covers BOTH optional injecting conditions — `raw-spec` (ADR-0050) and `gated-docs`
+    (ADR-0051) — in one stage rather than two, because the ruling is one ruling: a column whose
+    injected document is also its answer key's anchor is a CEILING, and the pack must say so in
+    writing. Splitting it into two stages would let a pack rest at one while the other went
+    unasked, and the stage name would stop meaning "the columns are disclosed".
+
+    It is also where each column's truncation audit is enforced, for a reason worth stating: a
+    specification is 40 KB–280 KB against a budget sized for prose pages, so that column truncates
+    by construction. That is NOT a defect — it is what a fixed budget does to a large artifact, and
+    equalising it by giving the column more room would mean the comparison measured our generosity
+    (ADR-0050). So the loss is REPORTED and never blocks: the gate's job is to make sure the number
+    arrives with the sentence that explains it.
     """
-    from .conditions import audit_spec_truncation, check_spec_disclosure
+    from .conditions import (audit_gated_truncation, audit_spec_truncation, check_gated_disclosure,
+                             check_spec_disclosure, gated_disclosure, spec_disclosure)
 
-    if pack.raw_spec is None:
-        return True, "pack declares no raw-spec condition; nothing to disclose"
+    if pack.raw_spec is None and pack.gated_docs is None:
+        return True, "pack declares no optional injecting condition; nothing to disclose"
 
-    ok, detail = check_spec_disclosure(pack)
-    if not ok:
-        return False, detail
+    notes = []
+    for declared, name, checker, lister, auditor, key in (
+            (pack.raw_spec, "raw-spec", check_spec_disclosure, spec_disclosure,
+             audit_spec_truncation, "spec document"),
+            (pack.gated_docs, "gated-docs", check_gated_disclosure, gated_disclosure,
+             audit_gated_truncation, "gated page")):
+        if declared is None:
+            continue
 
-    from .conditions import spec_disclosure
-    if not any(r["spec_documents"] for r in spec_disclosure(pack)):
-        return False, ("raw-spec is declared but no task names a spec document, so the condition "
-                       "would inject nothing and the column would be a second copy of no-context "
-                       "under a different heading — three conditions on the card, two experiments "
-                       "in the data")
+        ok, detail = checker(pack)
+        if not ok:
+            return False, detail
 
-    try:
-        records = audit_spec_truncation(pack)
-    except Exception as exc:
-        return False, (f"the raw-spec truncation audit could not run: {type(exc).__name__}: {exc}. "
-                       f"A column whose injected text cannot be inspected cannot be published — "
-                       f"the whole point of this condition is that what did not fit is declared.")
-    losses = [r for r in records if r.get("truncated")]
-    searchable = [r for r in records if r.get("searchable")]
-    if not searchable:
-        return False, ("no task's cached spec document is long enough to contain its own answer. "
-                       "Run `fetch-docs`. An unread document and a document with nothing in it are "
-                       "different findings and only one of them is the vendor's (ADR-0043)")
-    return True, (f"{detail}; raw-spec injects {len(searchable)} searchable item(s), "
-                  f"{len(losses)} truncated away by the shared "
-                  f"{pack.public_docs_budget_tokens}-token budget and reported as such")
+        if not any(r["injected_documents"] for r in lister(pack)):
+            return False, (
+                f"{name} is declared but no task names a {key}, so the condition would inject "
+                f"nothing and the column would be a second copy of no-context under a different "
+                f"heading — an extra condition on the card, one fewer experiment in the data")
+
+        try:
+            records = auditor(pack)
+        except Exception as exc:
+            return False, (f"the {name} truncation audit could not run: {type(exc).__name__}: "
+                           f"{exc}. A column whose injected text cannot be inspected cannot be "
+                           f"published — the whole point of these conditions is that what did not "
+                           f"fit is declared.")
+        losses = [r for r in records if r.get("truncated")]
+        searchable = [r for r in records if r.get("searchable")]
+        if not searchable:
+            return False, (f"no task's cached {key} is long enough to contain its own answer under "
+                           f"{name}. Run `fetch-docs`. An unread document and a document with "
+                           f"nothing in it are different findings and only one of them is the "
+                           f"vendor's (ADR-0043)")
+        notes.append(f"{detail}; {name} injects {len(searchable)} searchable item(s), "
+                     f"{len(losses)} truncated away by the shared "
+                     f"{pack.public_docs_budget_tokens}-token budget and reported as such")
+    return True, " | ".join(notes)
 
 
 # The deterministic gates, in the order the dispatcher runs them. Declaring them as data (rather than
@@ -712,9 +862,11 @@ GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
     ("prompts", check_prompts),
     ("roundtrip", check_roundtrip),
     ("anchoring", check_anchoring),
-    # After anchoring, because the order is the argument: anchoring proves the answer key points at
-    # a real published artifact, and only then is it worth asking whether the text we inject still
-    # contains it.
+    # Between anchoring and truncation, and the order is again the argument. Anchoring proves the
+    # answer key points at a real published artifact; this proves each URL returned its OWN document
+    # rather than a substitute; only then is it worth asking whether the budget kept the answer.
+    # Asking about truncation first would audit a window onto the wrong page (ADR-0053).
+    ("substitution", check_substitution),
     ("truncation", check_truncation),
     # After truncation, for the same shape of reason: the disclosure names what the raw-spec column
     # is, and it is only worth naming once the text behind it has been shown to be there (ADR-0050).

@@ -33,6 +33,14 @@ WHAT IS DELIBERATE, because each of these is a judgement and not a lookup:
     (RFC 9309 §2.3.1.3) — that is the standard's call and four hosts in the cohort rely on it. But a 5xx,
     a timeout or a connection error makes it "unreachable" (§2.3.1.4) and the whole host is treated as
     disallowed. A fetcher that reads a timeout as a green light has no policy at all, only a preference.
+  * **...and a REFUSAL is not an absence, even though it permits the same things** (ADR-0052). A 401 or
+    a 403 on /robots.txt is a 4xx, so RFC 9309's unrestricted reading still applies and no URL becomes
+    forbidden by this distinction. What changes is what gets WRITTEN DOWN. A host that answers "not
+    found" never had a policy; a host that answers "forbidden" declined to show us the one it has, and
+    RFC 9309 §2.3.1.3 says so itself in a note. Collapsing them made `source: no-robots-txt` — a phrase
+    a manifest publishes and a card cites — a true statement about the first and a false one about the
+    second. Found the expensive way: a recon's own generated audit table recorded PERMITTED, from
+    `no-robots-txt`, for a host that had just answered 403 to every request including that one.
   * **...but a host that does not resolve is a fourth thing, not a fifth kind of refusal.** See
     `SOURCE_NO_HOST`. Folding NXDOMAIN into "unreachable" made the first cohort-wide run report eleven
     violations against a pack whose docs host had simply ceased to exist, which is a conduct accusation
@@ -66,7 +74,15 @@ USER_AGENT = "ai-readiness-eval-docs"
 # Why a source is what it is, in one line each — these strings are written into pack manifests, so they
 # are part of the record a reviewer reads and not just an internal enum.
 SOURCE_RULES = "robots.txt"                 # the host served directives and they were applied
-SOURCE_ABSENT = "no-robots-txt"             # 4xx, or a body with no directives in it → unrestricted
+SOURCE_ABSENT = "no-robots-txt"             # 404-family, or a body with no directives → unrestricted
+# 401/403. Permits exactly what SOURCE_ABSENT permits (RFC 9309 §2.3.1.3: a 4xx leaves the host
+# unrestricted), and says something different about the world, which is the entire point (ADR-0052).
+# "No robots.txt" claims the host never stated a policy. This host has one and refused to show it —
+# and, since the refusal is a decision about the requesting agent rather than about the file, the same
+# host may serve the file to a different reader. Recording that as absence is not a small inaccuracy:
+# it is the one place where this project's conduct record could say "nothing was asked of us" about a
+# server that had just said no.
+SOURCE_REFUSED = "robots.txt-refused"
 SOURCE_UNREACHABLE = "robots.txt-unreachable"  # 5xx / network failure → the host is fully disallowed
 # DNS does not resolve. Distinct from UNREACHABLE, and the distinction is not pedantry: a host that
 # answers nothing is a server refusing to state its policy, and the conservative reading is to stay
@@ -265,6 +281,9 @@ def policy_from_response(host: str, status: int, body: str, *, user_agent: str =
         return RobotsPolicy(host, [], "*", SOURCE_NO_HOST, today, "")
     if status == STATUS_NETWORK_FAILURE or status >= 500:
         return RobotsPolicy(host, [], "*", SOURCE_UNREACHABLE, today, "")
+    if status in (401, 403):
+        # Unrestricted, like any other 4xx — and recorded as a refusal, not an absence (ADR-0052).
+        return RobotsPolicy(host, [], "*", SOURCE_REFUSED, today, "")
     if status >= 400:
         return RobotsPolicy(host, [], "*", SOURCE_ABSENT, today, "")
     directives, agent_group, delay = parse(body, user_agent)

@@ -3026,3 +3026,131 @@ entries:
       sensitivity check beside the first rather than instead of it: two numbers, one of which is
       known to have been bought. That is a study, it costs a second grid, and it is not filed because
       no published number depends on it until this condition has run more than once.
+
+  # ------------------------------------------------ ADR-0051 / ADR-0052 / ADR-0053 -
+  - id: gated-docs-is-scored-against-the-document-its-answer-key-cites
+    adr: adr-0051-a-filter-on-the-user-agent-is-a-finding.md
+    hazard: >
+      `gated-docs` injects the vendor's own documentation retrieved with a conventional
+      self-identifying agent, on a host that refuses the plain one. On such a host the withheld pages
+      are ALSO the only first-party artifact a ground-truth citation can point at, so the overlap
+      between what is injected and what the answer key cites is the EXPECTED case rather than the
+      exception — the reverse of ADR-0050's specification, where it was one vendor's accident. A large
+      number in that column is therefore a ceiling (can the model read what it was handed), and
+      published beside `no-context` without the sentence it reads as readiness.
+    status: gated
+    gated_by:
+    - core/tests/test_gated_docs_condition.py::test_an_undeclared_overlap_is_refused
+    - core/tests/test_gated_docs_condition.py::test_a_declared_overlap_passes_and_names_the_count
+    - core/tests/test_gated_docs_condition.py::test_a_disclosure_that_is_not_true_is_refused
+    - core/tests/test_gated_docs_condition.py::test_a_blank_reason_does_not_satisfy_the_gate
+    - core/tests/test_gated_docs_condition.py::test_the_stage_gate_covers_both_optional_columns
+
+  - id: public-docs-and-gated-docs-hold-the-same-urls
+    adr: adr-0051-a-filter-on-the-user-agent-is-a-finding.md
+    hazard: >
+      These are the only two manifest lists that hold the SAME addresses with different bodies — a 403
+      stub and the document. Anything that let one list's text reach the other column would inject the
+      document into the column whose entire finding is that the document did not arrive, and no
+      transcript could show it: a model that read the document looks like a model that read the
+      document. Two distinct routes exist — a shared code path (refused: `manifest_key` is a class
+      attribute fixed at class-definition time) and a shared CACHE FILE, which is the quieter one,
+      because one file written twice means whichever list was fetched last decides what BOTH columns
+      inject.
+    status: gated
+    gated_by:
+    - core/tests/test_gated_docs_condition.py::test_a_gated_page_never_reaches_the_prompt_under_public_docs
+    - core/tests/test_gated_docs_condition.py::test_the_manifest_key_is_fixed_at_class_definition_time
+    - core/tests/test_gated_docs_condition.py::test_the_two_retrievals_of_one_url_do_not_share_a_cache_file
+    - core/tests/test_gated_docs_condition.py::test_every_other_key_resolves_to_the_path_it_always_did
+
+  - id: a-declared-fetch-agent-could-impersonate-a-browser
+    adr: adr-0051-a-filter-on-the-user-agent-is-a-finding.md
+    hazard: >
+      The `gated-docs` column is obtained by presenting a different `User-Agent` from the one
+      `public-docs` presents. One string away from the honest form is impersonation, and the resulting
+      column would measure what a vendor shows a reader it was deceived about — which is not a fact
+      about AI readiness, but renders identically to one. The refusal is in code (`_looks_like_a_browser`)
+      rather than in prose, because the pressure to paste a browser string is highest in the cycle
+      that is blocked on a 403.
+    status: gated
+    gated_by:
+    - core/tests/test_gated_docs_condition.py::test_a_browser_user_agent_is_refused
+    - core/tests/test_gated_docs_condition.py::test_every_browser_shaped_agent_is_refused
+    - core/tests/test_gated_docs_condition.py::test_a_self_identifying_agent_is_accepted
+    - core/tests/test_gated_docs_condition.py::test_a_gated_docs_block_without_an_agent_is_refused
+
+  - id: a-host-may-serve-a-different-robots-txt-to-a-different-agent
+    adr: adr-0052-a-refusal-is-not-an-absence.md
+    hazard: >
+      ADR-0052 makes a REFUSED robots.txt visible because a refusal has a status code. A host that
+      serves `Disallow: /` to one agent and `Allow: /` to another is not visible at all: both responses
+      are HTTP 200 with a valid robots file, and each is a complete, self-consistent policy. This
+      project would obey the one it was shown and record it as the host's rules, with no evidence that
+      another exists. The conduct claim on the card would be true about the request that was made and
+      silent about a rule the host also states.
+    status: ungated
+    ungated_reason: >
+      Detecting it requires fetching robots.txt at least twice per host under different agents, and
+      nothing requires that today — the second fetch would be an extra unrequested request to every
+      host in the cohort, made in order to look for a disagreement no measured host has shown. A guard
+      that costs every vendor a request to find a case never observed is a worse trade than a recorded
+      limit, and calling it gated would be true about a test and false about the world. Where a pack
+      DOES fetch twice — every pack declaring `gated_docs` must — the two policies are recorded side by
+      side in its own record, so the evidence exists exactly where the question has been raised.
+    drift_pin:
+    - core/tests/test_refusal_and_substitution.py::test_the_refused_state_is_its_own_string
+    - core/tests/test_refusal_and_substitution.py::test_a_refusal_still_permits_every_url
+    fix_queued_to: >
+      Not queued. The cheapest honest step is smaller than a fix and is already taken: a pack that
+      fetches under two agents records both policies, so the disagreement would surface for any target
+      where it matters. Queuing a cohort-wide double fetch before a single host has shown a
+      disagreement would be building the guard for a hazard the record has never seen.
+
+  - id: existing-manifests-recorded-a-refusal-as-an-absence
+    adr: adr-0052-a-refusal-is-not-an-absence.md
+    hazard: >
+      Every manifest annotation on disk was written under the old ruling, where 401, 403, 404 and 410
+      all produced `no-robots-txt`. A host that refused a past fetch is therefore recorded as having
+      had no robots.txt, and nothing in the committed record distinguishes the two. The new state
+      applies from the next fetch onward, so a reader of an older manifest gets the old, conflated
+      answer while a reader of a new one gets the split — with the same field name.
+    status: ungated
+    ungated_reason: >
+      Re-annotating would require re-fetching robots.txt for every host in every pack, which is a
+      request to eighteen vendors to correct a record that no published number depends on: the
+      permission semantics of a 4xx are unchanged, so nothing any pack retrieved was wrong. Measured
+      before writing this: 0 packs currently carry a refused host at all, which bounds the damage to
+      hosts whose behaviour changed since their fetch date and cannot be checked without asking them.
+    drift_pin:
+    - core/tests/test_refusal_and_substitution.py::test_an_undeclared_refusal_is_refused
+    fix_queued_to: >
+      Not queued, and deliberately: the correcting action is a re-fetch, which every pack performs
+      anyway whenever its docs snapshot is refreshed, so the record self-corrects at the moment anyone
+      has a reason to look. Filing it would create an issue whose resolution is "wait".
+
+  - id: a-substitute-page-served-at-one-url-is-still-invisible
+    adr: adr-0053-a-substitute-page-is-not-a-document.md
+    hazard: >
+      `check_substitution` catches a soft-404 page imported under SEVERAL URLs, by collision. A
+      substitute imported at exactly one URL collides with nothing and passes every gate in the
+      pipeline — 200, non-empty (ADR-0009), far above the text floor (ADR-0021), robots-permitted — so
+      a manifest can inject a project overview in place of an operation reference and the transcript is
+      indistinguishable from one where the real page was read. This is the larger half of issue #35.
+    status: ungated
+    ungated_reason: >
+      Catching the single case needs a judgement about whether a page is ABOUT what its URL says, and
+      every mechanical form of that judgement is worse than the hazard: a keyword test drops real
+      documentation out of a measured condition (a false positive here silently removes evidence), and
+      a comparison against the host's own soft-404 baseline requires the baseline to have been
+      established at that path depth, which is a recon discipline no committed artifact records. So the
+      honest state is a partial guard plus a written recon rule, and claiming the gate covers the class
+      would be true about a test and false about the world.
+    drift_pin:
+    - core/tests/test_refusal_and_substitution.py::test_two_urls_returning_the_same_substantial_page_are_refused
+    - core/tests/test_refusal_and_substitution.py::test_an_unfetched_manifest_has_nothing_to_compare
+    fix_queued_to: >
+      Public ai-readiness-eval #35, which filed the sign-in-page variant of this class in cycle 18 and
+      names the cheapest first step (record a fetch's FINAL URL when it differs from the requested one,
+      which a manifest currently cannot express). That step would catch a redirected substitute
+      without any judgement about content, and it is the half of #35 this ADR does not close.

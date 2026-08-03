@@ -16,6 +16,42 @@ import yaml
 DEFAULT_DOCS_BUDGET_TOKENS = 15000
 DEFAULT_DISCOVERY_TOOL = "ToolSearch"
 
+#: Product tokens that appear only in a real browser's User-Agent. A declared `gated_docs.user_agent`
+#: carrying any of them is refused (ADR-0051).
+#:
+#: The list is deliberately a denylist of RENDERING-ENGINE and BROWSER-PRODUCT tokens rather than an
+#: allowlist of acceptable agents, for the reason ADR-0017's first-party check gives: an allowlist
+#: fails OPEN on the string nobody thought of, and the string nobody thought of is exactly what a
+#: cycle under time pressure would paste in. `Mozilla/5.0` alone is NOT here and must not be: it is a
+#: vestigial token that every conventional crawler — Googlebot, bingbot — carries, and banning it
+#: would ban the one honest form that passes a filter of this kind.
+_BROWSER_UA_TOKENS = ("AppleWebKit", "Gecko/", "Chrome/", "Chromium/", "CriOS/", "Safari/",
+                      "Firefox/", "FxiOS/", "Edg/", "Edge/", "EdgA/", "OPR/", "Opera",
+                      "Trident/", "MSIE", "Version/", "Mobile/", "SamsungBrowser")
+
+
+def _looks_like_a_browser(agent: str) -> bool:
+    """Does this User-Agent claim to be a browser rather than name its operator (ADR-0051)?
+
+    Two independent tests, because either alone lets a real browser string through:
+
+    1. Any browser-product or rendering-engine token above. A Chrome string carries several.
+    2. A `Mozilla/`-prefixed string whose parenthetical does NOT open with `compatible;`. That form
+       is the conventional bot declaration; `Mozilla/5.0 (Windows NT 10.0; …)` is a claim to be a
+       specific browser on a specific operating system, and no crawler needs to make it.
+
+    Returns True to REFUSE. Nothing here inspects what a host does with the string — the rule is
+    about what this project is willing to say about itself, which is a decision and not a
+    measurement.
+    """
+    if any(tok.lower() in agent.lower() for tok in _BROWSER_UA_TOKENS):
+        return True
+    if agent.lstrip().lower().startswith("mozilla/"):
+        head, sep, rest = agent.partition("(")
+        if not sep or not rest.lstrip().lower().startswith("compatible;"):
+            return True
+    return False
+
 
 @dataclass
 class ContextLayer:
@@ -54,6 +90,35 @@ class RawSpec:
 
 
 @dataclass
+class GatedDocs:
+    """Config for the optional `gated-docs` condition (ADR-0051).
+
+    For a docs host that decides what to serve from the User-Agent string. `public-docs` asks with
+    this project's plain self-identifying agent and records what comes back — on such a host, a
+    refusal. This condition asks the SAME URLs with a conventional self-identifying agent and records
+    what comes back instead. The two columns together price the filter.
+
+    `user_agent` is REQUIRED and is published verbatim on the card. That is the whole conduct
+    position: the declared agent must NAME this project, in the conventional
+    `Mozilla/5.0 (compatible; <name>/<version>)` form that ordinary crawlers have used for decades.
+    It is not a browser string and must never be one. A column obtained by claiming to be someone
+    else would measure what a vendor shows a person it was deceived about, and no honest number can
+    be built from that — so the string is a field a reviewer reads, not a default anyone can inherit.
+
+    There is no budget field, for ADR-0050's reason, which applies here more sharply: this column is
+    set directly beside `public-docs` on the same URLs, and any budget difference between them would
+    be indistinguishable from the effect being measured.
+    """
+    source_label: str
+    #: The exact User-Agent header this pack's `gated_pages` were retrieved with. Published on the
+    #: card; recorded per page by the fetcher as `fetched_with_user_agent`, so the claim is checkable
+    #: against the manifest rather than only against this field.
+    user_agent: str
+    #: Written justification for a task whose `gated_pages` overlap its `anchors` — see `RawSpec`.
+    scored_against_own_source: dict
+
+
+@dataclass
 class Pack:
     root: Path
     vendor_id: str
@@ -77,6 +142,9 @@ class Pack:
     # The optional `raw-spec` condition (ADR-0050). None for every pack that does not declare it,
     # which is every pack written before that ADR, so no published number moves by this existing.
     raw_spec: RawSpec | None = None
+    # The optional `gated-docs` condition (ADR-0051). None for every pack that does not declare it,
+    # so no published number moves by this existing.
+    gated_docs: "GatedDocs | None" = None
     # Fetch-time User-Agent for the public-docs snapshot. Only set it when a vendor's docs host
     # bot-gates the default self-identifying agent (ADR-0007); the gating itself is a scored finding.
     public_docs_user_agent: str | None = None
@@ -161,6 +229,28 @@ class Pack:
                 scored_against_own_source=dict(rs.get("scored_against_own_source") or {}),
             )
 
+        gated_docs = None
+        gd = cfg.get("gated_docs")
+        if gd:
+            agent = str(gd.get("user_agent") or "").strip()
+            if not agent:
+                raise ValueError(
+                    f"pack '{vid}' declares gated_docs without a user_agent. The agent this column "
+                    "was retrieved with IS the finding and is published verbatim on the card, so "
+                    "there is no default to inherit (ADR-0051).")
+            if _looks_like_a_browser(agent):
+                raise ValueError(
+                    f"pack '{vid}' declares a gated_docs user_agent that impersonates a browser: "
+                    f"{agent!r}. This condition is retrieved with a CONVENTIONAL SELF-IDENTIFYING "
+                    "agent — 'Mozilla/5.0 (compatible; <name>/<version>)' — never with a browser "
+                    "string. A column obtained by claiming to be someone else measures what a "
+                    "vendor shows a reader it was deceived about (ADR-0051).")
+            gated_docs = GatedDocs(
+                source_label=gd["source_label"],
+                user_agent=agent,
+                scored_against_own_source=dict(gd.get("scored_against_own_source") or {}),
+            )
+
         return cls(
             root=root,
             vendor_id=vid,
@@ -179,6 +269,7 @@ class Pack:
             spec_scope_prefix=(cfg.get("specs_scope", "") or ""),
             context_layer=context_layer,
             raw_spec=raw_spec,
+            gated_docs=gated_docs,
             mode=cfg.get("mode"),
             spec_ref_file_prefix=cfg.get("spec_ref_file_prefix"),
             expected_task_ids=(list(cfg["expected_task_ids"]) if cfg.get("expected_task_ids") else None),
@@ -266,6 +357,8 @@ class Pack:
     def docs_manifest(self) -> dict:
         return yaml.safe_load(self.docs_manifest_path.read_text())
 
-    def cache_path_for(self, task_id: str, url: str) -> Path:
-        from .docs_fetch import slug_for
-        return self.docs_cache_dir / task_id / f"{slug_for(url)}.txt"
+    def cache_path_for(self, task_id: str, url: str, *, manifest_key: str | None = None) -> Path:
+        """Where this pack caches one retrieval. Delegates the `manifest_key` ruling to `docs_fetch`
+        so the reader and the writer cannot disagree about a path (ADR-0051)."""
+        from .docs_fetch import cache_path_for
+        return cache_path_for(self.docs_cache_dir, task_id, url, prefix=manifest_key)

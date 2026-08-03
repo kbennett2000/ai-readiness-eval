@@ -13,7 +13,7 @@ import tempfile
 from abc import ABC, abstractmethod
 
 from .contract import contract_for
-from .docs_fetch import ANCHOR_KEY, INJECTED_KEY, ROLE_PRIORITY, SPEC_KEY
+from .docs_fetch import ANCHOR_KEY, GATED_KEY, INJECTED_KEY, ROLE_PRIORITY, SPEC_KEY
 from .model import CliPolicy, deny_all_policy
 from .pack import Pack
 
@@ -21,7 +21,7 @@ _CHARS_PER_TOKEN = 4  # keep in step with scorer/specsize token estimates
 
 # The condition names this module knows how to build, in report order. Which ones a given pack
 # actually exposes depends on whether it declares a context layer (see build_registry).
-KNOWN_CONDITIONS = ("no-context", "public-docs", "raw-spec", "mcp")
+KNOWN_CONDITIONS = ("no-context", "public-docs", "gated-docs", "raw-spec", "mcp")
 
 
 def _sterile_mcp_config(ctx) -> str:
@@ -92,8 +92,9 @@ class NoContextCondition(Condition):
 class _InjectedTextCondition(Condition):
     """Shared machinery for every condition that injects cached first-party text under a budget.
 
-    Two conditions do that — `public-docs` and `raw-spec` (ADR-0050) — and they differ in exactly
-    three things: which manifest list they read, what they label the block, and which budget applies.
+    Three conditions do that — `public-docs`, `raw-spec` (ADR-0050) and `gated-docs` (ADR-0051) — and
+    they differ in exactly three things: which manifest list they read, what they label the block, and
+    which budget applies.
     Everything else (the robots re-check at point of use, the missing-cache ruling, the drop-then-
     truncate assembly, the unbudgeted `full_text` the truncation audit compares against) is one
     behaviour and is written once.
@@ -144,7 +145,7 @@ class _InjectedTextCondition(Condition):
         # from disk forever. Permission is a present-tense fact, so it is read at the point of use.
         if page.get("robots_disallowed"):
             return ""
-        path = self._pack.cache_path_for(task_id, page["url"])
+        path = self._pack.cache_path_for(task_id, page["url"], manifest_key=self.manifest_key)
         if not path.exists():
             # Fidelity to the machine reader (ADR-0005): public-docs models what a fetch actually
             # RETRIEVES. A page the manifest records as unfetchable — a developer portal that does
@@ -254,6 +255,46 @@ class RawSpecCondition(_InjectedTextCondition):
         return pack.raw_spec.source_label
 
 
+class GatedDocsCondition(_InjectedTextCondition):
+    """Inject the vendor's own documentation as served to a conventional self-identifying agent
+    (ADR-0051).
+
+    It exists for one shape of host: a docs server that decides what to return from the User-Agent
+    string. `public-docs` asks with this project's plain agent and injects whatever arrives — on such
+    a host, nothing, because what arrives is a refusal. This condition asks the SAME URLs with the
+    agent declared in `pack.gated_docs.user_agent` and injects what arrives instead.
+
+    **What the pair measures is the filter, not the documentation.** Every other input is held
+    constant on purpose: the same URLs, the same budget, the same prompt, the same tasks. The only
+    variable is the string this project puts in one header, so the difference between the two columns
+    is the price of that string and nothing else. That is why the budget is inherited rather than
+    configurable — ADR-0050's argument, sharper here, because these two columns share their corpus.
+
+    **The declared agent names this project.** `pack.py` refuses a browser string outright, so this
+    class can state the property rather than check it: whatever `gated_pages` holds was retrieved by
+    a reader that said who it was. A column obtained by claiming to be a browser would measure what
+    a vendor shows a reader it was deceived about, which is not a fact about AI readiness.
+
+    Reads `gated_pages` and ONLY `gated_pages` — not `pages`, not `anchors` (ADR-0034), not
+    `spec_documents` (ADR-0050). The separate key matters more here than anywhere: this is the only
+    pair of lists that holds the SAME URLs, so a shared list with a per-page flag would make it one
+    typo's work to inject the document into the column whose finding is that the document did not
+    arrive.
+    """
+
+    name = "gated-docs"
+    manifest_key = GATED_KEY
+
+    def _label_for(self, pack: Pack) -> str:
+        if pack.gated_docs is None:
+            raise ValueError(
+                f"pack '{pack.vendor_id}' has no gated_docs block; the 'gated-docs' condition is "
+                "unavailable for it. A pack declares the condition or does not have it — there is "
+                "no default label and no default agent, because the agent a column was retrieved "
+                "with is the finding that column exists to report.")
+        return pack.gated_docs.source_label
+
+
 class McpCondition(Condition):
     """The fix: the model gets the task prompt (same as no-context) plus the pack's context-layer
     MCP tools — and nothing else (ADR-0007/0008 lineage).
@@ -312,17 +353,19 @@ class McpCondition(Condition):
 
 
 def build_registry(pack: Pack) -> dict[str, Condition]:
-    """Build the condition registry for a pack. A pack with no context layer omits `mcp`
-    (two-condition mode), and one with no `raw_spec` block omits `raw-spec` (ADR-0050).
+    """Build the condition registry for a pack.
 
-    Both optional conditions are gated on the pack DECLARING them, not on the manifest happening to
-    carry a list — a manifest that grew a `spec_documents` entry by accident would otherwise add a
-    column to a cohort table, and a column is a claim.
+    Three of the five conditions are optional and each is gated on the pack DECLARING it: `mcp` on
+    `context_layer`, `raw-spec` on `raw_spec` (ADR-0050), `gated-docs` on `gated_docs` (ADR-0051).
+    Never on the manifest happening to carry a list — a manifest that grew a `gated_pages` entry by
+    accident would otherwise add a column to a cohort table, and a column is a claim.
     """
     registry: dict[str, Condition] = {
         "no-context": NoContextCondition(pack),
         "public-docs": PublicDocsCondition(pack),
     }
+    if pack.gated_docs is not None:
+        registry["gated-docs"] = GatedDocsCondition(pack)
     if pack.raw_spec is not None:
         registry["raw-spec"] = RawSpecCondition(pack)
     if pack.context_layer is not None:
@@ -453,6 +496,33 @@ def audit_spec_truncation(pack: Pack) -> list[dict]:
     return audit_docs_truncation(pack, RawSpecCondition(pack))
 
 
+def _overlap_disclosure(pack: Pack, *, condition_name: str, inject_key: str,
+                        declarations: dict) -> list[dict]:
+    """Per task: does an injecting condition show the model the very document its answer key cites?
+
+    One implementation for both optional injecting conditions (ADR-0050's `raw-spec`, ADR-0051's
+    `gated-docs`), because the question and the ruling are identical and only the manifest key
+    differs. Two copies would drift, and the way they would drift is that one of them quietly stops
+    being run.
+    """
+    manifest = pack.docs_manifest()
+    out: list[dict] = []
+    for task in pack.load_tasks():
+        entry = (manifest.get("tasks") or {}).get(task["id"]) or {}
+        injected = {p["url"] for p in (entry.get(inject_key) or []) if p.get("url")}
+        anchors = {p["url"] for p in (entry.get(ANCHOR_KEY) or []) if p.get("url")}
+        shared = sorted(injected & anchors)
+        out.append({
+            "task_id": task["id"],
+            "condition": condition_name,
+            "injected_documents": sorted(injected),
+            "overlapping_anchors": shared,
+            "scored_against_own_source": bool(shared),
+            "declared_reason": (declarations or {}).get(task["id"]),
+        })
+    return out
+
+
 def spec_disclosure(pack: Pack) -> list[dict]:
     """Per task: does `raw-spec` inject the very document the answer key is cited to (ADR-0050)?
 
@@ -468,27 +538,37 @@ def spec_disclosure(pack: Pack) -> list[dict]:
     reviewer cannot be left to infer it from two lists that happen to match.
 
     Returns one record per task. `check_spec_disclosure` turns them into a gate.
+
+    Records also carry `spec_documents`, the pre-ADR-0051 spelling of `injected_documents`, so a
+    caller written against the original shape keeps working.
     """
     if pack.raw_spec is None:
         return []
-    manifest = pack.docs_manifest()
-    out: list[dict] = []
-    for task in pack.load_tasks():
-        entry = (manifest.get("tasks") or {}).get(task["id"]) or {}
-        specs = {p["url"] for p in (entry.get(SPEC_KEY) or []) if p.get("url")}
-        anchors = {p["url"] for p in (entry.get(ANCHOR_KEY) or []) if p.get("url")}
-        shared = sorted(specs & anchors)
-        out.append({
-            "task_id": task["id"],
-            "spec_documents": sorted(specs),
-            "overlapping_anchors": shared,
-            "scored_against_own_source": bool(shared),
-            "declared_reason": (pack.raw_spec.scored_against_own_source or {}).get(task["id"]),
-        })
-    return out
+    records = _overlap_disclosure(pack, condition_name="raw-spec", inject_key=SPEC_KEY,
+                                  declarations=pack.raw_spec.scored_against_own_source)
+    for r in records:
+        r["spec_documents"] = r["injected_documents"]
+    return records
 
 
-def check_spec_disclosure(pack: Pack) -> tuple[bool, str]:
+def gated_disclosure(pack: Pack) -> list[dict]:
+    """The same question, asked of `gated-docs` (ADR-0051). Empty for a pack that does not declare it.
+
+    It bites harder here than it does for a specification, and the reason is worth stating where the
+    code is. On a user-agent-filtering host, `gated_pages` and `anchors` are drawn from the SAME
+    corpus — often the same URLs — because the pages the filter withholds are also the only
+    first-party artifact a ground-truth citation can point at. So the overlap is the expected case
+    rather than the exception, and a pack that reports a large `gated-docs` number without saying so
+    would be publishing a ceiling as a readiness measurement.
+    """
+    if pack.gated_docs is None:
+        return []
+    return _overlap_disclosure(pack, condition_name="gated-docs", inject_key=GATED_KEY,
+                               declarations=pack.gated_docs.scored_against_own_source)
+
+
+def _check_disclosure_records(records: list[dict], *, condition_name: str, config_path: str
+                              ) -> tuple[bool, str]:
     """Gate: every task scored against its own source has to say so, in writing.
 
     A written reason and not a boolean, for the same argument ADR-0045 made about an unexercised
@@ -496,26 +576,53 @@ def check_spec_disclosure(pack: Pack) -> tuple[bool, str]:
     question, and a sentence records what they thought — which is the thing a reviewer can disagree
     with. `True` would be satisfiable by a pack that never considered it.
     """
-    records = spec_disclosure(pack)
     missing = [r["task_id"] for r in records
                if r["scored_against_own_source"] and not (r["declared_reason"] or "").strip()]
     if missing:
         return False, (
-            f"{len(missing)} task(s) inject a spec document that is also their ground-truth anchor, "
-            f"so `raw-spec` is scored against its own source, and the pack does not say so: "
-            f"{', '.join(missing)}. Declare raw_spec.scored_against_own_source.<task_id> with the "
-            f"reason a reviewer would need to read this column as a ceiling rather than a "
-            f"measurement.")
+            f"{len(missing)} task(s) inject a document that is also their ground-truth anchor, so "
+            f"`{condition_name}` is scored against its own source, and the pack does not say so: "
+            f"{', '.join(missing)}. Declare {config_path}.<task_id> with the reason a reviewer "
+            f"would need to read this column as a ceiling rather than a measurement.")
     stale = [r["task_id"] for r in records
              if not r["scored_against_own_source"] and (r["declared_reason"] or "").strip()]
     if stale:
         return False, (
-            f"{len(stale)} task(s) declare raw_spec.scored_against_own_source but their spec "
-            f"documents and anchors do not overlap: {', '.join(stale)}. A disclosure that is not "
-            f"true is worse than none — it teaches a reader to discount the ones that are.")
+            f"{len(stale)} task(s) declare {config_path} but their injected documents and anchors "
+            f"do not overlap: {', '.join(stale)}. A disclosure that is not true is worse than none "
+            f"— it teaches a reader to discount the ones that are.")
     n = sum(1 for r in records if r["scored_against_own_source"])
+    return True, (f"{n}/{len(records)} task(s) are scored against their own source under "
+                  f"`{condition_name}`, each with a written reason" if n else
+                  f"0/{len(records)} tasks overlap: `{condition_name}` injects no document its "
+                  f"answer key cites")
+
+
+def check_spec_disclosure(pack: Pack) -> tuple[bool, str]:
+    """Gate for `raw-spec` (ADR-0050). See `_check_disclosure_records`."""
+    records = spec_disclosure(pack)
     if not records:
         return True, "pack declares no raw-spec condition; nothing to disclose"
-    return True, (f"{n}/{len(records)} task(s) are scored against their own source, each with a "
-                  f"written reason" if n else
-                  f"0/{len(records)} tasks overlap: raw-spec injects no document its answer key cites")
+    return _check_disclosure_records(records, condition_name="raw-spec",
+                                     config_path="raw_spec.scored_against_own_source")
+
+
+def check_gated_disclosure(pack: Pack) -> tuple[bool, str]:
+    """Gate for `gated-docs` (ADR-0051). See `_check_disclosure_records`."""
+    records = gated_disclosure(pack)
+    if not records:
+        return True, "pack declares no gated-docs condition; nothing to disclose"
+    return _check_disclosure_records(records, condition_name="gated-docs",
+                                     config_path="gated_docs.scored_against_own_source")
+
+
+def audit_gated_truncation(pack: Pack) -> list[dict]:
+    """The truncation audit, run against `gated-docs` (ADR-0051). Empty if the pack does not declare it.
+
+    Separate from the `public-docs` call for ADR-0050's reason: the two corpora differ, and on a
+    filtering host they differ maximally — one column's cached text is a refusal stub and the other's
+    is the document. Averaging those would describe neither.
+    """
+    if pack.gated_docs is None:
+        return []
+    return audit_docs_truncation(pack, GatedDocsCondition(pack))

@@ -110,8 +110,22 @@ def slug_for(url: str) -> str:
     return slug[-80:] or "page"
 
 
-def cache_path_for(cache_dir: str | Path, task_id: str, url: str) -> Path:
-    return Path(cache_dir) / task_id / f"{slug_for(url)}.txt"
+def cache_path_for(cache_dir: str | Path, task_id: str, url: str, *, prefix: str | None = None) -> Path:
+    """Where one retrieval of `url` for `task_id` is cached.
+
+    `prefix` names the manifest list the page came from, and it is honoured for exactly one list:
+    `gated_pages` (ADR-0051), which is the only list that can hold a URL another list also holds. On a
+    user-agent-filtering host the same address yields a refusal to one reader and a document to
+    another, so the two retrievals need two files or the second silently overwrites the first — and
+    the docs column would then be reading the document it is supposed to have been refused.
+
+    Every other key resolves to the path it always did, byte for byte, so no cached snapshot on disk
+    is invalidated and no committed manifest's `cache_file` moves.
+    """
+    base = Path(cache_dir) / task_id
+    if prefix == GATED_KEY:
+        base = base / GATED_KEY
+    return base / f"{slug_for(url)}.txt"
 
 
 def leading_comment_header(path: str | Path) -> str:
@@ -315,11 +329,32 @@ ANCHOR_KEY = "anchors"
 # refusing `pages[].inject: false` — `PublicDocsCondition` reads `pages` and must have no code path
 # that can reach a spec document, and a role is one string comparison away from being one.
 SPEC_KEY = "spec_documents"
+# ADR-0051 adds a FOURTH key, for the `gated-docs` condition: the vendor's own documentation as it is
+# served to a conventional self-identifying agent, on a host whose filter refuses the plain one.
+#
+# This is the case that most wanted to be a flag rather than a key, and it is the case where a flag
+# would be worst. The two lists hold the SAME URLs and different bodies — one a 403 stub, one the
+# document — so `pages[].user_agent` would make it representable to inject the refusal into the docs
+# column, or the document into a column whose whole meaning is that the document did not arrive.
+# ADR-0034 refused `pages[].inject: false` to make one mistake unrepresentable; this refuses
+# `pages[].user_agent` to make the mirror-image mistake unrepresentable, and it is the stronger case of
+# the two because here the two bodies come from the same address.
+GATED_KEY = "gated_pages"
+
+#: Every task-entry list, keyed. The key selects the fetch agent (`fetch_all`) and, one layer up, the
+#: single manifest list a condition class is allowed to read (`conditions._InjectedTextCondition`).
+ENTRY_KEYS = (INJECTED_KEY, ANCHOR_KEY, SPEC_KEY, GATED_KEY)
 
 
 def _entry_lists(entry: dict) -> list[list[dict]]:
-    return [entry.get(INJECTED_KEY, []) or [], entry.get(ANCHOR_KEY, []) or [],
-            entry.get(SPEC_KEY, []) or []]
+    return [entry.get(k, []) or [] for k in ENTRY_KEYS]
+
+
+def _entry_items(entry: dict):
+    """(key, page) for every page in a task entry, so a caller can act on which list it came from."""
+    for key in ENTRY_KEYS:
+        for page in (entry.get(key) or []):
+            yield key, page
 
 
 def manifest_urls(manifest: dict, *, include_anchors: bool = True) -> set[str]:
@@ -352,7 +387,8 @@ class RobotsDisallowed(RuntimeError):
 
 def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | None = None,
               user_agent: str | None = None, delay_seconds: float = 0.0,
-              retries: int = DEFAULT_RETRIES, sleep=time.sleep, policy_for=None) -> dict:
+              retries: int = DEFAULT_RETRIES, sleep=time.sleep, policy_for=None,
+              key_user_agents: dict | None = None) -> dict:
     """Fetch every page in the manifest, cache text, and update manifest entries in place.
 
     Returns a summary dict {task_id: [(url, byte_size, status)]}. Errors are recorded
@@ -368,6 +404,15 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
     `policy_for` resolves a URL to its host's robots policy (ADR-0036) and is injectable so the suite
     stays offline. Every URL is judged BEFORE it is opened; a Disallowed one is annotated and skipped,
     never requested.
+
+    `key_user_agents` maps a manifest list key to the agent that list is retrieved with (ADR-0051).
+    It exists because one manifest can need TWO agents for the SAME URL: on a host that filters by
+    user-agent string, `pages` records what a plain self-identifying reader receives — often a refusal
+    — and `gated_pages` records what a conventional self-identifying reader receives. Selecting the
+    agent by list rather than by page is the whole safety property: a page cannot carry its own agent,
+    so no entry in `pages` can be quietly upgraded into the document the docs column is supposed not
+    to have got. Robots is resolved with the SAME agent that will make the request, because a policy
+    fetched as one agent says nothing about what another is permitted.
     """
     from . import robots as robots_mod
 
@@ -376,10 +421,28 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
     manifest = load_manifest(manifest_path)
     header = leading_comment_header(manifest_path)
     today = today or datetime.date.today().isoformat()
-    agent = user_agent or USER_AGENT
+    key_user_agents = dict(key_user_agents or {})
+    unknown = sorted(set(key_user_agents) - set(ENTRY_KEYS))
+    if unknown:
+        raise KeyError(f"key_user_agents names list(s) no manifest entry has: {', '.join(unknown)}; "
+                       f"known keys are {', '.join(ENTRY_KEYS)}")
+
+    def agent_for(key: str) -> str | None:
+        return key_user_agents.get(key, user_agent)
+
     if policy_for is None:
-        def policy_for(url):  # noqa: E306 — one fetch per host, memoised in core.robots
-            return robots_mod.fetch_policy(url, user_agent=agent, today=today)
+        def policy_for(url, agent=None):  # noqa: E306 — one fetch per (host, agent), memoised
+            return robots_mod.fetch_policy(url, user_agent=agent or USER_AGENT, today=today)
+    _policy_for = policy_for
+
+    def resolve_policy(url, agent):
+        try:
+            return _policy_for(url, agent)
+        except TypeError:
+            # A caller's injected `policy_for` from before ADR-0051 takes the URL alone. Honour it
+            # rather than demand every test fixture grow a parameter it has no use for.
+            return _policy_for(url)
+
     summary: dict[str, list] = {}
     first = True
     for task_id, entry in (manifest.get("tasks") or {}).items():
@@ -390,12 +453,14 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
         # Spec documents (ADR-0050) are fetched by the same loop and for the same reasons: they need
         # the robots verdict, the hash and the byte size. They are injected, but by `RawSpecCondition`
         # and never by `PublicDocsCondition`, which is why they are a third list and not a role.
-        for page in [p for pages in _entry_lists(entry) for p in pages]:
+        # `gated_pages` (ADR-0051) is fetched by the same loop under its own agent — see `agent_for`.
+        for key, page in _entry_items(entry):
+            page_agent = agent_for(key)
             url = page["url"]
-            dest = cache_path_for(cache_dir, task_id, url)
+            dest = cache_path_for(cache_dir, task_id, url, prefix=key)
             # ADR-0036: permission first, and before the pacing sleep — a URL we may not open should
             # not cost the host a delay slot either.
-            policy = policy_for(url)
+            policy = resolve_policy(url, page_agent)
             verdict = policy.verdict(url)
             page["robots_disallowed"] = not verdict.allowed
             page["robots_rule"] = verdict.rule
@@ -419,7 +484,7 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 sleep(delay_seconds)
             first = False
             try:
-                doc = _fetch_with_retry(url, user_agent=user_agent,
+                doc = _fetch_with_retry(url, user_agent=page_agent,
                                         delay_seconds=delay_seconds, retries=retries, sleep=sleep)
                 text = doc.text
                 # ADR-0021: the floor is on extracted text, and it is checked here rather than
@@ -445,8 +510,8 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 # re-fetch years from now either reproduces the recorded hash or does not.
                 if doc.kind != "html":
                     page["extracted_by"] = doc.extracted_by
-                if user_agent:
-                    page["fetched_with_user_agent"] = user_agent
+                if page_agent:
+                    page["fetched_with_user_agent"] = page_agent
                 summary[task_id].append((url, page["byte_size"], "ok"))
             except Exception as exc:  # network / decode errors — record, don't abort
                 page["fetch_date"] = today

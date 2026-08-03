@@ -118,7 +118,7 @@ def test_building_the_condition_directly_still_refuses_an_undeclared_pack(tmp_pa
 
 
 def test_the_condition_order_is_declared():
-    assert KNOWN_CONDITIONS == ("no-context", "public-docs", "raw-spec", "mcp")
+    assert KNOWN_CONDITIONS == ("no-context", "public-docs", "gated-docs", "raw-spec", "mcp")
 
 
 # --- what each condition can reach ------------------------------------------ #

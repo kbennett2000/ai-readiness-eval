@@ -5,6 +5,7 @@ fetch error is recorded per page without aborting the run. The cache dir is pass
 """
 import hashlib
 
+import pytest
 import yaml
 
 from core import docs_fetch
@@ -504,3 +505,122 @@ def test_a_stray_replacement_character_does_not_condemn_a_real_page():
     raw = ("<p>" + "documented prose. " * 200 + "\udcff</p>").encode("utf-8", "surrogateescape")
     text = docs_fetch._decode(raw, "utf-8", "https://d/x")
     assert "documented prose" in text
+
+
+# --- one manifest, two agents (ADR-0051) ------------------------------------ #
+
+SHARED = "https://d/api/accounts"
+PLAIN = "ai-readiness-eval-docs"
+CONV = "Mozilla/5.0 (compatible; ai-readiness-eval-docs/1.0)"
+
+
+def _two_list_manifest(tmp_path):
+    """The shape a user-agent-filtering host forces: the SAME URL in `pages` and in `gated_pages`."""
+    m = {"budget_tokens": 15000,
+         "tasks": {"t1": {
+             "pages": [{"url": SHARED, "role": "api-reference", "note": "what a plain reader gets"}],
+             "gated_pages": [{"url": SHARED, "role": "api-reference",
+                              "note": "what a conventional reader gets"}]}}}
+    p = tmp_path / "manifest.yaml"
+    p.write_text(yaml.safe_dump(m, sort_keys=False))
+    return p
+
+
+def test_each_list_is_fetched_with_its_own_agent(tmp_path, monkeypatch):
+    """The failure this prevents is the whole experiment: if `gated_pages` were retrieved with the
+    plain agent, both columns would inject the same refusal and the pair would measure nothing."""
+    seen = []
+
+    def fake(url, timeout=30, user_agent=None):
+        seen.append(user_agent)
+        return _doc(_page(f"body for {user_agent}"))
+
+    monkeypatch.setattr(docs_fetch, "_fetch", fake)
+    docs_fetch.fetch_all(_two_list_manifest(tmp_path), tmp_path / "cache", today="2026-08-03",
+                         user_agent=PLAIN, key_user_agents={docs_fetch.GATED_KEY: CONV})
+    assert seen == [PLAIN, CONV], (
+        f"each list must be retrieved with its own agent; got {seen}")
+
+
+def test_each_list_records_the_agent_it_was_retrieved_with(tmp_path, monkeypatch):
+    """The pack declares one string; the manifest records what actually went out. Two places, so the
+    claim on the card is checkable against the retrieval rather than only against the config."""
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _doc(_page(f"b {user_agent}")))
+    mpath = _two_list_manifest(tmp_path)
+    docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-08-03",
+                         user_agent=PLAIN, key_user_agents={docs_fetch.GATED_KEY: CONV})
+    m = yaml.safe_load(mpath.read_text())
+    assert m["tasks"]["t1"]["pages"][0]["fetched_with_user_agent"] == PLAIN
+    assert m["tasks"]["t1"]["gated_pages"][0]["fetched_with_user_agent"] == CONV
+
+
+def test_the_two_bodies_land_in_different_cache_files(tmp_path, monkeypatch):
+    """One file written twice means whichever list was fetched last decides what BOTH columns
+    inject — silent, total, and invisible in every transcript."""
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _doc(_page(f"body for {user_agent}")))
+    cache = tmp_path / "cache"
+    mpath = _two_list_manifest(tmp_path)
+    docs_fetch.fetch_all(mpath, cache, today="2026-08-03",
+                         user_agent=PLAIN, key_user_agents={docs_fetch.GATED_KEY: CONV})
+    plain_file = docs_fetch.cache_path_for(cache, "t1", SHARED)
+    gated_file = docs_fetch.cache_path_for(cache, "t1", SHARED, prefix=docs_fetch.GATED_KEY)
+    assert plain_file != gated_file
+    assert PLAIN in plain_file.read_text() and CONV in gated_file.read_text()
+    m = yaml.safe_load(mpath.read_text())
+    assert m["tasks"]["t1"]["pages"][0]["content_hash"] != \
+        m["tasks"]["t1"]["gated_pages"][0]["content_hash"], \
+        "two different bodies must not record one hash"
+
+
+def test_robots_is_resolved_with_the_agent_that_will_make_the_request(tmp_path, monkeypatch):
+    """A policy fetched as one agent says nothing about what another is permitted — and on exactly
+    the hosts this feature exists for, the two answers differ."""
+    asked = []
+
+    class _P:
+        host = "d"
+        fetched_on = "2026-08-03"
+
+        def verdict(self, url):
+            from core.robots import Verdict
+            return Verdict(True, None, "*", "robots.txt")
+
+    def policy_for(url, agent=None):
+        asked.append(agent)
+        return _P()
+
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _doc(_page("b")))
+    docs_fetch.fetch_all(_two_list_manifest(tmp_path), tmp_path / "cache", today="2026-08-03",
+                         user_agent=PLAIN, key_user_agents={docs_fetch.GATED_KEY: CONV},
+                         policy_for=policy_for)
+    assert asked == [PLAIN, CONV]
+
+
+def test_a_pre_adr_0051_policy_for_still_works(tmp_path, monkeypatch):
+    """Injected `policy_for` callables written before this feature take the URL alone. Honour them
+    rather than demand every fixture grow a parameter it has no use for."""
+    class _P:
+        host = "d"
+        fetched_on = "2026-08-03"
+
+        def verdict(self, url):
+            from core.robots import Verdict
+            return Verdict(True, None, "*", "robots.txt")
+
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _doc(_page("b")))
+    summary = docs_fetch.fetch_all(_two_list_manifest(tmp_path), tmp_path / "cache",
+                                   today="2026-08-03", policy_for=lambda url: _P())
+    assert all(s[2] == "ok" for pages in summary.values() for s in pages)
+
+
+def test_an_unknown_key_user_agent_is_refused(tmp_path):
+    """A typo'd key would silently fetch nothing with the agent it names."""
+    with pytest.raises(KeyError) as exc:
+        docs_fetch.fetch_all(_two_list_manifest(tmp_path), tmp_path / "cache",
+                             key_user_agents={"gated-pages": CONV})
+    assert "no manifest entry has" in str(exc.value)
+
