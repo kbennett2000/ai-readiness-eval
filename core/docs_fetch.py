@@ -310,10 +310,16 @@ def _short_text_reason(page: dict) -> str | None:
 # without handing the model the answer key's own source.
 INJECTED_KEY = "pages"
 ANCHOR_KEY = "anchors"
+# ADR-0050 adds a THIRD key, for the `raw-spec` condition: the vendor's own machine-readable
+# specification. It is a separate key and not a `pages[].role`, for the reason ADR-0034 gave for
+# refusing `pages[].inject: false` — `PublicDocsCondition` reads `pages` and must have no code path
+# that can reach a spec document, and a role is one string comparison away from being one.
+SPEC_KEY = "spec_documents"
 
 
 def _entry_lists(entry: dict) -> list[list[dict]]:
-    return [entry.get(INJECTED_KEY, []) or [], entry.get(ANCHOR_KEY, []) or []]
+    return [entry.get(INJECTED_KEY, []) or [], entry.get(ANCHOR_KEY, []) or [],
+            entry.get(SPEC_KEY, []) or []]
 
 
 def manifest_urls(manifest: dict, *, include_anchors: bool = True) -> set[str]:
@@ -322,6 +328,10 @@ def manifest_urls(manifest: dict, *, include_anchors: bool = True) -> set[str]:
     Lives here rather than in `factory` so the anchoring gate and the fetcher read the manifest
     through one accessor — `PublicDocsCondition` deliberately does NOT use it, and reads `pages`
     directly, so no change here can widen what reaches a prompt.
+
+    `include_anchors=False` still means exactly `pages`, and that is load-bearing now that a third
+    list exists (ADR-0050): the flag names the anchors it was written for, but what it selects is
+    "what public-docs injects", which is the property every caller of the False branch depends on.
     """
     urls: set[str] = set()
     for entry in (manifest.get("tasks") or {}).values():
@@ -377,6 +387,9 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
         # Anchors are fetched too (ADR-0034): their existence, byte size and hash are the evidence a
         # ground-truth citation rests on, and an anchor that has never been retrieved is an
         # unverified claim. What they are NOT is injected — `PublicDocsCondition` reads `pages` only.
+        # Spec documents (ADR-0050) are fetched by the same loop and for the same reasons: they need
+        # the robots verdict, the hash and the byte size. They are injected, but by `RawSpecCondition`
+        # and never by `PublicDocsCondition`, which is why they are a third list and not a role.
         for page in [p for pages in _entry_lists(entry) for p in pages]:
             url = page["url"]
             dest = cache_path_for(cache_dir, task_id, url)

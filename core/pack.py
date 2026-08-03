@@ -32,6 +32,28 @@ class ContextLayer:
 
 
 @dataclass
+class RawSpec:
+    """Config for the optional `raw-spec` condition (ADR-0050): the vendor's OWN machine-readable
+    specification, injected uncurated.
+
+    There is no budget field here, and that omission is the decision. `raw-spec` spends the SAME
+    token budget as `public-docs`, because a column with a larger budget than the one it is set
+    beside would measure this harness's generosity rather than the difference between a
+    specification and prose. A pack that wants more context for both moves `public_docs.budget_tokens`
+    and moves both columns together, visibly.
+
+    `source_label` is what the injected block is headed with, and it must name the ARTIFACT — "…'s
+    OpenAPI 3 documents", not "…'s documentation". A reader of a transcript has to be able to tell
+    which condition produced it without consulting the pack.
+    """
+    source_label: str
+    #: Written justification for a task whose `spec_documents` overlap its `anchors` — the condition
+    #: is then scored against its own source. Keyed by task id; `check_spec_disclosure` requires an
+    #: entry for every overlapping task and refuses a pack that has one and says nothing.
+    scored_against_own_source: dict
+
+
+@dataclass
 class Pack:
     root: Path
     vendor_id: str
@@ -52,6 +74,9 @@ class Pack:
     project_marker: str
     spec_scope_prefix: str
     context_layer: ContextLayer | None = None
+    # The optional `raw-spec` condition (ADR-0050). None for every pack that does not declare it,
+    # which is every pack written before that ADR, so no published number moves by this existing.
+    raw_spec: RawSpec | None = None
     # Fetch-time User-Agent for the public-docs snapshot. Only set it when a vendor's docs host
     # bot-gates the default self-identifying agent (ADR-0007); the gating itself is a scored finding.
     public_docs_user_agent: str | None = None
@@ -128,6 +153,14 @@ class Pack:
                 spawn_command=list(cl.get("spawn_command", [])),
             )
 
+        raw_spec = None
+        rs = cfg.get("raw_spec")
+        if rs:
+            raw_spec = RawSpec(
+                source_label=rs["source_label"],
+                scored_against_own_source=dict(rs.get("scored_against_own_source") or {}),
+            )
+
         return cls(
             root=root,
             vendor_id=vid,
@@ -145,6 +178,7 @@ class Pack:
             project_marker=(cfg.get("canary", {}) or {}).get("project_marker", ""),
             spec_scope_prefix=(cfg.get("specs_scope", "") or ""),
             context_layer=context_layer,
+            raw_spec=raw_spec,
             mode=cfg.get("mode"),
             spec_ref_file_prefix=cfg.get("spec_ref_file_prefix"),
             expected_task_ids=(list(cfg["expected_task_ids"]) if cfg.get("expected_task_ids") else None),
