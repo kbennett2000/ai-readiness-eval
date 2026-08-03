@@ -113,18 +113,22 @@ def slug_for(url: str) -> str:
 def cache_path_for(cache_dir: str | Path, task_id: str, url: str, *, prefix: str | None = None) -> Path:
     """Where one retrieval of `url` for `task_id` is cached.
 
-    `prefix` names the manifest list the page came from, and it is honoured for exactly one list:
-    `gated_pages` (ADR-0051), which is the only list that can hold a URL another list also holds. On a
-    user-agent-filtering host the same address yields a refusal to one reader and a document to
-    another, so the two retrievals need two files or the second silently overwrites the first — and
-    the docs column would then be reading the document it is supposed to have been refused.
+    `prefix` names the manifest list the page came from, and EVERY list except `pages` gets its own
+    subdirectory (ADR-0054). `pages` keeps the bare path so the 269 committed `cache_file` values in
+    the cohort do not move.
 
-    Every other key resolves to the path it always did, byte for byte, so no cached snapshot on disk
-    is invalidated and no committed manifest's `cache_file` moves.
+    The rule this enforces is one retrieval, one file. Until ADR-0051 no two lists could hold the
+    same URL, so one file per (task, url) was the same thing; a user-agent-filtering host breaks that
+    — the same address yields a refusal to one reader and a document to another — and a shared file
+    means whichever list was fetched LAST decides what every list reads back. ADR-0051 gave
+    `gated_pages` its own directory and stopped one step short: `anchors` are also fetched, on such a
+    host with the same conventional agent, and an anchor sharing a path with a refused `pages` entry
+    put the ANSWER KEY'S OWN SOURCE on disk where `public-docs` would read it. Caught by a pack gate,
+    on real cached documents, which is where the fixture could not reach.
     """
     base = Path(cache_dir) / task_id
-    if prefix == GATED_KEY:
-        base = base / GATED_KEY
+    if prefix and prefix != INJECTED_KEY:
+        base = base / prefix
     return base / f"{slug_for(url)}.txt"
 
 

@@ -96,10 +96,16 @@ def test_every_url_carries_a_complete_annotation(manifest):
 def test_the_annotation_records_which_agent_and_which_source_decided_it():
     """`robots_disallowed: false` alone is a verdict with no working shown. The other fields are what
     let a reviewer re-derive it: which agent group applied, and whether the host stated a rule at all."""
-    from core.robots import (SOURCE_ABSENT, SOURCE_NO_HOST, SOURCE_RULES,
+    from core.robots import (SOURCE_ABSENT, SOURCE_NO_HOST, SOURCE_REFUSED, SOURCE_RULES,
                              SOURCE_UNREACHABLE)
 
-    known = {SOURCE_RULES, SOURCE_ABSENT, SOURCE_UNREACHABLE, SOURCE_NO_HOST}
+    # Five states since ADR-0052, not four: a 401/403 on robots.txt is `robots.txt-refused` and not
+    # `no-robots-txt`. The two permit the same things and say different things about the world, so a
+    # manifest that records one where the other happened is publishing a false sentence about
+    # conduct. This list went stale the moment that ADR landed and was caught by the first pack to
+    # carry the new state — which is the argument for enumerating it from `core.robots` rather than
+    # restating the vocabulary here.
+    known = {SOURCE_RULES, SOURCE_ABSENT, SOURCE_UNREACHABLE, SOURCE_NO_HOST, SOURCE_REFUSED}
     for _m, task_id, url, page in ALL:
         assert page["robots_source"] in known, \
             f"{task_id}: {url} records an unknown robots_source {page['robots_source']!r}"

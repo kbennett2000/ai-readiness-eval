@@ -205,11 +205,43 @@ def test_the_two_retrievals_of_one_url_do_not_share_a_cache_file(tmp_path):
     assert gated.parent.name == GATED_KEY
 
 
-def test_every_other_key_resolves_to_the_path_it_always_did(tmp_path):
-    """No cached snapshot on disk may be invalidated and no committed `cache_file` may move."""
+def test_one_retrieval_gets_one_file(tmp_path):
+    """ADR-0054. Every list except `pages` caches under its own subdirectory, so two lists holding
+    the same URL can never share a file. `pages` keeps the bare path, which is what stops the 269
+    committed `cache_file` values in the cohort from moving."""
     base = cache_path_for(tmp_path, "t", SHARED_URL)
-    for key in (None, INJECTED_KEY, "anchors", "spec_documents"):
-        assert cache_path_for(tmp_path, "t", SHARED_URL, prefix=key) == base
+    assert cache_path_for(tmp_path, "t", SHARED_URL, prefix=INJECTED_KEY) == base
+    assert cache_path_for(tmp_path, "t", SHARED_URL, prefix=None) == base
+    seen = {base}
+    for key in ("anchors", "spec_documents", GATED_KEY):
+        path = cache_path_for(tmp_path, "t", SHARED_URL, prefix=key)
+        assert path not in seen, f"{key} shares a cache file with another list"
+        assert path.parent.name == key
+        seen.add(path)
+
+
+def test_a_failed_page_injects_nothing_even_when_a_file_sits_at_its_path(tmp_path):
+    """ADR-0054's other half, and the one that makes the failure impossible regardless of layout.
+
+    The manifest decides whether a page has text; the filesystem does not get a vote. Before this,
+    `_load_text` asked whether a file EXISTED and only consulted `fetch_error` if it did not — so a
+    page that had been refused would happily read whatever another list had written for the same
+    URL, which on a user-agent-filtering host is the answer key's own source.
+    """
+    pack = _pack_with_gated_docs(tmp_path, also_anchor=True, reason="declared")
+    manifest = pack.docs_manifest()
+    entry = manifest["tasks"]["gadget-fetch"]
+    entry[INJECTED_KEY] = [{"url": SHARED_URL, "role": "api-reference",
+                            "byte_size": 0, "fetch_error": "HTTP Error 403: Forbidden"}]
+    # A file at the path `public-docs` would read, written by a different list's retrieval.
+    plain = pack.cache_path_for("gadget-fetch", SHARED_URL)
+    plain.parent.mkdir(parents=True, exist_ok=True)
+    plain.write_text(GATED_TEXT)
+
+    sent = PublicDocsCondition(pack, manifest=manifest).build_messages(
+        pack.tasks_by_id()["gadget-fetch"])[0]["content"]
+    assert "UNIQUE-GATED-BODY-7b21" not in sent, (
+        "a page the manifest records as refused injected text from disk anyway")
 
 
 def test_a_gated_page_is_still_a_manifest_url(tmp_path):

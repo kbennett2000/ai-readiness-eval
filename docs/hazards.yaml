@@ -3049,20 +3049,23 @@ entries:
   - id: public-docs-and-gated-docs-hold-the-same-urls
     adr: adr-0051-a-filter-on-the-user-agent-is-a-finding.md
     hazard: >
-      These are the only two manifest lists that hold the SAME addresses with different bodies — a 403
-      stub and the document. Anything that let one list's text reach the other column would inject the
-      document into the column whose entire finding is that the document did not arrive, and no
-      transcript could show it: a model that read the document looks like a model that read the
-      document. Two distinct routes exist — a shared code path (refused: `manifest_key` is a class
-      attribute fixed at class-definition time) and a shared CACHE FILE, which is the quieter one,
-      because one file written twice means whichever list was fetched last decides what BOTH columns
-      inject.
+      On a user-agent-filtering host, several manifest lists hold the SAME addresses with different
+      bodies — a 403 stub and the document. Anything that let one list's text reach another column
+      would inject the document into the column whose entire finding is that the document did not
+      arrive, and no transcript could show it: a model that read the document looks like a model that
+      read the document. THREE distinct routes exist, and the first version of this entry named only
+      two. A shared code path (refused: `manifest_key` is a class attribute fixed at class-definition
+      time); a shared CACHE FILE, where one file written twice means whichever list was fetched last
+      decides what every list reads back; and — the one that was missed, and that a pack gate caught
+      on real documents — a page that FAILED to fetch reading a file another list wrote, because the
+      cache was consulted before the manifest said the page had no text at all. See ADR-0054.
     status: gated
     gated_by:
     - core/tests/test_gated_docs_condition.py::test_a_gated_page_never_reaches_the_prompt_under_public_docs
     - core/tests/test_gated_docs_condition.py::test_the_manifest_key_is_fixed_at_class_definition_time
     - core/tests/test_gated_docs_condition.py::test_the_two_retrievals_of_one_url_do_not_share_a_cache_file
-    - core/tests/test_gated_docs_condition.py::test_every_other_key_resolves_to_the_path_it_always_did
+    - core/tests/test_gated_docs_condition.py::test_one_retrieval_gets_one_file
+    - core/tests/test_gated_docs_condition.py::test_a_failed_page_injects_nothing_even_when_a_file_sits_at_its_path
 
   - id: a-declared-fetch-agent-could-impersonate-a-browser
     adr: adr-0051-a-filter-on-the-user-agent-is-a-finding.md
@@ -3154,3 +3157,29 @@ entries:
       names the cheapest first step (record a fetch's FINAL URL when it differs from the requested one,
       which a manifest currently cannot express). That step would catch a redirected substitute
       without any judgement about content, and it is the half of #35 this ADR does not close.
+
+  # ---------------------------------------------------------------------------------- ADR-0054 -
+  - id: a-cache-file-can-outlive-the-manifest-entry-that-wrote-it
+    adr: adr-0054-one-retrieval-one-file.md
+    hazard: >
+      The docs cache is gitignored and regenerable, so a working tree can hold a file written by a
+      manifest entry that no longer exists, or by an earlier fetch under a different agent. ADR-0054
+      makes a FAILED page ignore the cache entirely, and keys each list's path separately, so neither
+      case can put text in a prompt that the manifest does not account for. What remains is quieter:
+      a SUCCESSFUL page whose cached file is stale relative to its recorded `content_hash` still
+      injects, and the mismatch is not checked at injection time.
+    status: ungated
+    ungated_reason: >
+      Re-hashing every cached file at prompt-build time would put a disk read and a sha256 in the
+      inner loop of every run of every condition, to catch a state that only arises from editing a
+      gitignored directory by hand. The manifest already records the hash a reviewer can re-derive,
+      and `fetch-docs` rewrites both together. Calling this gated would be true about a test and
+      false about the world.
+    drift_pin:
+    - core/tests/test_gated_docs_condition.py::test_a_failed_page_injects_nothing_even_when_a_file_sits_at_its_path
+    - core/tests/test_gated_docs_condition.py::test_one_retrieval_gets_one_file
+    fix_queued_to: >
+      Not queued. The cheap version — compare the cached file's hash against the manifest's before
+      injecting, and refuse on a mismatch — is a real improvement and belongs in a cycle that can
+      measure its cost across a full grid rather than assert it is small.
+
