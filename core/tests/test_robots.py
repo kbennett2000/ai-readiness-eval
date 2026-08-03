@@ -307,10 +307,35 @@ def test_comments_and_blank_lines_are_ignored():
 
 @pytest.mark.parametrize("status", [401, 403, 404, 410])
 def test_a_4xx_leaves_the_host_unrestricted(status):
-    """RFC 9309 §2.3.1.3. Four hosts in the cohort rely on this branch."""
+    """RFC 9309 §2.3.1.3. Four hosts in the cohort rely on this branch.
+
+    ADR-0052 split what a 4xx is RECORDED as without touching what it PERMITS, so this — the
+    permission half — is asserted over all four statuses exactly as it was.
+    """
+    p = _policy("", status=status)
+    assert p.allows("https://h.invalid/anything") is True
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_a_not_found_robots_txt_is_recorded_as_absent(status):
     p = _policy("", status=status)
     assert p.source == robots.SOURCE_ABSENT
-    assert p.allows("https://h.invalid/anything") is True
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_refused_robots_txt_is_recorded_as_refused_not_absent(status):
+    """ADR-0052. Permits the same things; says a different thing about the world.
+
+    "no-robots-txt" claims the host never stated a policy. A 401/403 is a host that has one and
+    declined to show this reader — and because that decision is about the AGENT, the same host may
+    serve the file to another. A recon's generated audit table published PERMITTED, sourced from
+    `no-robots-txt`, for a host that had just answered 403 to every request including that one.
+    """
+    p = _policy("", status=status)
+    assert p.source == robots.SOURCE_REFUSED
+    assert p.source != robots.SOURCE_ABSENT
+    assert p.allows("https://h.invalid/anything") is True, \
+        "a refusal must not silently start forbidding URLs — RFC 9309 leaves a 4xx unrestricted"
 
 
 @pytest.mark.parametrize("status", [0, 500, 502, 503])

@@ -421,7 +421,8 @@ def test_gates_are_declared_in_pipeline_order():
     order inside run_pipeline, which is exactly how a stage lands in one and not the other."""
     assert [name for name, _ in factory.GATES] == factory.STAGES[:len(factory.GATES)]
     assert [name for name, _ in factory.GATES] == [
-        "recon", "validate", "prompts", "roundtrip", "anchoring", "truncation", "disclosure"]
+        "recon", "validate", "prompts", "roundtrip", "anchoring", "substitution", "truncation",
+        "disclosure"]
 
 
 def test_the_prompt_gate_runs_before_the_answer_key_gates():
