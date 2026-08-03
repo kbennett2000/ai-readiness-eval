@@ -88,6 +88,127 @@ def aggregate(records: list[dict], contract=None) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Coverage disclosure (ADR-0046)
+#
+# A published `overall_accuracy` is the mean of the dimensions that were actually scored, which is
+# not always the set the contract declares — ADR-0045 measured the condition at 13 of 18 packs. The
+# cell reads `n/a`, a word this project uses legitimately and often, and nothing said the overall
+# beside it was a mean of five where the header said six. These two functions GENERATE that sentence
+# so a card can paste it and a gate can recompute it; a hand-typed derived figure is the failure
+# mode `render_group_comparison_md` already exists to avoid.
+# ---------------------------------------------------------------------------
+
+_COVERAGE_ADR = "ADR-0045"
+
+
+def covered_dimensions(agg: dict, contract=None) -> tuple[list[str], list[str]]:
+    """`(covered, unexercised)` for one aggregate: covered iff the dimension's overall is not None.
+
+    That is exactly the set `overall_accuracy` was averaged over, so the count this returns is a
+    fact about the published number rather than a second opinion about it.
+    """
+    dims, _labels = _dims_and_labels(contract)
+    overall = agg.get("overall_dimensions") or {}
+    covered = [d for d in dims if overall.get(d) is not None]
+    return covered, [d for d in dims if d not in covered]
+
+
+def _names(labels, dims) -> str:
+    return ", ".join(f"**{labels[d]}**" for d in dims)
+
+
+def coverage_line(agg: dict, contract=None, unexercised: dict | None = None,
+                  adr_ref: str = _COVERAGE_ADR) -> str:
+    """The one-line coverage disclosure for a card (ADR-0046).
+
+    `unexercised` is the pack's `unexercised_dimensions` declaration ({dimension: written reason});
+    a dimension with no task is named either way, and whether a reason was written for it is part of
+    what the line says. `adr_ref` lets a downstream repo cite the ADR the way its own docs do.
+    """
+    dims, labels = _dims_and_labels(contract)
+    covered, missing = covered_dimensions(agg, contract)
+    declared = {k: v for k, v in (unexercised or {}).items() if str(v).strip()}
+
+    # The count and the published mean must agree, or the line would describe a different number
+    # than the one printed beside it. Structural, not asserted in a test only.
+    if bool(covered) != (agg.get("overall_accuracy") is not None):
+        raise ValueError(
+            f"coverage disagrees with the published overall: {len(covered)} dimension(s) scored but "
+            f"overall_accuracy={agg.get('overall_accuracy')!r}"
+        )
+
+    head = f"**Dimension coverage ({adr_ref}):** overall = mean of "
+    if not covered:
+        return (head.replace("overall = mean of ", "this pack publishes no overall — ")
+                + f"no declared dimension ({', '.join(labels[d] for d in dims)}) is exercised by any task.")
+    if not missing:
+        return head + (f"**all {len(dims)}** declared dimensions — "
+                       + ", ".join(labels[d] for d in dims) + ".")
+
+    line = (head + f"**{len(covered)} of {len(dims)}** declared dimensions — "
+            + ", ".join(labels[d] for d in covered) + ".")
+    with_reason = [d for d in missing if d in declared]
+    without = [d for d in missing if d not in declared]
+    if with_reason:
+        line += (f" {_names(labels, with_reason)} {'is' if len(with_reason) == 1 else 'are'} exercised"
+                 f" by no task; [`pack.yaml`](pack.yaml) declares"
+                 f" {'the reason' if len(with_reason) == 1 else 'the reasons'}.")
+    if without:
+        line += (f" {_names(labels, without)} {'is' if len(without) == 1 else 'are'} exercised by no"
+                 f" task, and no written reason is declared in `pack.yaml`.")
+    return line
+
+
+def coverage_cohort_note(entries: list[tuple[str, dict]], contract=None,
+                         adr_ref: str = _COVERAGE_ADR) -> str:
+    """The one-line coverage note for a cohort's comparison table (ADR-0046).
+
+    `entries` is `[(label, aggregate)]` for every measured pack in one cohort. The counts are
+    generated for the same reason the per-card line is: a cohort table's prose goes stale one new
+    pack at a time, silently, and this one is checked against the packs on disk.
+    """
+    dims, labels = _dims_and_labels(contract)
+    n = len(entries)
+    if not n:
+        raise ValueError("a cohort note over no measured pack would be a sentence about nothing")
+
+    per_pack = [covered_dimensions(agg, contract) for _label, agg in entries]
+    shortfalls: dict[str, int] = {}
+    for _covered, missing in per_pack:
+        for d in missing:
+            shortfalls[d] = shortfalls.get(d, 0) + 1
+
+    if not shortfalls:
+        return (f"> **Every overall in this column is the mean of all {len(dims)} declared "
+                f"dimensions** ({', '.join(labels[d] for d in dims)}), and each card states that on "
+                f"one line ({adr_ref}).")
+
+    tail = (f" Each card states its own coverage on one line, recomputed from its committed scores "
+            f"({adr_ref}).")
+    if n == 1:
+        covered, missing = per_pack[0]
+        return (f"> **The overall in this column is not the mean of all {len(dims)} declared "
+                f"dimensions.** The single measured pack scores {len(covered)} of {len(dims)}; no "
+                f"task exercises {_names(labels, missing)}." + tail)
+
+    by_count: dict[int, int] = {}
+    for covered, _missing in per_pack:
+        by_count[len(covered)] = by_count.get(len(covered), 0) + 1
+    groups = ", ".join(
+        f"{c} {'scores' if c == 1 else 'score'} "
+        + (f"all {k}" if k == len(dims) else f"{k} of {len(dims)}")
+        for k, c in sorted(by_count.items(), reverse=True)
+    )
+    misses = " and ".join(
+        f"{_names(labels, [d])} in {c}"
+        for d, c in sorted(shortfalls.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+    return (f"> **Not every overall in this column is the mean of the same number of dimensions.** "
+            f"Of {n} measured packs against {len(dims)} declared dimensions: {groups}; no task "
+            f"exercises {misses}." + tail)
+
+
 def render_summary_md(agg: dict, metadata: dict, contract=None) -> str:
     dims, labels = _dims_and_labels(contract)
     header = "| task | " + " | ".join(labels[d] for d in dims) + " | fmt-fail |"

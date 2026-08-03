@@ -2688,3 +2688,60 @@ entries:
       - core/tests/test_dimension_coverage.py::test_an_observation_key_can_never_become_a_dimension
       - core/tests/test_dimension_coverage.py::test_a_wrong_observation_cannot_lower_a_score
       - core/tests/test_dimension_coverage.py::test_an_observation_name_that_collides_with_a_contract_key_is_refused
+
+  # ------------------------------------------------------------------------------ ADR-0046 ---
+
+  - id: a-coverage-line-counts-columns-not-quality
+    adr: adr-0046-a-published-overall-states-its-own-coverage.md
+    hazard: |
+      The generated line says how many declared dimensions a published overall is the mean of. It
+      says nothing about whether each covered dimension was worth covering. A dimension carried by
+      one weak task and a dimension carried by twelve render identically as "covered", and the line
+      sits directly beside a percentage, where a reader primed by the number reads the count as a
+      quality signal too. ADR-0045 recorded the same residual about its gate; printing the count on
+      a card puts it in front of many more readers, which is why it is restated rather than
+      inherited.
+    status: ungated
+    ungated_reason: |
+      No test can judge whether a task exercises a dimension well. An answer key always matches
+      itself (ADR-0010), so the round-trip control cannot rank tasks, and nothing else in the tree
+      has a notion of task quality to assert against.
+    fix_queued_to: |
+      Not queued, and unlikely to be. The honest mitigation is prose: ADR-0046's "what this does not
+      do" states the limit, and the line itself claims only what it can support — a count, not a
+      grade. Issue #73 remains the display backlog for anything further.
+
+  - id: a-typed-coverage-sentence-would-go-stale-silently
+    adr: adr-0046-a-published-overall-states-its-own-coverage.md
+    hazard: |
+      A coverage sentence is a derived figure. Typed by hand once per card, it decays exactly as the
+      cohort table did — two cards claimed a superlative from a stale copy of it — and a stale
+      coverage claim is worse than none, because it reads as verified. The generator's count must
+      also stay tied to the arithmetic `overall_accuracy` actually used: if the line ever counted the
+      contract's dimensions rather than the scored ones, it would restate the header it was written
+      to correct.
+    status: gated
+    gated_by:
+      - core/tests/test_coverage_line.py::test_the_stated_count_is_the_arithmetic_the_published_mean_actually_used
+      - core/tests/test_coverage_line.py::test_a_line_disagreeing_with_the_published_overall_raises_rather_than_renders
+      - core/tests/test_coverage_line.py::test_the_cohort_note_counts_the_packs_and_names_each_shortfall
+      - packs/sailpoint/tests/test_readme_states_its_coverage.py::test_the_readme_carries_the_recomputed_coverage_line
+
+  - id: no-test-here-can-reach-a-card-in-the-packs-repo
+    adr: adr-0046-a-published-overall-states-its-own-coverage.md
+    hazard: |
+      Sixteen of the seventeen documents this ADR changes are cards in the private packs repository.
+      This registry resolves `gated_by` against THIS tree, so the gate that actually checks those
+      cards — `tests/test_cards_state_their_coverage.py`, over there — cannot be cited here. From
+      this repo the rule is prose, and a card losing its line, or carrying a line that no longer
+      matches its scores, is invisible to every test named above.
+    status: ungated
+    ungated_reason: |
+      The cards, their `scores.json` files and the gate over them are all in a repository this one
+      cannot see. A cross-repo registry does not exist, and a test here that tried to read the packs
+      repo would pass or skip depending on whose machine ran it — the ADR-0043 failure exactly.
+    fix_queued_to: |
+      Not queued as a registry change. The mitigation is that the packs repo runs the gate in its own
+      armed suite and imports the generator from here, so the sentence cannot drift from the code
+      even though this file cannot watch it happen. The same limit is already recorded for the
+      prospect tokens and the docs manifests.

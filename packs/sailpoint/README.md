@@ -4,6 +4,14 @@ The reference pack for `ai-readiness-eval`, built from the frozen `sailpoint-pro
 committed artifacts. It is both a working vendor pack and the fixture the extraction-equivalence gate
 runs against.
 
+**Dimension coverage (ADR-0045):** overall = mean of **all 6** declared dimensions — endpoint,
+method, version, auth, scopes, params.
+
+That is stated *because* it is clean. A disclosure that shows up only where something is wrong
+teaches a reader to infer a problem from its presence, and teaches the next pack's author that the
+line is optional when the news is good — so the clean case is stated too (ADR-0046). Every card in
+the packs repo carries the same line, recomputed from its own committed scores.
+
 ## Contents
 
 | Path | What it is |
