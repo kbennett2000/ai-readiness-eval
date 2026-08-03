@@ -72,7 +72,7 @@ def _pack_with_a_spec(tmp_path: Path, *, declare_raw_spec: bool = True,
     cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
 
     pack = Pack.load(root)
-    cache = pack.cache_path_for("gadget-fetch", SPEC_URL)
+    cache = pack.cache_path_for("gadget-fetch", SPEC_URL, manifest_key=SPEC_KEY)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(SPEC_TEXT)
     return pack

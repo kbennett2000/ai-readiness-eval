@@ -145,16 +145,22 @@ class _InjectedTextCondition(Condition):
         # from disk forever. Permission is a present-tense fact, so it is read at the point of use.
         if page.get("robots_disallowed"):
             return ""
+        # The MANIFEST decides whether this page has text, not the filesystem (ADR-0054). A page
+        # that failed to fetch injects nothing, and asking the disk first is what let a refused
+        # `pages` entry read a file some OTHER list had written for the same URL. Ordering, not
+        # paths, is what makes that impossible: with the check here, no failed retrieval can read
+        # any file, however the cache is laid out.
+        if page.get("fetch_error") or page.get("byte_size") == 0:
+            return ""
         path = self._pack.cache_path_for(task_id, page["url"], manifest_key=self.manifest_key)
         if not path.exists():
             # Fidelity to the machine reader (ADR-0005): public-docs models what a fetch actually
             # RETRIEVES. A page the manifest records as unfetchable — a developer portal that does
             # not resolve, an SPA that returned nothing — injects nothing, exactly as a real pipeline
-            # would get nothing; it is not an error. A page that CLAIMS content (byte_size > 0 and no
-            # fetch_error) but has no cached snapshot is a genuine "forgot to run fetch-docs" and
-            # still raises, so a real fetch is never silently skipped.
-            if page.get("fetch_error") or page.get("byte_size") == 0:
-                return ""
+            # would get nothing; it is not an error — and that branch has moved ABOVE, so it is
+            # decided before any path is touched. What is left here is the genuine "forgot to run
+            # fetch-docs": a page that CLAIMS content and has no cached snapshot still raises, so a
+            # real fetch is never silently skipped.
             raise FileNotFoundError(
                 f"no cached doc for {task_id} <- {page['url']}. Run "
                 "`python -m core fetch-docs` first."
