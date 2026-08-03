@@ -245,11 +245,35 @@ def _join(base_url: str, path: str) -> str:
 # --- the three controls ----------------------------------------------------------------------- #
 
 def soft_404_baseline(base_url: str, *, paths: tuple[str, ...] = NONSENSE_PATHS,
-                      user_agent: str = USER_AGENT, get=_http_probe) -> Baseline:
-    """Ask `base_url`'s host what it returns for a path that cannot exist."""
-    return Baseline(base_url=base_url,
-                    probes=tuple(_probe(_join(base_url, p), user_agent=user_agent, get=get)
-                                 for p in paths))
+                      user_agent: str = USER_AGENT, get=_http_probe, policy=None,
+                      robots_get=None) -> Baseline:
+    """Ask `base_url`'s host what it returns for a path that cannot exist.
+
+    Robots applies here too, and the first draft of this module forgot that — `well_known_spec_probe`
+    checked and this did not, so a `Disallow: /` host would have received two unauthorised requests
+    from the control that runs FIRST. Caught before it ran, and recorded because the asymmetry is the
+    easy mistake: the sweep is obviously a retrieval, and the baseline reads like setup.
+
+    A refused baseline is not established, so every downstream verdict caps at `spec-unverified`. That
+    is the correct outcome: on a host that forbids reading, this project knows nothing about what its
+    paths return, and must not imply otherwise.
+    """
+    if policy is None:
+        kwargs = {"user_agent": user_agent}
+        if robots_get is not None:
+            kwargs["get"] = robots_get
+        policy = robots_mod.fetch_policy(base_url, **kwargs)
+
+    probes = []
+    for p in paths:
+        url = _join(base_url, p)
+        verdict = policy.verdict(url)
+        if not verdict.allowed:
+            probes.append(Response(url=url, status=None, raw_bytes=0, text="",
+                                   error=f"robots-Disallowed ({verdict.rule}); not requested"))
+            continue
+        probes.append(_probe(url, user_agent=user_agent, get=get))
+    return Baseline(base_url=base_url, probes=tuple(probes))
 
 
 def reachability_control(url: str, *, user_agent: str = USER_AGENT, get=_http_probe) -> Response:
@@ -369,7 +393,8 @@ def run_controls(base_url: str, *, unrelated_url: str | None = None,
     The baseline is established BEFORE the well-known sweep, not alongside it, because the sweep's
     verdicts are meaningless without it.
     """
-    baseline = soft_404_baseline(base_url, paths=nonsense_paths, user_agent=user_agent, get=get)
+    baseline = soft_404_baseline(base_url, paths=nonsense_paths, user_agent=user_agent, get=get,
+                                 robots_get=robots_get)
     reach = (reachability_control(unrelated_url, user_agent=user_agent, get=get)
              if unrelated_url else None)
     findings = well_known_spec_probe(base_url, baseline=baseline, paths=paths,

@@ -68,12 +68,12 @@ def _clear_robots_cache():
 # --- the soft-404 baseline -------------------------------------------------------------------- #
 
 def test_a_success_status_for_a_nonexistent_path_is_a_soft_404():
-    b = controls.soft_404_baseline("https://example.test/", get=_always(200, SHELL))
+    b = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=_always(200, SHELL))
     assert b.established and b.soft_404 and not b.honest_404
 
 
 def test_a_404_for_a_nonexistent_path_is_recorded_as_honest():
-    b = controls.soft_404_baseline("https://example.test/", get=_always(404, b"<html>no</html>"))
+    b = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=_always(404, b"<html>no</html>"))
     assert b.established and b.honest_404 and not b.soft_404
 
 
@@ -82,7 +82,7 @@ def test_a_host_that_answers_two_bad_paths_differently_establishes_no_baseline()
     def get(url, user_agent=controls.USER_AGENT, timeout=30):
         return (404, b"<html>no</html>", "text/html") if url.endswith("path") else (200, SHELL, "text/html")
 
-    b = controls.soft_404_baseline("https://example.test/", get=get)
+    b = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     assert not b.established
     assert b.signature is None and b.text_bytes is None
 
@@ -91,7 +91,7 @@ def test_a_baseline_probe_that_errors_is_not_a_baseline():
     def boom(url, user_agent=controls.USER_AGENT, timeout=30):
         raise OSError("connection reset")
 
-    b = controls.soft_404_baseline("https://example.test/", get=boom)
+    b = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=boom)
     assert not b.established
     assert all(p.error for p in b.probes)
 
@@ -105,7 +105,7 @@ def test_the_signature_ignores_a_per_request_nonce_in_a_script():
         nonce = str(len(seen)) * 12
         return 200, SHELL.replace(b"boot()", b"boot('" + nonce.encode() + b"')"), "text/html"
 
-    b = controls.soft_404_baseline("https://example.test/", get=get)
+    b = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     assert len({p.raw_bytes for p in b.probes}) == 1  # same length here, but the bodies differ
     assert b.probes[0].raw_text != b.probes[1].raw_text
     assert b.established, "a nonce inside a <script> must not defeat the baseline"
@@ -138,7 +138,7 @@ def test_the_probe_cannot_be_called_without_a_baseline():
 def test_a_host_that_200s_everything_reports_no_specification():
     """The ADR-0047 case. Without the baseline this reports a spec at every well-known path."""
     get = _always(200, SHELL)
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
 
@@ -150,7 +150,7 @@ def test_a_host_that_200s_everything_reports_no_specification():
 def test_a_real_specification_at_a_well_known_path_is_found():
     """The control must not be so cautious that it can never say yes."""
     get = _host({"/openapi.json": (200, SPEC_DOC, "application/json")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
 
@@ -161,7 +161,7 @@ def test_a_real_specification_at_a_well_known_path_is_found():
 
 def test_a_swagger_2_document_is_a_specification_too():
     get = _host({"/swagger.json": (200, SWAGGER_DOC, "application/json")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     assert [f.path for f in findings if f.verdict == controls.SPEC] == ["/swagger.json"]
@@ -171,7 +171,7 @@ def test_a_specification_served_by_a_soft_404_host_is_still_found():
     """A soft-404 host may ALSO publish a real spec. The shell comparison must not swallow it."""
     get = _host({"/openapi.json": (200, SPEC_DOC, "application/json")},
                 default=(200, SHELL, "text/html"))
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     assert baseline.soft_404
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
@@ -183,7 +183,7 @@ def test_a_specification_served_by_a_soft_404_host_is_still_found():
 def test_json_that_is_not_a_specification_is_not_credited():
     """A `/graphql` endpoint answering 200 with an error object is JSON, and is not a spec."""
     get = _host({"/graphql": (200, b'{"errors":[{"message":"must POST"}]}', "application/json")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     f = next(f for f in findings if f.path == "/graphql")
@@ -193,7 +193,7 @@ def test_json_that_is_not_a_specification_is_not_credited():
 
 def test_a_json_list_is_not_a_specification():
     get = _host({"/api": (200, b'["a","b"]', "application/json")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     assert next(f for f in findings if f.path == "/api").verdict == controls.NOT_A_SPEC
@@ -207,7 +207,7 @@ def test_a_spec_body_is_read_from_the_raw_response_not_the_extracted_text():
     """
     doc = json.dumps({"openapi": "3.0.1", "info": {"title": "a <b> & c", "version": "1"}}).encode()
     get = _host({"/openapi.json": (200, doc, "application/json")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     assert next(f for f in findings if f.path == "/openapi.json").verdict == controls.SPEC
@@ -222,7 +222,7 @@ def test_without_an_established_baseline_a_spec_is_reported_as_unverified():
             return 404, b"<html>no</html>", "text/html"
         return 200, SHELL, "text/html"          # the second nonsense path disagrees with the first
 
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     assert not baseline.established
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
@@ -233,7 +233,7 @@ def test_without_an_established_baseline_a_spec_is_reported_as_unverified():
 
 def test_an_honest_404_is_recorded_as_one():
     get = _host({})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     assert {f.verdict for f in findings} == {controls.HONEST_404}
@@ -241,7 +241,7 @@ def test_an_honest_404_is_recorded_as_one():
 
 def test_a_server_error_is_unreachable_not_a_finding_about_the_path():
     get = _host({"/openapi.json": (503, b"upstream", "text/plain")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     assert next(f for f in findings if f.path == "/openapi.json").verdict == controls.UNREACHABLE
@@ -255,7 +255,7 @@ def test_a_disallowed_path_is_recorded_and_never_requested():
     policy = RobotsPolicy(host="example.test", directives=[("disallow", "/.well-known/")],
                           source="robots.txt")
     get = _host({})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     before = len(get.calls)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=policy, get=get)
@@ -273,7 +273,7 @@ def test_every_verdict_emitted_is_one_the_module_declares():
     get = _host({"/openapi.json": (200, SPEC_DOC, "application/json"),
                  "/graphql": (200, b'{"data":null}', "application/json"),
                  "/api": (503, b"x", "text/plain")})
-    baseline = controls.soft_404_baseline("https://example.test/", get=get)
+    baseline = controls.soft_404_baseline("https://example.test/", policy=ALLOW_ALL, get=get)
     findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
                                               policy=ALLOW_ALL, get=get)
     assert {f.verdict for f in findings} <= set(controls.VERDICTS)
@@ -412,3 +412,33 @@ def test_an_undecodable_reachability_control_is_inconclusive_not_a_pass():
     report = controls.ControlReport(baseline=controls.Baseline("https://example.test/"),
                                     reachability=r)
     assert "INCONCLUSIVE" in controls.as_record(report)["fetcher_control"]["verdict"]
+
+
+def test_the_baseline_itself_obeys_robots_and_requests_nothing_when_refused():
+    """The asymmetry the first draft shipped: the sweep checked robots and the baseline did not.
+
+    A `Disallow: /` host would have received the two nonsense-path requests from the control that
+    runs FIRST. Asserted on the call log, like the sweep's own conduct test, because a version that
+    recorded the refusal and fetched anyway would satisfy any assertion about the result.
+    """
+    refuse_all = RobotsPolicy(host="example.test", directives=[("disallow", "/")],
+                              source="robots.txt")
+    get = _host({})
+    baseline = controls.soft_404_baseline("https://example.test/", policy=refuse_all, get=get)
+
+    assert get.calls == [], "the baseline requested a path its host forbids"
+    assert not baseline.established
+    assert all("robots-Disallowed" in (p.error or "") for p in baseline.probes)
+
+
+def test_a_refused_host_can_never_report_a_specification():
+    """No baseline means no `spec` verdict — so a forbidden host yields findings, never a claim."""
+    refuse_all = RobotsPolicy(host="example.test", directives=[("disallow", "/")],
+                              source="robots.txt")
+    get = _host({"/openapi.json": (200, SPEC_DOC, "application/json")})
+    baseline = controls.soft_404_baseline("https://example.test/", policy=refuse_all, get=get)
+    findings = controls.well_known_spec_probe("https://example.test/", baseline=baseline,
+                                              policy=refuse_all, get=get)
+    assert get.calls == []
+    assert {f.verdict for f in findings} == {controls.DISALLOWED}
+    assert not [f for f in findings if f.verdict == controls.SPEC]
