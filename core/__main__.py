@@ -566,6 +566,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="re-read each host and report drift; change nothing")
     ar.set_defaults(func=cmd_annotate_robots)
 
+    ctl = sub.add_parser("controls",
+                         help="run the recon controls against a host — soft-404 baseline, unrelated-"
+                              "host reachability, well-known specification paths (ADR-0047)")
+    ctl.add_argument("base_url", help="the host to probe, e.g. https://docs.example.com/")
+    ctl.add_argument("--unrelated", metavar="URL",
+                     help="a URL on an UNRELATED host, fetched through the same fetcher, so a thin "
+                          "result at base_url can be attributed to base_url rather than to us")
+    ctl.add_argument("--json", action="store_true", help="emit JSON instead of the YAML record block")
+    ctl.set_defaults(func=cmd_controls)
+
     cmp = sub.add_parser("compare", help="side-by-side comparison report for 2+ results dirs")
     cmp.add_argument("dirs", nargs="+",
                      help="results dirs in order (last is the 'after', e.g. ...-no-context "
@@ -721,6 +731,36 @@ def cmd_reconcile_runs(args: argparse.Namespace) -> int:
     print(f"\nSynced {stale} field(s) across {len(results)} directory(ies); "
           "scores.json and summary.md untouched")
     return EXIT_OK
+
+
+def cmd_controls(args: argparse.Namespace) -> int:
+    """ADR-0047. Run the recon controls and print the block a recon record commits.
+
+    Online, like `annotate-robots` and for the same reason: a control is a claim about what a host did
+    on a date, and the only way to make it is to ask. The output is generated so the record is not
+    typed — a hand-copied byte count is exactly the derived number this project keeps watching rot.
+
+    Exit code is EXIT_ERROR when the controls did not establish what they exist to establish (no
+    baseline, or a reachability control that returned nothing), because in that state every downstream
+    verdict is unattributable and the operator must fix the inputs before reading the numbers.
+    """
+    import yaml
+
+    from . import controls as controls_mod
+
+    report = controls_mod.run_controls(args.base_url, unrelated_url=args.unrelated)
+    record = controls_mod.as_record(report)
+    if args.json:
+        print(json.dumps(record, indent=2, sort_keys=False))
+    else:
+        print(yaml.safe_dump({"controls": record}, sort_keys=False, width=100, allow_unicode=True))
+
+    for note in report.notes:
+        print(f"# NOTE: {note}", file=sys.stderr)
+    inconclusive = (not report.baseline.established
+                    or (report.reachability is not None
+                        and (report.reachability.error or report.reachability.below_text_floor)))
+    return EXIT_ERROR if inconclusive else EXIT_OK
 
 
 def cmd_annotate_robots(args: argparse.Namespace) -> int:

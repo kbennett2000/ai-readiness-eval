@@ -2745,3 +2745,52 @@ entries:
       armed suite and imports the generator from here, so the sentence cannot drift from the code
       even though this file cannot watch it happen. The same limit is already recorded for the
       prospect tokens and the docs manifests.
+
+  # ------------------------------------------------------------------------------ ADR-0047 ---
+
+  - id: a-well-known-path-sweep-is-meaningless-without-its-baseline
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      A host that answers HTTP 200 for every path answers 200 at `/openapi.json` too. A well-known
+      path sweep run against such a host reports a specification at every path it probes, and the
+      report is correctly formatted, plausible, and false. It was one unexecuted habit away from
+      being published in a card: the prior recon's ADR records the exact sentence it would have
+      printed. The hazard is not that the check is hard — it is that the check is EASY to skip and
+      nothing noticed when it was.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_the_probe_cannot_be_called_without_a_baseline
+      - core/tests/test_controls.py::test_a_host_that_200s_everything_reports_no_specification
+      - core/tests/test_controls.py::test_without_an_established_baseline_a_spec_is_reported_as_unverified
+      - core/tests/test_controls.py::test_a_host_that_answers_two_bad_paths_differently_establishes_no_baseline
+      - core/tests/test_controls.py::test_run_controls_establishes_the_baseline_before_it_sweeps
+
+  - id: a-control-can-be-relabelled-without-being-obeyed
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      The robots rule inside the sweep is a CONDUCT claim that reaches a published card, and the
+      difference between honouring it and labelling it is invisible to any assertion about the
+      returned verdict. A refactor that kept the `disallowed` label while still issuing the request
+      would leave every test green and every card wrong about what this project did.
+    status: gated
+    gated_by:
+      - core/tests/test_controls.py::test_a_disallowed_path_is_recorded_and_never_requested
+
+  - id: a-probe-count-says-nothing-about-what-was-never-probed
+    adr: adr-0047-a-control-that-was-run-twice-is-code.md
+    hazard: |
+      `paths_probed: 15, specs_found: 0` reads as a fact about a vendor and is a fact about a run:
+      one user agent, one date, one list of paths, and only the paths robots permitted. A
+      `disallowed` verdict and an `honest-404` are different in the record and identical in any
+      summary that adds them up — so a host hiding a real specification behind a Disallowed path
+      and a host publishing none produce the same headline number.
+    status: ungated
+    ungated_reason: |
+      No test can stop a reader summing two verdict counts, and no test can search a place the
+      instrument is forbidden to look. The generated block keeps the verdicts separate and names the
+      directive verbatim, which is the most a machine can do here; the rest is a claim about
+      inference, which is what ADR-0038 decision 6 exists to state in prose.
+    fix_queued_to: |
+      Not queued, and probably not queueable. The nearest useful thing is a convention that any
+      count of "paths serving no specification" is published beside its `disallowed` count rather
+      than folded into it, which ADR-0047's "what this does not do" states and no gate enforces.
