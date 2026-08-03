@@ -73,8 +73,15 @@ class QueueEntry:
     #                      Replacement, not extension, because some ids must NOT be matched: a bare
     #                      id that is also an ordinary word would fire on unrelated prose.
     #   guard_tokens_cased is matched as written, for names that are ordinary words capitalized.
+    #   guard_tokens_cased_whole_word is matched as written AND bounded by \b, for a name short
+    #                      enough to sit inside unrelated words (ADR-0049). Opt-in per token: every
+    #                      token in `guard_tokens_cased` stays unbounded, because ADR-0028's argument
+    #                      that over-matching a vendor name is free holds for a distinctive name and
+    #                      fails only for a short acronym. Declaring the SAME token in both lists
+    #                      silently defeats the opt-in, so the guard rejects that.
     guard_tokens: list | None = None
     guard_tokens_cased: list = field(default_factory=list)
+    guard_tokens_cased_whole_word: list = field(default_factory=list)
     # What the target SELLS, as opposed to what it is called. A vendor is identifiable by its
     # distinctive product names alone — naming four of them identifies it as surely as naming it —
     # and nothing above can match one, because a product name is not derivable from an id (ADR-0028).
@@ -90,7 +97,7 @@ class QueueEntry:
 
     _KNOWN = ("id", "display_name", "tier", "status", "spec_state", "notes",
               "blocked_reason", "spend_usd", "wall_seconds", "last_run",
-              "guard_tokens", "guard_tokens_cased",
+              "guard_tokens", "guard_tokens_cased", "guard_tokens_cased_whole_word",
               "guard_product_tokens", "guard_product_tokens_cased")
 
     @classmethod
@@ -118,6 +125,8 @@ class QueueEntry:
             out["guard_tokens"] = list(self.guard_tokens)
         if self.guard_tokens_cased:
             out["guard_tokens_cased"] = list(self.guard_tokens_cased)
+        if self.guard_tokens_cased_whole_word:
+            out["guard_tokens_cased_whole_word"] = list(self.guard_tokens_cased_whole_word)
         if self.guard_product_tokens:
             out["guard_product_tokens"] = list(self.guard_product_tokens)
         if self.guard_product_tokens_cased:
@@ -144,6 +153,35 @@ class QueueEntry:
             default = list(self.guard_tokens)
         return ([str(t) for t in default if str(t).strip()],
                 [str(t) for t in self.guard_tokens_cased if str(t).strip()])
+
+    def leak_guard_bounded_name_tokens(self) -> list[str]:
+        """Case-sensitive NAME tokens the guard must match WHOLE-WORD (ADR-0049).
+
+        Its own accessor rather than a third slot in `leak_guard_tokens`, for the reason that
+        method's docstring already gives about product names: the guard compares these differently,
+        and a caller that merged them would apply one kind's boundary rule to the other. Here that
+        would be the expensive direction — silently unbounding a token declared bounded precisely
+        because unbounded is what fires on innocent prose.
+
+        Cased only, deliberately. A short-name leak is written as the proper noun, so an
+        insensitive-bounded list would be a code path nothing exercises, and an unexercised path is
+        an ungated one.
+
+        Declaring a token in BOTH cased lists is refused rather than resolved. The unbounded list
+        wins any race between them, so tolerating the overlap would mean an entry that reads as
+        opted-in while behaving exactly as it did before — the failure mode this field exists to
+        remove, wearing the label of the fix.
+        """
+        bounded = [str(t) for t in self.guard_tokens_cased_whole_word if str(t).strip()]
+        clash = sorted(set(bounded) & {str(t) for t in self.guard_tokens_cased if str(t).strip()})
+        if clash:
+            raise ValueError(
+                f"{self.id}: {', '.join(repr(c) for c in clash)} appears in BOTH guard_tokens_cased "
+                f"and guard_tokens_cased_whole_word. The unbounded list would match anyway, so the "
+                f"whole-word declaration would have no effect while reading as though it did. Keep "
+                f"the token in exactly one list."
+            )
+        return bounded
 
     def leak_guard_product_tokens(self) -> tuple[list[str], list[str]]:
         """(case-insensitive, case-sensitive) names of what this target SELLS (ADR-0028).
@@ -176,6 +214,11 @@ def load_queue(path: str | Path) -> list[QueueEntry]:
             + ", ".join(f"{status!r} on {tid!r}" for tid, status in bad)
             + f". Known statuses: {', '.join(sorted(STATUSES))}."
         )
+    # Surface a self-defeating guard declaration here rather than leaving it for whichever consumer
+    # happens to ask first. The leak guard is the one caller that would otherwise notice, and what it
+    # would "notice" is a token quietly behaving unbounded — i.e. nothing at all. (ADR-0049)
+    for entry in entries:
+        entry.leak_guard_bounded_name_tokens()
     return entries
 
 

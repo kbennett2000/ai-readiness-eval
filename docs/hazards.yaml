@@ -2929,3 +2929,51 @@ entries:
       probing so both inherit the pacer, which is a larger change than any single recon has needed.
       Written down rather than opened, because filing an issue for work nobody has argued for is the
       flattering move ADR-0015 exists to refuse.
+
+  - id: an-unbounded-name-token-fires-inside-a-word-when-the-name-is-an-acronym
+    adr: adr-0049-a-name-short-enough-to-be-a-word.md
+    hazard: |
+      The leak guard matches a vendor NAME as an unbounded case-insensitive substring. ADR-0028 chose
+      that on the argument that "a vendor name is distinctive, so over-matching it is free" — true of
+      a coined name, false of a short acronym, which is an ordinary way for a company to be known and
+      which sits inside ordinary English words. Declared the way every other name has been, a
+      three-letter acronym fires on CHARTER, SMART, PARTY, ARTICLE and any all-caps identifier
+      containing it. The damage is not the noise but what noise does to a guard: this file's own
+      source says a guard that cries wolf is a guard someone turns off, and the instrument at risk is
+      the one keeping a prospect's name out of a public repository. A name may now opt INTO whole-word
+      matching, per token, leaving every existing unbounded declaration exactly as it was.
+    status: gated
+    gated_by:
+      - core/tests/test_core_no_vendor.py::test_an_opted_in_token_stops_firing_inside_a_longer_word
+      - core/tests/test_core_no_vendor.py::test_an_opted_in_token_still_fires_where_it_must
+      - core/tests/test_core_no_vendor.py::test_an_opted_in_token_is_still_cased_only
+      - core/tests/test_core_no_vendor.py::test_an_unbounded_name_token_is_left_exactly_as_it_was
+      - core/tests/test_core_no_vendor.py::test_declaring_a_token_bounded_and_unbounded_at_once_is_refused
+      - core/tests/test_core_no_vendor.py::test_the_bounded_name_field_round_trips_through_a_save
+
+  - id: opting-a-name-into-whole-word-silently-drops-the-compound-case
+    adr: adr-0049-a-name-short-enough-to-be-a-word.md
+    hazard: |
+      Whole-word matching cannot see a name inside a compound: `\bART\b` does not match
+      `artglobal.com`. A docs hostname is precisely where this class of leak lands, because a recon
+      note names hosts — so a token that opts in is STRICTLY WEAKER than before on exactly the case
+      that matters most. ADR-0049 decision 4 repairs it at the declaration site rather than in the
+      matcher: the entry is expected to also declare the compound form as its own insensitive token.
+      Nothing enforces that expectation on a real entry. An author who opts a name in and declares no
+      companion token gets a quieter guard than they had, and the record reads as though the opt-in
+      strengthened it.
+    status: ungated
+    ungated_reason: |
+      A gate would have to decide which compound forms a name has — the squashed brand, the domain
+      label, the concatenation with a product word — and that is a question about the world, not
+      about tokens. Guessing them is worse than not: a derived compound that is wrong adds a token
+      that fires on nothing while reading as coverage, which is the shape ADR-0015 exists to catch.
+      The synthetic case IS gated (test_the_compound_case_is_lost_and_a_companion_token_covers_it
+      asserts both halves together, so the loss cannot be deleted from the record), but that test
+      proves the mechanism, never that a given real entry declared its companion.
+    fix_queued_to: |
+      Not queued. The candidate worth arguing for is a validator warning when an entry declares a
+      bounded name token and no insensitive token at all — cheap, and it catches the careless case
+      without pretending to know the compound forms. It is not filed because it has not been argued
+      for by anything but this ADR, and opening an issue so the registry can cite one is the
+      flattering move ADR-0015 refuses.

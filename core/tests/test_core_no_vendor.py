@@ -68,6 +68,16 @@ class _Prospects:
     cased_tokens: list[str] = field(default_factory=list)    # matched exactly as written
     pattern: re.Pattern | None = None
     cased_pattern: re.Pattern | None = None
+    # Cased NAME tokens that opted into WHOLE-WORD matching (ADR-0049). The unbounded default above
+    # rests on ADR-0028's argument that over-matching a vendor name is free because a vendor name is
+    # distinctive. That is true of a coined name and false of a short acronym, which sits inside
+    # ordinary words — and an acronym is a perfectly ordinary way for a company to be known. Opt-in
+    # per token, so no existing declaration changes behaviour: a name is only bounded when its entry
+    # says so. The cost is real and is paid at the declaration site, not hidden here — bounded
+    # matching cannot see a name inside a compound like a hostname, so an entry that opts in is
+    # expected to declare a companion token covering that. See `leak_guard_bounded_name_tokens`.
+    name_cased_bounded_tokens: list[str] = field(default_factory=list)
+    name_cased_bounded_pattern: re.Pattern | None = None
     # Product names are matched WHOLE-WORD; vendor names are matched as substrings. The asymmetry is
     # deliberate and was forced by evidence (ADR-0028). A vendor name is distinctive, so over-matching
     # it is free and catches `<name>-api` and `<name>'s`. A product name is frequently ordinary
@@ -87,6 +97,8 @@ class _Prospects:
     def search(self, text: str) -> bool:
         return bool((self.pattern and self.pattern.search(text))
                     or (self.cased_pattern and self.cased_pattern.search(text))
+                    or (self.name_cased_bounded_pattern
+                        and self.name_cased_bounded_pattern.search(text))
                     or (self.product_pattern and self.product_pattern.search(text))
                     or (self.product_cased_pattern and self.product_cased_pattern.search(text)))
 
@@ -132,12 +144,17 @@ def _load_prospects() -> _Prospects:
 
     tokens: list[str] = []
     cased: list[str] = []
+    cased_bounded: list[str] = []
     products: list[str] = []
     products_cased: list[str] = []
     for entry in entries:
         ins, cas = entry.leak_guard_tokens()
         tokens += ins
         cased += cas
+        # Raises if an entry declares the same token bounded AND unbounded, which would read as an
+        # opt-in and behave as none. `load_queue` already surfaces it, so reaching it here means a
+        # caller built entries some other way.
+        cased_bounded += entry.leak_guard_bounded_name_tokens()
         p_ins, p_cas = entry.leak_guard_product_tokens()
         products += p_ins
         products_cased += p_cas
@@ -151,6 +168,7 @@ def _load_prospects() -> _Prospects:
 
     tokens = list(dict.fromkeys(t for t in tokens if t.strip()))
     cased = list(dict.fromkeys(c for c in cased if c.strip()))
+    cased_bounded = list(dict.fromkeys(c for c in cased_bounded if c.strip()))
     products = list(dict.fromkeys(t for t in products if t.strip()))
     products_cased = list(dict.fromkeys(c for c in products_cased if c.strip()))
     if not tokens and not cased:
@@ -168,6 +186,8 @@ def _load_prospects() -> _Prospects:
         cased_tokens=cased,
         pattern=re.compile("|".join(re.escape(t) for t in tokens), re.IGNORECASE) if tokens else None,
         cased_pattern=re.compile("|".join(re.escape(c) for c in cased)) if cased else None,
+        name_cased_bounded_tokens=cased_bounded,
+        name_cased_bounded_pattern=bounded(cased_bounded),
         product_tokens=products,
         product_cased_tokens=products_cased,
         product_pattern=bounded(products, re.IGNORECASE),
@@ -454,6 +474,198 @@ def test_cased_prospect_regex_fires_on_the_proper_noun_only(index):
         f"cased token #{index} is listed but never fires"
     assert not prospects.cased_pattern.search(f"prefix {token.lower()} suffix"), \
         f"cased token #{index} is cased-only precisely so the lowercase word does not fire"
+
+
+# ------------------------- a name short enough to sit inside an ordinary word (ADR-0049) ---
+#
+# ADR-0028 made NAME tokens unbounded on an argument that is sound for a coined name — it is
+# distinctive, so over-matching it is free, and it buys `<name>-api` and `<name>'s` for nothing. The
+# argument fails for a short acronym, which is an ordinary way for a company to be known and which
+# sits inside ordinary words. An unbounded three-letter token fires on innocent prose, and this
+# guard's own source says a guard that cries wolf is a guard someone turns off.
+#
+# The mechanism below is therefore opt-in PER TOKEN. Every existing declaration keeps the unbounded
+# behaviour it was written for; only a token whose entry names it in `guard_tokens_cased_whole_word`
+# becomes bounded.
+#
+# These tests build a SYNTHETIC queue and run it through the real `_load_prospects`. Two reasons.
+# Mirroring the loader's logic in a fixture would let the fixture pass while the loader is broken.
+# And the opt-in list is legitimately empty for almost every target, so tests parametrized over the
+# real list would go vacuous the moment no target used it — the cycle-18 failure shape. Coverage of
+# the mechanism must not depend on anyone having opted in.
+#
+# `ART` is a neutral stand-in with the property under test: it sits inside CHARTER, SMART and PARTY.
+# It is not anybody's name, which is the point — this file names nobody.
+
+_SYNTHETIC_QUEUE = """\
+targets:
+- id: bounded-example
+  display_name: Bounded Example
+  status: queued
+  guard_tokens: [artglobal]
+  guard_tokens_cased_whole_word: [ART]
+  guard_product_tokens: [examplecoined]
+- id: unbounded-example
+  display_name: Unbounded Example
+  status: queued
+  guard_tokens: []
+  guard_tokens_cased: [XYZ]
+  guard_product_tokens: [othercoined]
+"""
+
+
+@pytest.fixture
+def synthetic_prospects(tmp_path, monkeypatch):
+    """A real `_load_prospects` over a queue we control, so the loader itself is under test."""
+    (tmp_path / "queue.yaml").write_text(_SYNTHETIC_QUEUE)
+    monkeypatch.setenv(PACKS_DIR_ENV, str(tmp_path))
+    monkeypatch.setenv(QUEUE_ENV, str(tmp_path / "queue.yaml"))
+    prospects = _load_prospects()
+    assert not prospects.skip and not prospects.error, prospects.skip or prospects.error
+    assert prospects.name_cased_bounded_tokens == ["ART"], (
+        "the synthetic queue's opt-in did not survive the loader, so every assertion below would be "
+        "testing an empty pattern"
+    )
+    return prospects
+
+
+@pytest.mark.parametrize("word", ["CHARTER", "SMART", "PARTY", "ARTICLE", "STARTED"])
+def test_an_opted_in_token_stops_firing_inside_a_longer_word(synthetic_prospects, word):
+    """The false positive the opt-in exists to stop. Unbounded, every one of these is a hit."""
+    assert not synthetic_prospects.name_cased_bounded_pattern.search(word), \
+        f"{word!r} matched a whole-word token; the \\b boundary is gone"
+    assert not synthetic_prospects.search(word), \
+        f"{word!r} still reaches the guard by some other pattern"
+
+
+@pytest.mark.parametrize("text", [
+    "ART",                       # the bare proper noun
+    "the ART surface",
+    "ART-api",                   # the hyphen form unbounded matching used to buy
+    "ART's developer portal",    # the possessive
+    "cycle-37-ART",              # a branch name, which is how this class of leak got published
+    "(ART)",
+])
+def test_an_opted_in_token_still_fires_where_it_must(synthetic_prospects, text):
+    """The true positive. Bounding must cost the false hits and nothing else — `\\b` sits between a
+    letter and a hyphen, an apostrophe or a bracket, so every form ADR-0028 wanted survives."""
+    assert synthetic_prospects.name_cased_bounded_pattern.search(text), \
+        f"{text!r} must still be caught; bounding was meant to cost false positives only"
+    assert synthetic_prospects.search(text), f"{text!r} did not reach the guard at all"
+
+
+def test_the_compound_case_is_lost_and_a_companion_token_covers_it(synthetic_prospects):
+    """The honest half, asserted in one place so the cost cannot be quietly forgotten.
+
+    Whole-word matching CANNOT see a name inside a compound — a hostname is the case that matters,
+    because a docs host is exactly where a leak lands. That is a real loss against the unbounded
+    behaviour, and it is not repaired by the boundary rule; it is repaired at the declaration site,
+    by the entry also declaring the compound as its own insensitive token.
+
+    Both halves are asserted together on purpose. Assert only the first and the guard looks broken;
+    assert only the second and the loss disappears from the record.
+    """
+    host = "developer.artglobal.com"
+    assert not synthetic_prospects.name_cased_bounded_pattern.search(host.upper()), \
+        "whole-word matching is not expected to reach inside a compound — if it does, this test is stale"
+    assert synthetic_prospects.search(host), (
+        "the compound is not covered by anything. An entry that opts a name into whole-word matching "
+        "must also declare the compound form (a hostname, a squashed brand) as an insensitive token, "
+        "or the guard is strictly weaker than it was before the opt-in."
+    )
+
+
+def test_an_opted_in_token_is_still_cased_only(synthetic_prospects):
+    """It buys the same leniency a cased token buys, and pays the same price."""
+    assert not synthetic_prospects.name_cased_bounded_pattern.search("the art of it"), \
+        "the lowercase ordinary word must not fire"
+    assert synthetic_prospects.name_cased_bounded_pattern.search("ART"), \
+        "...but the proper noun still must"
+
+
+def test_an_unbounded_name_token_is_left_exactly_as_it_was(synthetic_prospects):
+    """The opt-in is per token. A target that did not ask for bounding must not receive it.
+
+    This is what makes the change safe to land against a queue full of existing declarations: their
+    behaviour is unchanged, including the substring matching some of them rely on.
+    """
+    assert synthetic_prospects.cased_pattern.search("XYZZY"), (
+        "a cased token that did NOT opt in must still match inside a longer word — bounding leaked "
+        "across to entries that never asked for it"
+    )
+    assert "XYZ" not in synthetic_prospects.name_cased_bounded_tokens
+
+
+def test_declaring_a_token_bounded_and_unbounded_at_once_is_refused(tmp_path):
+    """An opt-in the unbounded list silently overrides is worse than no opt-in.
+
+    Both patterns are consulted by `search`, so the unbounded one wins every race between them. An
+    entry listing the same token in both would read as bounded in review and behave as unbounded in
+    fact — the exact failure this field removes, wearing the label of the fix. So it is a parse
+    error, in the same place and for the same reason an unknown status is one.
+    """
+    from core.factory import QueueEntry, load_queue
+    bad = tmp_path / "queue.yaml"
+    bad.write_text(
+        "targets:\n"
+        "- id: contradictory\n"
+        "  status: queued\n"
+        "  guard_tokens_cased: [ART]\n"
+        "  guard_tokens_cased_whole_word: [ART]\n"
+    )
+    with pytest.raises(ValueError) as excinfo:
+        load_queue(bad)
+    assert "ART" in str(excinfo.value) and "guard_tokens_cased_whole_word" in str(excinfo.value), \
+        "the error must name the token and both fields, or it cannot be acted on"
+    # and the accessor refuses on its own, for a caller that built the entry some other way
+    with pytest.raises(ValueError):
+        QueueEntry(id="x", guard_tokens_cased=["ART"],
+                   guard_tokens_cased_whole_word=["ART"]).leak_guard_bounded_name_tokens()
+
+
+def test_the_bounded_name_field_round_trips_through_a_save(tmp_path):
+    """It must survive `to_dict`, or a dispatcher writing the queue back would silently drop the
+    opt-in and restore the unbounded behaviour on the next load."""
+    from core.factory import QueueEntry, load_queue, save_queue
+    entry = QueueEntry(id="bounded-example", guard_tokens=["artglobal"],
+                       guard_tokens_cased_whole_word=["ART"])
+    assert entry.to_dict()["guard_tokens_cased_whole_word"] == ["ART"]
+    path = tmp_path / "queue.yaml"
+    save_queue(path, [entry])
+    assert load_queue(path)[0].leak_guard_bounded_name_tokens() == ["ART"]
+    # omitted where empty, like its four siblings — a queue file gains no noise from this field
+    assert "guard_tokens_cased_whole_word" not in QueueEntry(id="plain").to_dict()
+
+
+@pytest.mark.parametrize("index", _token_indices(len(PROSPECTS.name_cased_bounded_tokens)))
+def test_every_real_opted_in_token_fires_on_its_proper_noun_only(index):
+    """Per-token coverage of the REAL list, alongside the mechanism tests above.
+
+    The list is legitimately empty when no target has opted in, so this test must handle that — but
+    it must NOT do so by skipping. ADR-0042 armed the guard precisely because a skip reports green,
+    and `tools/assert_guard_ran.py` fails an armed run containing one. The first draft of this test
+    skipped and said so in ADR-0049 as a deliberate decision; CI rejected it, correctly, and the ADR
+    is corrected in place rather than quietly. It passed locally only because this cycle's own queue
+    entry made the list non-empty, while CI clones the packs repo at `main`, where it is not.
+
+    So the empty case asserts the invariant that holds when it is empty, and the run stays honest:
+    every case executes, none is skipped, and nothing is asserted about tokens that do not exist.
+    """
+    prospects = _require_prospects()
+    if not prospects.name_cased_bounded_tokens:
+        assert prospects.name_cased_bounded_pattern is None, (
+            "no target declared a whole-word name token, so the bounded pattern must be None; a "
+            "pattern built from an empty list would match either everything or nothing, and both "
+            "are silent failures"
+        )
+        return
+    token = prospects.name_cased_bounded_tokens[index]
+    assert prospects.name_cased_bounded_pattern.search(f"cycle-37-{token}"), \
+        f"bounded token #{index} is listed but never fires"
+    assert not prospects.name_cased_bounded_pattern.search(f"prefix {token.lower()} suffix"), \
+        f"bounded token #{index} is cased-only precisely so the lowercase word does not fire"
+    assert not prospects.name_cased_bounded_pattern.search(f"un{token}ed"), \
+        f"bounded token #{index} matched inside a longer word; the \\b boundary is gone"
 
 
 def test_the_product_token_list_is_not_empty():
