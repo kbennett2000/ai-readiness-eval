@@ -50,36 +50,36 @@ def test_no_declaration_at_all_is_not_a_problem():
 # Each rule, broken on purpose.
 # --------------------------------------------------------------------------------------------- #
 
-def test_a_bare_string_does_not_block_but_is_counted():
+def test_a_bare_string_blocks():
     """The shape the whole cohort used, and the shape that let three uncited entries stand.
 
-    It does not block, and the reason is deployment rather than evidence: this gate ships in `core`
-    and the packs ship in a separate repository whose CI clones `core`'s default branch, so neither
-    half can land first (ADR-0055, rule 5). What must NOT happen is that it passes silently — an
-    uncited tolerance nothing counts is the exact state the cohort-wide audit found. So the pair is
-    pinned together: no problem, AND a non-empty count. Issue #98 flips it.
+    It spent exactly one merge as a non-blocking count, because this gate ships in `core` and the
+    packs ship in a separate repository whose CI clones `core`'s default branch — neither half
+    could land before the other (ADR-0055, rule 5). The cohort is converted, so it blocks.
     """
-    assert problems("/gateway") == []
-    assert scorer.bare_prefix_entries("/gateway") == ["/gateway"]
+    out = problems("/gateway")
+    assert len(out) == 1 and "bare string" in out[0]
 
 
-def test_every_bare_entry_is_counted_not_just_the_first():
-    assert problems(["/gateway", "/api"]) == []
-    assert scorer.bare_prefix_entries(["/gateway", "/api"]) == ["/gateway", "/api"]
+def test_a_bare_list_blocks_every_entry_not_just_the_first():
+    out = problems(["/gateway", "/api"])
+    assert len(out) == 2
+    assert "[0]" in out[0] and "[1]" in out[1]
 
 
-def test_a_cited_entry_is_never_counted_as_bare():
-    """The counter must fall to zero as the cohort converts, or it measures nothing."""
-    assert scorer.bare_prefix_entries([VALID]) == []
-    assert scorer.bare_prefix_entries([VALID, "/api"]) == ["/api"]
+def test_a_cited_entry_is_never_caught_by_the_bare_rule():
+    """The rule must be reachable ONLY by an entry citing nothing, or it blocks the cohort."""
+    assert problems([VALID]) == []
+    assert len(problems([VALID, "/api"])) == 1
 
 
-def test_a_half_cited_entry_is_judged_rather_than_excused_as_legacy():
-    """The escape hatch is for entries citing NOTHING. One that cites something is judged on it,
-    so `evidence:` alone cannot buy silence on the note, nor `note:` alone on the evidence URL."""
+def test_a_half_cited_entry_is_judged_on_the_half_it_carries():
+    """Written when rule 5 was an exemption, and kept now that it is not, because it pins the same
+    property either way: `evidence:` alone cannot buy silence on the note, nor `note:` alone on the
+    evidence URL. Under the exemption this stopped a half-citation claiming legacy status; under
+    the rule it stops one entry drawing a single generic complaint instead of the specific one."""
     assert any("`note:`" in p for p in problems([{"prefix": "/gateway", "evidence": VALID["evidence"]}]))
     assert any("`evidence:` URL" in p for p in problems([{"prefix": "/gateway", "note": VALID["note"]}]))
-    assert scorer.bare_prefix_entries([{"prefix": "/gateway", "evidence": VALID["evidence"]}]) == []
 
 
 def test_evidence_on_a_rehosting_host_blocks():
@@ -172,15 +172,11 @@ def test_roundtrip_blocks_a_pack_whose_tolerance_cites_a_rehosting_host(tmp_path
     assert any("rehosts rather than publishes" in p for p in control.problems)
 
 
-def test_roundtrip_reports_a_bare_pack_in_a_note_and_does_not_block_it(tmp_path, acme_pack):
-    """The unconverted cohort must still gate — see ADR-0055 rule 5 for why it cannot block yet.
-
-    Both halves are asserted. `ok` alone would pass if the note were dropped, which would leave an
-    uncited tolerance running with nothing counting it; the note alone would pass if it blocked.
-    """
+def test_roundtrip_blocks_a_pack_whose_tolerance_is_a_bare_string(tmp_path, acme_pack):
+    """It blocks at the gate that runs before a grid burns, not merely in a helper nobody calls."""
     control = _base_prefix_control(tmp_path, acme_pack, "bare", "/gateway")
-    assert control.ok and not control.problems
-    assert any("/gateway" in n and "bare-string form" in n for n in control.notes)
+    assert not control.ok
+    assert any("bare string" in p for p in control.problems)
 
 
 def _base_prefix_control(tmp_path, acme_pack, name, value):
