@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import surfaces
+from . import scorer, surfaces
 from .contract import API_CONTRACT, contract_for
 from .pack import Pack
 from .roundtrip_api import _MOCK_AUTH_PHRASE, answer_from_ground_truth  # noqa: F401 (re-exported)
@@ -251,6 +251,22 @@ def check_pack(pack: Pack) -> list[TaskControl]:
             ))
 
     controls.append(dimension_coverage(pack, contract, controls))
+
+    # An endpoint-base tolerance must cite the first-party artifact that writes the address that
+    # way (ADR-0055). Checked HERE, at the gate that runs before a grid burns, for the reason the
+    # cohort-wide audit found: a tolerance can only move the endpoint dimension UP, so an uncited
+    # one is indistinguishable from a score rescue until someone reads the vendor's documents by
+    # hand. The round-trip control structurally cannot catch it either — an answer key always
+    # matches itself, whatever notation it is written in.
+    try:
+        controls.append(TaskControl(
+            task_id="(endpoint-base-evidence)",
+            ok=not (bp := scorer.base_prefix_problems(getattr(pack, "endpoint_base_prefix", None))),
+            problems=bp))
+    except Exception as exc:
+        controls.append(TaskControl(
+            task_id="(endpoint-base-evidence)", ok=False,
+            problems=[f"base-prefix control raised {type(exc).__name__}: {exc}"]))
 
     # A pack that declares published surfaces (ADR-0037) must classify its OWN ground truth as the
     # surface it says it measures. Same register as the round-trip above and for the same reason: an

@@ -50,7 +50,8 @@ def test_both_paths_are_scored(acme_pack):
     # `(dimension-coverage)` (ADR-0045) — which answer a question about the suite rather than about
     # one task, and so have no scored answer of their own. They are named, not filtered by shape, so
     # a task that genuinely lost its score cannot slip through this exemption.
-    pack_level = {"(dimension-coverage)", "(answer-surfaces)", "(suite)"}
+    pack_level = {"(dimension-coverage)", "(answer-surfaces)", "(suite)",
+                  "(endpoint-base-evidence)"}
     controls = [c for c in check_pack(acme_pack) if c.task_id not in pack_level]
     assert controls, "every control was pack-level, so this asserted nothing about a task"
     for control in controls:

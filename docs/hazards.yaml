@@ -3183,3 +3183,56 @@ entries:
       injecting, and refuse on a mismatch — is a real improvement and belongs in a cycle that can
       measure its cost across a full grid rather than assert it is small.
 
+
+  # ---------------------------------------------------------------------------------- ADR-0055 -
+  - id: a-cited-page-can-be-one-nobody-can-read
+    adr: adr-0055-a-tolerance-must-cite-the-vendor.md
+    hazard: >
+      Both evidence gates — `auth_flow_alternates` (ADR-0023) and now `endpoint_base_prefix` — check
+      that a first-party URL was WRITTEN and is not on a rehosting host. Neither opens the page. The
+      cohort audit that forced this ADR found the consequence already live: on one vendor, eleven
+      alternates cite a documentation page which the SAME repository's manifest records at
+      `byte_size: 0` with a fetch_error, because the portal is client-rendered and serves a
+      compliant reader nothing. The gate was satisfied by a URL that attests nothing, and the gate
+      and the manifest had never been introduced to each other.
+    status: ungated
+    ungated_reason: >
+      The check requires the gate to reach a pack's docs-manifest and agree with it about which URL
+      an entry cites, which is a cross-file join neither `alternate_problems` nor
+      `base_prefix_problems` currently has — they are pure functions over one declaration. Wiring it
+      is a real change to what a scorer helper is allowed to know, and doing it in the same cycle
+      that introduced the gate would have shipped the join untested against the cohort. Calling this
+      gated today would be true about a test and false about the world.
+    drift_pin:
+    - core/tests/test_base_prefix_evidence.py::test_evidence_on_a_rehosting_host_blocks
+    - core/tests/test_base_prefix_evidence.py::test_evidence_that_is_not_a_url_blocks
+    fix_queued_to: >
+      Public ai-readiness-eval — filed this cycle. The rule to add is that a cited URL must appear
+      in the pack's own docs-manifest with a non-null `content_hash`, so an entry cannot rest on a
+      page the pack itself recorded as unreadable. It applies to BOTH evidence fields, which is why
+      it is filed rather than bolted onto the newer one alone.
+
+  - id: a-derived-prefix-and-an-invented-one-look-identical-to-the-gate
+    adr: adr-0055-a-tolerance-must-cite-the-vendor.md
+    hazard: >
+      ADR-0013 licenses writing a path from any point INSIDE a declared base, so a suffix of a cited
+      string is legitimately derivable and needs no separate citation. Nothing mechanical tells that
+      apart from a string the vendor writes nowhere: both arrive at the gate as `{prefix, evidence,
+      note}` with the same URL, and only the note says which one it is. The shortest derived
+      entry — a single common segment — is simultaneously the most defensible under ADR-0013 and the
+      most capable of absorbing a segment it should not.
+    status: ungated
+    ungated_reason: >
+      Enforcing it means asserting that each declared prefix is a substring of the artifact the
+      evidence URL points at, which is the same unbuilt cross-file join as the entry above, plus a
+      judgement about what counts as "inside" a base that the vendor never states. The written note
+      is where the distinction is held today, deliberately, because it is an argument a reviewer can
+      disagree with rather than a string comparison that would silently accept a coincidence.
+    drift_pin:
+    - core/tests/test_base_prefix_evidence.py::test_a_duplicate_prefix_blocks
+    - core/tests/test_base_prefix_evidence.py::test_evidence_cannot_make_two_different_resources_compare_equal
+    fix_queued_to: >
+      Not queued as a gate. Queued as a REPORTING obligation instead, which is the honest half: the
+      audit ledger records each entry as `cited` or `derived`, and a pack declaring a derived entry
+      states which cited string it is a point inside. A future cycle that builds the manifest join
+      above gets the substring check nearly free and should take it then.

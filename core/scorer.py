@@ -409,6 +409,113 @@ def alternate_problems(ground_truth: dict | None) -> list[str]:
     return problems
 
 
+def declared_prefix_entries(raw) -> list[dict]:
+    """Normalize a pack's `endpoint_base_prefix` declaration to `[{prefix, evidence, note}, ...]`.
+
+    Accepts all three shapes, and is the ONLY place they are told apart:
+
+      "/api"                                    -> one entry, no evidence  (pre-ADR-0055)
+      ["/gateway", "/api"]                      -> two entries, no evidence (ADR-0039)
+      [{prefix: "/api", evidence: ..., note:}]  -> one entry WITH evidence  (ADR-0055)
+
+    A shape it does not understand yields an entry whose `prefix` is None, which
+    `base_prefix_problems` reports rather than this function raising: a malformed declaration must
+    BLOCK with a written reason, never crash the gate loop that calls it.
+    """
+    if not raw:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    out: list[dict] = []
+    for item in items:
+        if isinstance(item, str):
+            out.append({"prefix": item, "evidence": None, "note": None})
+        elif isinstance(item, dict):
+            out.append({"prefix": item.get("prefix"),
+                        "evidence": item.get("evidence"),
+                        "note": item.get("note")})
+        else:
+            out.append({"prefix": None, "evidence": None, "note": None})
+    return out
+
+
+def base_prefix_problems(raw) -> list[str]:
+    """Every reason a pack's `endpoint_base_prefix` declaration is not acceptable (ADR-0055).
+
+    An endpoint-base tolerance can only move the endpoint dimension UP, so an uncited one is
+    indistinguishable from a score rescue until someone looks. These rules are deliberately the SAME
+    three `auth_flow_alternates` has carried since ADR-0023, because the claim being made is the
+    same claim: that *the vendor* writes the address this way.
+
+      1. The entry must carry a `prefix` that is a non-empty string beginning with `/`.
+      2. It must carry an `evidence:` URL on the vendor's own documentation showing the vendor
+         writing the address that way. A copy of a document is not the vendor's claim (ADR-0017),
+         so a `rehosting_host()` is refused.
+      3. It must carry a `note:` of at least 40 characters saying what that artifact writes. The
+         note is what makes the tolerance reviewable; a bare URL grants it for free.
+
+    Plus two structural rules that exist because this list is order-sensitive at match time:
+
+      4. A prefix may not be declared twice — `_strip_base_prefix` takes the first match, so a
+         duplicate is either dead or a sign the list was assembled from two sources.
+      5. The bare-string form is refused. It is what the cohort used before ADR-0055 and it is what
+         let three uncited entries stand, one of them in a pack that had already written down, in
+         the same file, that no first-party artifact wrote it.
+    """
+    if not raw:
+        return []
+    entries = declared_prefix_entries(raw)
+    problems: list[str] = []
+    seen: set[str] = set()
+
+    for i, entry in enumerate(entries):
+        where = f"endpoint_base_prefix[{i}]"
+        prefix = entry.get("prefix")
+        if not isinstance(prefix, str) or not prefix.strip():
+            problems.append(
+                f"{where}: needs a `prefix:` string (got {prefix!r}). Declare each entry as "
+                "{prefix, evidence, note}"
+            )
+            continue
+        prefix = prefix.strip()
+        if not prefix.startswith("/"):
+            problems.append(f"{where}: prefix {prefix!r} must begin with '/'")
+        if prefix in seen:                                                       # rule 4
+            problems.append(
+                f"{where}: {prefix!r} is declared more than once. Only the first match is ever "
+                "stripped, so a duplicate either does nothing or hides a second source"
+            )
+        seen.add(prefix)
+
+        evidence = entry.get("evidence")
+        if evidence is None and entry.get("note") is None:                       # rule 5
+            problems.append(
+                f"{where}: {prefix!r} is declared as a bare string with no evidence. Every "
+                "endpoint-base tolerance must cite the first-party artifact that writes the "
+                "address that way (ADR-0055): {prefix, evidence, note}"
+            )
+            continue
+        evidence = str(evidence or "").strip()
+        if not evidence.startswith(("http://", "https://")):                     # rule 2
+            problems.append(
+                f"{where}: needs an `evidence:` URL on the vendor's own documentation showing it "
+                "writing the address with this prefix"
+            )
+        else:
+            bad = rehosting_host(evidence)
+            if bad is not None:
+                problems.append(
+                    f"{where}: evidence is on {bad}, which rehosts rather than publishes. A base "
+                    "tolerance rests on the vendor's own claim (ADR-0017), never on a copy of it"
+                )
+        note = str(entry.get("note") or "").strip()
+        if len(note) < 40:                                                       # rule 3
+            problems.append(
+                f"{where}: needs a `note:` of at least 40 characters quoting or describing what "
+                f"that artifact writes (got {len(note)})"
+            )
+    return problems
+
+
 def auth_flow_matches(gt_text: str | None, answer_text: str | None,
                       alternates: tuple[str, ...] | list[str] = ()) -> bool:
     """True if the answer names a login style this ground truth accepts.
