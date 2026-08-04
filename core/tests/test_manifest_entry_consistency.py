@@ -30,7 +30,11 @@ OK = "sha256:" + "a" * 64
 
 
 def _entry(**over):
+    # `fetch_date` is in the base because ADR-0057 requires one on any entry recording an outcome,
+    # and every entry this helper builds records one. Without it each fixture below would trip two
+    # rules at once and the `len(errors) == 1` assertions would stop telling us which rule fired.
     base = {"url": "https://d.test/api/accounts", "role": "api-reference", "note": "n",
+            "fetch_date": "2026-07-23",
             "content_hash": OK, "byte_size": 4073, "cache_file": "docs-cache/t1/accounts.txt"}
     base.update(over)
     return base
@@ -117,6 +121,81 @@ def test_an_honest_failure_record_is_not_refused(tmp_path, acme_pack):
     entry = _entry(content_hash=None, byte_size=0, fetch_error="HTTP Error 403: Forbidden")
     entry.pop("cache_file")
     assert validate.validate_docs_manifest(_pack_with(tmp_path, acme_pack, entry)) == []
+
+
+# --------------------------------------------------------------------------------------------- #
+# ADR-0057 — an entry that records an outcome must say when, and a date must record an outcome.
+# --------------------------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("key", docs_fetch.ENTRY_KEYS)
+def test_an_undated_success_record_is_refused_in_every_list(tmp_path, acme_pack, key):
+    """Parametrized over ENTRY_KEYS for the same reason as the rule above: a fifth list added later
+    must not arrive with the date rule silently not applying to it."""
+    entry = _entry()
+    entry.pop("fetch_date")
+    pack = _pack_with(tmp_path, acme_pack, entry, key=key)
+    errors = validate.validate_docs_manifest(pack)
+    assert len(errors) == 1, errors
+    assert "no fetch_date" in errors[0] and "ADR-0057" in errors[0]
+    assert key in errors[0] and "accounts" in errors[0]
+
+
+@pytest.mark.parametrize("recorded, named", [
+    # A failure that lost its date. `fetch-docs` dates its refusals too (ADR-0052), so an undated
+    # one is a hand edit, and the recorded refusal is the thing whose age a reader most needs.
+    ({"content_hash": None, "byte_size": 0, "fetch_error": "HTTP Error 403: Forbidden",
+      "cache_file": None}, "fetch_error"),
+    # A hash with no date: the manifest vouches for bytes without saying when they were the page.
+    ({"byte_size": None, "cache_file": None}, "content_hash"),
+    # A cache_file alone is already refused by ADR-0056's no-hash rule; this pins that losing the
+    # date is reported as well rather than swallowed by the more specific finding.
+    ({"content_hash": None, "byte_size": None}, "cache_file"),
+])
+def test_any_recorded_outcome_without_a_date_is_refused(tmp_path, acme_pack, recorded, named):
+    entry = _entry(**recorded)
+    entry.pop("fetch_date")
+    entry = {k: v for k, v in entry.items() if v is not None or k == "content_hash"}
+    pack = _pack_with(tmp_path, acme_pack, entry)
+    undated = [e for e in validate.validate_docs_manifest(pack) if "no fetch_date" in e]
+    assert len(undated) == 1, validate.validate_docs_manifest(pack)
+    assert named in undated[0], f"the message must name the outcome it found: {undated[0]}"
+
+
+def test_a_date_recording_no_outcome_at_all_is_refused(tmp_path, acme_pack):
+    """The silent-drop shape ADR-0056's hazard named and could not reach: a fetch that failed and
+    whose `fetch_error` went missing reads exactly like a page nobody ever tried."""
+    entry = {"url": "https://d.test/api/accounts", "role": "api-reference", "note": "n",
+             "fetch_date": "2026-07-23"}
+    pack = _pack_with(tmp_path, acme_pack, entry)
+    errors = validate.validate_docs_manifest(pack)
+    assert len(errors) == 1, errors
+    assert "will not say what came of it" in errors[0] and "ADR-0057" in errors[0]
+
+
+def test_a_never_attempted_entry_is_not_refused(tmp_path, acme_pack):
+    """The counterexample that decided the rule's shape. A manifest authored before its first fetch
+    is the normal state of a pack under construction, and the strict reading — every entry must
+    carry a date — would answer it by inviting a date no fetch produced."""
+    entry = {"url": "https://d.test/api/accounts", "role": "api-reference", "note": "n"}
+    assert validate.validate_docs_manifest(_pack_with(tmp_path, acme_pack, entry)) == []
+
+
+def test_the_unfetched_reference_fixture_is_that_shape(acme_pack):
+    """Pins the counterexample to a real file rather than a hand-built one, so a future cycle that
+    dates the acme fixture has to notice it is removing this rule's only live evidence."""
+    manifest = yaml.safe_load(acme_pack.docs_manifest_path.read_text())
+    pages = [p for t in manifest["tasks"].values() for p in t.get("pages", [])]
+    assert pages, "the fixture must still carry entries for this to prove anything"
+    assert all("fetch_date" not in p for p in pages)
+    assert all(k not in p for p in pages for k in validate.OUTCOME_KEYS)
+
+
+def test_the_date_rule_blocks_at_the_validate_gate_not_only_in_a_helper(tmp_path, acme_pack):
+    entry = _entry()
+    entry.pop("fetch_date")
+    results = validate.validate_pack(_pack_with(tmp_path, acme_pack, entry))
+    assert results.get("(docs-manifest)"), results
+    assert any("no fetch_date" in e for e in results["(docs-manifest)"])
 
 
 def test_a_pack_with_no_manifest_is_not_a_problem(tmp_path, acme_pack):
@@ -211,3 +290,38 @@ def test_the_fetchers_output_passes_the_validator_in_both_directions(tmp_path, m
         pack = Pack.load(dst)
         pack.docs_manifest_path.write_text(mpath.read_text())
         assert validate.validate_docs_manifest(pack) == [], "the fetcher wrote what the gate refuses"
+
+
+def test_the_robots_refusal_path_also_writes_what_the_validator_accepts(tmp_path, monkeypatch,
+                                                                       acme_pack):
+    """The third path `fetch_all` can take, and the one no other test here exercises.
+
+    A page we are not permitted to retrieve (ADR-0036) is still an entry that records an outcome, so
+    ADR-0057 requires it to be dated — and it is the entry whose date matters most, because a robots
+    rule is a permission that can change and the manifest is the only record of when it was read.
+    """
+    class _Refused:
+        host = "d.test"
+        fetched_on = "2026-08-04"
+
+        def verdict(self, url):
+            from core.robots import Verdict
+            return Verdict(False, "Disallow: /", "*", "robots.txt")
+
+    monkeypatch.setattr(docs_fetch, "_fetch",
+                        lambda url, timeout=30, user_agent=None: _doc(_body("accounts")))
+    mpath = _manifest(tmp_path, {"url": "https://d.test/api/accounts", "role": "api-reference",
+                                 "note": "n"})
+
+    docs_fetch.fetch_all(mpath, tmp_path / "cache", today="2026-08-04",
+                         policy_for=lambda url, agent=None: _Refused())
+
+    page = yaml.safe_load(mpath.read_text())["tasks"]["t1"]["pages"][0]
+    assert page["robots_disallowed"] is True and page["fetch_error"]
+    assert page["fetch_date"] == "2026-08-04", "a refusal that does not say when is an undated claim"
+
+    dst = tmp_path / "pack"
+    shutil.copytree(acme_pack.root, dst)
+    pack = Pack.load(dst)
+    pack.docs_manifest_path.write_text(mpath.read_text())
+    assert validate.validate_docs_manifest(pack) == [], "the fetcher wrote what the gate refuses"
