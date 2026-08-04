@@ -6,6 +6,20 @@ repository's vendor-agnostic core reproduces the frozen `sailpoint-proof-of-conc
 overall **73% / 68% / 93%** and every per-task, per-dimension cell. This is wired as a permanent test,
 not a one-time diff. If a step here does not reproduce, that is a defect in this repo.
 
+**Reproducibility (ADR-0058):** Every number here re-scores from the committed transcripts with no
+network access — `python -m core rebuild-report <results dir>`, gated by
+[`core/tests/test_archive_consistency.py`](core/tests/test_archive_consistency.py). The 29
+documentation pages this pack retrieved were captured 2026-07-23 and are recorded in
+[`packs/sailpoint/docs-manifest.yaml`](packs/sailpoint/docs-manifest.yaml) by URL, byte size and
+SHA-256 rather than committed, because they are the vendor's copyright — so the capture itself cannot
+be re-obtained from a clean checkout.
+
+That second sentence is the boundary a reader is entitled to know before following the steps below:
+they check that the published numbers follow from the committed transcripts, which is the whole of
+what this document claims. They do not check that those transcripts' prompts contained what
+`docs-manifest.yaml` says they contained — that requires the same bytes, and the bytes are not ours
+to redistribute.
+
 ## 0. Install
 
 ```bash

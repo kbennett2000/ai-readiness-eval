@@ -209,6 +209,98 @@ def coverage_cohort_note(entries: list[tuple[str, dict]], contract=None,
             f"exercises {misses}." + tail)
 
 
+# ---------------------------------------------------------------------------
+# Reproducibility disclosure (ADR-0058)
+#
+# Every published number here has two sides pinned by different means. The spec side is pinned to a
+# public commit a third party can re-resolve. The documentation side is pinned by `fetch_date` +
+# `content_hash` + `byte_size` and nothing else, because the cached bytes are the vendor's
+# copyrighted documentation and are gitignored — so the docs condition is pinned by a STATEMENT
+# about bytes rather than by the bytes.
+#
+# Both halves of that are true and neither is stated where a reader meets the number. This generates
+# the sentence pair that states them, for the same reason `coverage_line` is generated rather than
+# typed: a hand-maintained derived figure goes stale silently, and this one carries a count and a
+# date that change whenever a pack is re-fetched.
+# ---------------------------------------------------------------------------
+
+_REPRODUCIBILITY_ADR = "ADR-0058"
+
+
+def docs_provenance(manifest: dict) -> dict:
+    """`{"entries", "retrieved", "dates"}` for one pack's docs manifest.
+
+    An entry counts as **retrieved** iff it carries a non-null `content_hash`, which is exactly the
+    set whose bytes are attested but absent — the set the sentence is about. An entry that recorded
+    a `fetch_error` injected nothing and is not claimed as a captured page; an entry never attempted
+    (a hand-authored `url`/`role`/`note`, ADR-0057) is not claimed either.
+
+    `dates` are the DISTINCT `fetch_date` values among retrieved entries, sorted. Reading them off
+    the retrieved set rather than off every entry keeps the sentence from citing the capture date of
+    a page that was never captured.
+    """
+    from .docs_fetch import _entry_items  # the one accessor over all four ENTRY_KEYS
+
+    entries = 0
+    retrieved: list[dict] = []
+    for task in (manifest.get("tasks") or {}).values():
+        for _key, page in _entry_items(task):
+            entries += 1
+            if page.get("content_hash"):
+                retrieved.append(page)
+    dates = sorted({p["fetch_date"] for p in retrieved if p.get("fetch_date")})
+    return {"entries": entries, "retrieved": len(retrieved), "dates": dates}
+
+
+def _link(spec) -> str:
+    """`spec` is an href, or a `(display, href)` pair when the two must differ — a file two
+    directories up reads as `core/tests/…` and links as `../../core/tests/…`."""
+    text, href = spec if isinstance(spec, tuple) else (spec, spec)
+    return f"[`{text}`]({href})"
+
+
+def reproducibility_line(prov: dict, *, adr_ref: str = _REPRODUCIBILITY_ADR,
+                         manifest_link="docs-manifest.yaml",
+                         gate_link="core/tests/test_archive_consistency.py") -> str:
+    """The two-sentence reproducibility disclosure for a card or a README (ADR-0058).
+
+    Sentence one is what re-derives from this repository with no network; sentence two is what
+    cannot be re-obtained from a clean checkout, and why. `adr_ref` is a parameter for the reason
+    ADR-0046 gives — the two repos cite this repo's ADRs differently. The two link parameters exist
+    because one sentence has to be valid from the repo root, from inside a pack, and from a card,
+    and those point in different directions from each other; each takes an href or a
+    `(display, href)` pair.
+    """
+    head = (f"**Reproducibility ({adr_ref}):** Every number here re-scores from the committed "
+            f"transcripts with no network access — `python -m core rebuild-report <results dir>`, "
+            f"gated by {_link(gate_link)}.")
+
+    n, dates = prov["retrieved"], prov["dates"]
+    if not n:
+        # Not a hypothetical branch: a manifest authored before its first fetch has this shape, and
+        # so does a pack whose every page was refused. Claiming a capture here would be the exact
+        # failure this line exists to prevent, so it claims none.
+        return head + (f" {_link(manifest_link)} records no retrieved page, so no documentation "
+                       f"snapshot is attested by hash and the docs condition's source pages are not "
+                       f"part of what this repository publishes.")
+
+    one = n == 1
+    if len(dates) == 1:
+        when = f"{'was' if one else 'were'} captured {dates[0]}"
+    elif dates:
+        when = f"{'was' if one else 'were'} captured between {dates[0]} and {dates[-1]}"
+    else:
+        # An outcome with no date is refused at the `validate` gate (ADR-0057), so this is
+        # unreachable from a validated pack — and the sentence still must not invent a date.
+        when = f"{'carries' if one else 'carry'} no recorded capture date"
+
+    return head + (f" The {n} documentation page{'' if one else 's'} this pack retrieved {when} and "
+                   f"{'is' if one else 'are'} recorded in {_link(manifest_link)} by URL, byte size "
+                   f"and SHA-256 rather than committed, because {'it is' if one else 'they are'} the "
+                   f"vendor's copyright — so the capture itself cannot be re-obtained from a clean "
+                   f"checkout.")
+
+
 def render_summary_md(agg: dict, metadata: dict, contract=None) -> str:
     dims, labels = _dims_and_labels(contract)
     header = "| task | " + " | ".join(labels[d] for d in dims) + " | fmt-fail |"
