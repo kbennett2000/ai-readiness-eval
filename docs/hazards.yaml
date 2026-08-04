@@ -3254,3 +3254,48 @@ entries:
       audit ledger records each entry as `cited` or `derived`, and a pack declaring a derived entry
       states which cited string it is a point inside. A future cycle that builds the manifest join
       above gets the substring check nearly free and should take it then.
+
+  # ------------------------------------------------------------------------------ ADR-0056 ---
+
+  - id: a-manifest-entry-can-describe-a-retrieval-and-its-own-failure
+    adr: adr-0056-an-entry-cannot-be-both-retrieved-and-refused.md
+    hazard: >
+      A `docs-manifest.yaml` entry records whether content arrived (`content_hash`, `byte_size`,
+      `cache_file`) and whether the attempt failed (`fetch_error`) as two independent facts, and
+      nothing made them agree. The fetcher overwrote every success field on a re-fetch but only the
+      failure path ever wrote `fetch_error`, so an entry that failed once and then succeeded kept
+      the first attempt's error under the second attempt's proof. ADR-0051's two-agent measurement
+      fetches one URL twice by design, which turned a latent bug into a certain one: all ten
+      `anchors` on that pack declared the document unreadable beside the hash, size and cache file
+      proving it had been read. No published number moved — nothing scores or injects
+      `fetch_error` — but an anchor is the artifact a ground-truth citation rests on, and a
+      reviewer opening it found a contradiction with no way to tell which half was stale.
+    status: gated
+    gated_by:
+      - core/tests/test_manifest_entry_consistency.py::test_a_success_record_carrying_a_fetch_error_is_refused_in_every_list
+      - core/tests/test_manifest_entry_consistency.py::test_the_contradiction_blocks_at_the_validate_gate_not_only_in_a_helper
+      - core/tests/test_manifest_entry_consistency.py::test_a_cache_file_without_a_hash_is_refused
+      - core/tests/test_manifest_entry_consistency.py::test_a_successful_refetch_clears_the_previous_attempts_error
+      - core/tests/test_manifest_entry_consistency.py::test_a_failed_refetch_drops_a_cache_file_it_no_longer_vouches_for
+      - core/tests/test_manifest_entry_consistency.py::test_the_fetchers_output_passes_the_validator_in_both_directions
+
+  - id: an-omitted-fetch-error-is-indistinguishable-from-a-page-never-tried
+    adr: adr-0056-an-entry-cannot-be-both-retrieved-and-refused.md
+    hazard: >
+      The rule above refuses an entry claiming a retrieval AND a failure. It cannot detect the
+      inverse: an entry whose fetch failed and whose `fetch_error` was dropped — by a hand edit, or
+      by a future fetcher path that forgets to write it — reads exactly like a page that was never
+      attempted. Both are silent, and the silent one is the direction that flatters, because a
+      manifest with no recorded refusals looks like a vendor that refused nothing.
+    status: ungated
+    ungated_reason: >
+      Distinguishing them needs a record of what was ATTEMPTED, which the manifest does not keep;
+      it stores outcomes, not a fetch log. Asserting that every entry carries either content or an
+      error would come closest, but it fires on every entry in a manifest authored before its first
+      fetch, which is the normal state of a pack under construction.
+    fix_queued_to: >
+      Not queued. The honest cheap half is that `fetch_all` writes `fetch_date` on every path it
+      takes, so an entry with no `fetch_date` was never attempted and one with a `fetch_date` and
+      neither content nor error is the suspect case. A future cycle touching the manifest schema
+      should take that check; it was not bolted on here because it is a different claim from the
+      one this ADR argues.
