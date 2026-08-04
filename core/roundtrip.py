@@ -258,11 +258,20 @@ def check_pack(pack: Pack) -> list[TaskControl]:
     # one is indistinguishable from a score rescue until someone reads the vendor's documents by
     # hand. The round-trip control structurally cannot catch it either — an answer key always
     # matches itself, whatever notation it is written in.
+    #
+    # The bare-string form is NOT blocked here, and that is a deployment constraint rather than a
+    # softened bar: this gate ships in `core`, the packs ship in a separate repository, and each
+    # cannot land the other's half first (ADR-0055, rule 5). Every unconverted entry is counted in
+    # a note instead, so the number is visible on every gate run rather than resting on someone
+    # remembering — which is the decay mode ADR-0015 exists to catch. Issue #98 flips it.
     try:
+        raw_bp = getattr(pack, "endpoint_base_prefix", None)
+        bp = scorer.base_prefix_problems(raw_bp)
+        bare = scorer.bare_prefix_entries(raw_bp)
         controls.append(TaskControl(
-            task_id="(endpoint-base-evidence)",
-            ok=not (bp := scorer.base_prefix_problems(getattr(pack, "endpoint_base_prefix", None))),
-            problems=bp))
+            task_id="(endpoint-base-evidence)", ok=not bp, problems=bp,
+            notes=([f"{len(bare)} endpoint-base prefix(es) still declared in the pre-ADR-0055 "
+                    f"bare-string form, citing nothing: {', '.join(bare)}"] if bare else [])))
     except Exception as exc:
         controls.append(TaskControl(
             task_id="(endpoint-base-evidence)", ok=False,

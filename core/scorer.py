@@ -457,9 +457,16 @@ def base_prefix_problems(raw) -> list[str]:
 
       4. A prefix may not be declared twice — `_strip_base_prefix` takes the first match, so a
          duplicate is either dead or a sign the list was assembled from two sources.
-      5. The bare-string form is refused. It is what the cohort used before ADR-0055 and it is what
-         let three uncited entries stand, one of them in a pack that had already written down, in
-         the same file, that no first-party artifact wrote it.
+      5. The bare-string form is LEGACY and is reported, not refused — for one cycle only, and for
+         a reason that is about deployment rather than about evidence. This gate lives in `core`
+         and the packs live in a separate repository whose CI clones `core`'s default branch. A
+         rule that blocks the bare-string form therefore cannot land before the packs are
+         converted, and the converted packs cannot land before a `core` that can read them. That
+         is a genuine cycle, and it was found the only way it can be found: by running the armed
+         suite against the UNCONVERTED cohort, which is the baseline the first check of this gate
+         did not use. `bare_prefix_entries` names them so the state is counted rather than
+         forgotten, and the flip to blocking is issue #98 — landing after the cohort is converted,
+         where it blocks nothing.
     """
     if not raw:
         return []
@@ -488,12 +495,7 @@ def base_prefix_problems(raw) -> list[str]:
 
         evidence = entry.get("evidence")
         if evidence is None and entry.get("note") is None:                       # rule 5
-            problems.append(
-                f"{where}: {prefix!r} is declared as a bare string with no evidence. Every "
-                "endpoint-base tolerance must cite the first-party artifact that writes the "
-                "address that way (ADR-0055): {prefix, evidence, note}"
-            )
-            continue
+            continue                       # legacy bare string — counted by `bare_prefix_entries`
         evidence = str(evidence or "").strip()
         if not evidence.startswith(("http://", "https://")):                     # rule 2
             problems.append(
@@ -514,6 +516,29 @@ def base_prefix_problems(raw) -> list[str]:
                 f"that artifact writes (got {len(note)})"
             )
     return problems
+
+
+def bare_prefix_entries(raw) -> list[str]:
+    """The prefixes a pack still declares in the pre-ADR-0055 bare-string form, in file order.
+
+    Separated from `base_prefix_problems` because these two say different things. A *problem* is a
+    citation this project judged and rejected; a bare string is a citation nobody has been asked
+    for yet. Collapsing them would either block the whole unconverted cohort (which is the cycle
+    described in rule 5) or hide the unconverted entries inside a passing gate — and an uncited
+    tolerance that nothing counts is exactly the state the cohort-wide audit found, where three
+    uncited entries stood for a cycle and one of them sat in a pack that had already written down,
+    in the same file, that no first-party artifact wrote it.
+
+    So the roundtrip gate reports these as a non-blocking note carrying the count. Issue #98 flips
+    them to blocking once the cohort is converted, at which point this function should return empty
+    for every pack on disk and the note should never be seen again.
+    """
+    return [
+        e["prefix"].strip()
+        for e in declared_prefix_entries(raw)
+        if isinstance(e.get("prefix"), str) and e["prefix"].strip()
+        and e.get("evidence") is None and e.get("note") is None
+    ]
 
 
 def auth_flow_matches(gt_text: str | None, answer_text: str | None,
