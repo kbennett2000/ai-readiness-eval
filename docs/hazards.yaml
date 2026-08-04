@@ -2726,6 +2726,9 @@ entries:
       - core/tests/test_coverage_line.py::test_a_line_disagreeing_with_the_published_overall_raises_rather_than_renders
       - core/tests/test_coverage_line.py::test_the_cohort_note_counts_the_packs_and_names_each_shortfall
       - packs/sailpoint/tests/test_readme_states_its_coverage.py::test_the_readme_carries_the_recomputed_coverage_line
+      # ADR-0058: until then the card TEMPLATE emitted no coverage line at all, so every card
+      # carried one only because a person pasted it. Now it is generated with the card.
+      - core/tests/test_card_scaffold_discloses.py::test_the_card_carries_both_disclosures_verbatim
 
   - id: no-test-here-can-reach-a-card-in-the-packs-repo
     adr: adr-0046-a-published-overall-states-its-own-coverage.md
@@ -3347,6 +3350,57 @@ entries:
     fix_queued_to: >
       Public ai-readiness-eval #102, which files the boundary this hazard is the inside view of:
       what a third party can reproduce from a clean checkout (every published score, re-scored from
-      the committed transcripts) and what they cannot (the capture itself). The issue is where the
-      external claim is stated precisely; no fix here would change the fact, only how plainly it is
-      said.
+      the committed transcripts) and what they cannot (the capture itself). ADR-0058 has since put
+      that boundary on every card the template generates and in the three files a reader meets the
+      numbers in; it states the hazard where it is read, and does not remove it — no fix here would
+      change the fact, only how plainly it is said.
+
+  # ---------------------------------------------------------------------------- ADR-0058 ---
+
+  - id: a-disclosure-cannot-reach-a-card-already-published
+    adr: adr-0058-a-number-states-what-can-be-rechecked.md
+    hazard: >
+      ADR-0058 makes `render_card_scaffold` emit the reproducibility boundary. A card is written
+      ONCE, from the template, at the moment its pack is carded — it is not re-rendered afterwards.
+      So the sixteen cards already measured were produced by a template that emitted neither
+      disclosure, and no later change to the template reaches them. A reader of one of those cards
+      still meets a number with no statement of which half of it they can re-check.
+
+      Distinct from `no-test-here-can-reach-a-card-in-the-packs-repo`, which is about this tree not
+      being able to TEST a file in another tree. This one holds even inside a single repository: a
+      generator improved after a document was generated does not improve the document.
+    status: ungated
+    ungated_reason: >
+      Regenerating those cards is not a test change. Each carries executor-written findings and a
+      bottom line in the scaffold's placeholder slots, so re-running the template over them would
+      overwrite prose no gate can reconstruct — and doing it unattended is exactly the walk-back this
+      project's cycle contract refuses.
+    fix_queued_to: >
+      Packs repository #72: widen `tests/test_cards_state_their_coverage.py`, which
+      already enumerates packs from disk and requires the coverage line verbatim above the first
+      table row, to require `report.reproducibility_line` on the same terms. That gate fails every
+      existing card, which is the point — it names them, and a person adds the two lines to each
+      without touching the findings around them. The generator is importable from this repo's core,
+      so the packs-repo gate needs no second copy of the sentence.
+
+  - id: the-reproducibility-line-restates-a-gate-it-does-not-run
+    adr: adr-0058-a-number-states-what-can-be-rechecked.md
+    hazard: >
+      The line's first sentence tells a reader that every number re-scores from the committed
+      transcripts with no network, and cites the gate that proves it. The sentence is generated from
+      the docs manifest — it does not run the gate, and it renders identically whether the archives
+      reproduce or not. On a pack whose transcripts were never committed, the card would still make
+      the claim.
+    status: ungated
+    ungated_reason: >
+      The claim is checked for the pack this repository publishes and only for that one.
+      `test_archive_consistency.py` sweeps the archived conditions on disk and refuses to be vacuous,
+      so 73/68/93 genuinely re-score here. Nothing checks it for a pack in another tree, and a test
+      in this repository could not: it would have to read archives it cannot see. Recording this as
+      gated would be true about three tests and false about the sentence a card prints.
+    drift_pin:
+    - core/tests/test_archive_consistency.py::test_the_sweep_below_is_not_vacuous
+    - core/tests/test_reproducibility_line.py::test_every_pack_on_disk_can_state_its_own_provenance
+    fix_queued_to: >
+      Packs repository #72, the same gate as the entry above. A card gate that lives beside the archives
+      can require the claim and verify it in one place, which is the only place both exist.

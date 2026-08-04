@@ -26,7 +26,7 @@ from pathlib import Path
 
 import yaml
 
-from . import analyze, surfaces
+from . import analyze, report, surfaces
 from .pack import Pack
 from .report import _DIM_LABELS  # noqa: F401 (API labels; card rendering reads the contract's)
 from .scorer import DIMENSIONS  # noqa: F401 (API dimensions; card rendering reads the contract's)
@@ -878,6 +878,27 @@ GATES: tuple[tuple[str, Callable[[Pack], tuple[bool, str]]], ...] = (
 # Draft report card scaffold (name-free renderer; the vendor label is pack data, not core source)
 # --------------------------------------------------------------------------- #
 
+def _coverage_line_for(pack: Pack, results: list[tuple[str, dict, dict]]) -> str:
+    """The card's coverage disclosure, recomputed from the graded conditions (ADR-0046).
+
+    Every condition on a card must agree about which dimensions its overall covers, because one line
+    cannot honestly describe two arms that differ. When they disagree this RAISES rather than picking
+    one — the card stage catches it and blocks the target with the reason, which is the same bargain
+    every other stage in this pipeline makes.
+    """
+    if not results:
+        return ("**Dimension coverage (ADR-0045):** no condition is graded on this card, so there is "
+                "no overall to describe.")
+    lines = {cond: report.coverage_line(agg, pack.contract, pack.unexercised_dimensions)
+             for cond, agg, _m in results}
+    if len(set(lines.values())) > 1:
+        raise ValueError(
+            "the graded conditions disagree about dimension coverage, so one line cannot describe "
+            "them all (ADR-0046): "
+            + "; ".join(f"{cond}: {line}" for cond, line in sorted(lines.items())))
+    return next(iter(lines.values()))
+
+
 def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], invented: dict,
                          surface_reports: list[tuple[str, object]] | None = None) -> str:
     """Render the DRAFT report-card scaffold from the graded conditions. `results` is a list of
@@ -897,6 +918,17 @@ def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], inve
         f"model `{meta.get('model', '?')}`, transport `{meta.get('provider', '?')}`, N="
         f"{meta.get('n', '?')}, sterile per-run, tool-discipline asserted every run. "
         "Scored deterministically on six dimensions.",
+        "",
+        # Both disclosures are GENERATED from the pack's own data and both sit ABOVE the headline
+        # table, which is the position the packs repo's card gate already requires: a disclosure a
+        # reader passes on the way to the number is a disclosure they can read past (ADR-0046).
+        #
+        # The coverage line was emitted by no template until now — ADR-0046 required it on every
+        # card and left the template silent, so it was carried by whoever remembered to paste it.
+        # That is the decay mode ADR-0046 exists to name, pointed at ADR-0046's own rule.
+        _coverage_line_for(pack, results),
+        "",
+        report.reproducibility_line(report.docs_provenance(pack.docs_manifest())),
         "",
         "## Headline",
         "",
@@ -930,8 +962,10 @@ def render_card_scaffold(pack: Pack, results: list[tuple[str, dict, dict]], inve
     exhibit = _format_invented(invented)
     lines += exhibit if exhibit else ["_(none — no endpoint outside ground truth was proposed)_"]
 
-    for condition, report in (surface_reports or []):
-        text, _n = surfaces.format_report(report, pack.answer_surfaces)
+    # `surface_report`, not `report`: the module of that name is read above for the two generated
+    # disclosures, and a loop variable would shadow it for the whole function body.
+    for condition, surface_report in (surface_reports or []):
+        text, _n = surfaces.format_report(surface_report, pack.answer_surfaces)
         lines += ["", f"### {condition}", "", text]
 
     lines += [
@@ -1099,7 +1133,14 @@ def run_pipeline(entry: QueueEntry, pack: Pack, *, today: str, model: str | None
 
     entry.status = "card"
     invented = unmatched_for_dirs(result_dirs, pack)
-    card = render_card_scaffold(pack, graded, invented, surface_reports_for_dirs(result_dirs, pack))
+    try:
+        card = render_card_scaffold(pack, graded, invented,
+                                    surface_reports_for_dirs(result_dirs, pack))
+    except Exception as exc:
+        # The scaffold's disclosures are recomputed from the pack's own data and refuse to render a
+        # sentence that would be false (ADR-0046, ADR-0058). A card that cannot state its own
+        # coverage or provenance is a blocked target with a written reason, not a crashed dispatcher.
+        return _block("card", f"the card scaffold could not be rendered: {type(exc).__name__}: {exc}")
     card_path = pack.root / "REPORT.scaffold.md"
     card_path.write_text(card)
     report["card"] = str(card_path)

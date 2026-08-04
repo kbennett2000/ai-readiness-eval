@@ -12,6 +12,14 @@ teaches a reader to infer a problem from its presence, and teaches the next pack
 line is optional when the news is good — so the clean case is stated too (ADR-0046). Every card in
 the packs repo carries the same line, recomputed from its own committed scores.
 
+**Reproducibility (ADR-0058):** Every number here re-scores from the committed transcripts with no
+network access — `python -m core rebuild-report <results dir>`, gated by
+[`core/tests/test_archive_consistency.py`](../../core/tests/test_archive_consistency.py). The 29
+documentation pages this pack retrieved were captured 2026-07-23 and are recorded in
+[`docs-manifest.yaml`](docs-manifest.yaml) by URL, byte size and SHA-256 rather than committed,
+because they are the vendor's copyright — so the capture itself cannot be re-obtained from a clean
+checkout.
+
 ## Contents
 
 | Path | What it is |
