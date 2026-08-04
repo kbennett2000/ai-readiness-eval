@@ -173,7 +173,14 @@ class Pack:
     # ADR-0039 widens this to accept a LIST of prefixes as well as a single string, for a vendor
     # whose own documents disagree about the base in more than one place at once. A string still
     # means exactly what it meant, so the six packs that declare one are byte-identical.
-    endpoint_base_prefix: str | list[str] | None = None
+    #
+    # ADR-0055 adds a third shape, `[{prefix, evidence, note}, ...]`, and makes it the only one the
+    # `roundtrip` gate accepts: a tolerance can only move the endpoint dimension UP, so it must
+    # cite the first-party artifact that writes the address that way. The two older shapes still
+    # PARSE — every archived score reproduces unchanged — but they now block at the gate. Parsing
+    # and permitting are deliberately separate: a pack whose numbers are already published must
+    # still re-score identically, while a pack that wants to RUN must carry its citations.
+    endpoint_base_prefix: str | list[str] | list[dict] | None = None
 
     # Named task groups a pack declares as a reporting axis (ADR-0026), e.g. surface age. Shape:
     # `{key: {label, rationale, tasks: [...]}}`. Optional and empty for every pack that does not
@@ -309,14 +316,17 @@ class Pack:
     def declared_base_prefixes(self) -> list[str]:
         """The declared endpoint-base tolerance as the literal strings a pack wrote; [] if unset.
 
-        One string declares one prefix; a list declares several (ADR-0039). Callers that compare
-        PATHS want `base_prefix_segments`; this property exists for the one caller that compares
-        literal documentation text (`contract._path_spellings`).
+        One string declares one prefix; a list declares several (ADR-0039); a list of
+        `{prefix, evidence, note}` mappings declares several WITH their citations (ADR-0055).
+        Callers that compare PATHS want `base_prefix_segments`; this property exists for the one
+        caller that compares literal documentation text (`contract._path_spellings`).
+
+        All three shapes yield the same literal strings, which is what keeps ADR-0055 free: adding
+        the evidence beside a prefix cannot change what the prefix matches.
         """
-        p = self.endpoint_base_prefix
-        if not p:
-            return []
-        return [p] if isinstance(p, str) else [s for s in p if s]
+        from .scorer import declared_prefix_entries
+        return [e["prefix"] for e in declared_prefix_entries(self.endpoint_base_prefix)
+                if isinstance(e.get("prefix"), str) and e["prefix"].strip()]
 
     @property
     def base_prefix_segments(self) -> list[list[str]]:
