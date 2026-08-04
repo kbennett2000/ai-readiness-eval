@@ -3273,10 +3273,15 @@ entries:
       sat on `anchors`, which no condition reads, and the injected bytes were rebuilt and compared
       (30 slots, 49,594 bytes, 0 changed) rather than assumed. What was wrong is what a reviewer
       sees: an anchor is the artifact a ground-truth citation rests on, and it contradicted itself
-      with no way to tell which half was stale.
+      with no way to tell which half was stale. The gate's first draft was ALSO narrower than the
+      sentence describing it — it required all three arrival fields at once, so an error beside a
+      hash and a byte size with no `cache_file` passed while still suppressing its own injection.
+      Widened to any arrival evidence, which is the predicate the cohort sweep applied, so the gate
+      and the evidence for the gate test the same thing.
     status: gated
     gated_by:
       - core/tests/test_manifest_entry_consistency.py::test_a_success_record_carrying_a_fetch_error_is_refused_in_every_list
+      - core/tests/test_manifest_entry_consistency.py::test_a_fetch_error_beside_any_arrival_evidence_is_refused
       - core/tests/test_manifest_entry_consistency.py::test_the_contradiction_blocks_at_the_validate_gate_not_only_in_a_helper
       - core/tests/test_manifest_entry_consistency.py::test_a_cache_file_without_a_hash_is_refused
       - core/tests/test_manifest_entry_consistency.py::test_a_successful_refetch_clears_the_previous_attempts_error

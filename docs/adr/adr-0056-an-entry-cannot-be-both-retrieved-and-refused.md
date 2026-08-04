@@ -74,8 +74,17 @@ more expensive mistake — but the manifest stops vouching for it.
 `validate.validate_docs_manifest` walks every entry in every list `docs_fetch.ENTRY_KEYS` names and
 blocks on:
 
-- a `fetch_error` alongside a `content_hash`, a non-zero `byte_size` **and** a `cache_file`;
+- a `fetch_error` alongside **any** evidence content arrived — a `content_hash`, *or* a non-zero
+  `byte_size`, *or* a `cache_file`;
 - a `cache_file` with no `content_hash`.
+
+The first rule was written as a four-way **conjunction** in this ADR's first draft, requiring all
+three arrival fields at once. That was too narrow, and narrow in the direction that matters: an entry
+carrying a `fetch_error` beside a `content_hash` and `byte_size: 4073` but no `cache_file` would have
+passed the gate while still injecting nothing, and a reviewer reading the hash and the size has every
+reason to believe the page arrived. The rule now matches the sentence above it. An honest failure
+records **no** arrival evidence at all — `content_hash: null`, `byte_size: 0`, no `cache_file` —
+which is the shape all 65 real failures in the cohort take, so widening refuses none of them.
 
 Reported under the pseudo-file key `(docs-manifest)`, alongside the existing `(suite)`, so the
 `validate` gate — which already runs before `roundtrip` and before any grid burns — fails the pack.
@@ -91,10 +100,29 @@ The rule is parametrized over `ENTRY_KEYS` itself, so a fifth page list cannot b
 
 ## Consequences
 
-- One pack's ten anchors are backfilled in the packs repository; a cohort-wide sweep of **409
-  manifest entries across every pack on disk** found those ten and nothing else, and found zero
-  instances of the mirror shape. The sweep ran against the **unbackfilled** tree — the baseline on
-  which a violation is visible — which is the control ADR-0055 recorded getting wrong.
+- One pack's ten anchors are backfilled in the packs repository. The first sweep reported **409
+  manifest entries across 19 packs**; that figure was wrong by 29 — it typed `spec_pages` for
+  `spec_documents`, so it never looked at one whole list, and it omitted this repository's own
+  reference pack. Stated rather than silently edited, because a sweep that misses a list is exactly
+  the instrument fault an ADR is for. The corrected sweep drives off `docs_fetch.ENTRY_KEYS` itself
+  instead of a hand-typed list: **438 entries across 20 packs in both repositories** — `pages` 363,
+  `anchors` 55, `spec_documents` 10, `gated_pages` 10. It found the same ten anchors and nothing
+  else, and zero instances of the mirror shape. Both sweeps ran against the **unbackfilled** tree —
+  the baseline on which a violation is visible — which is the control ADR-0055 recorded getting
+  wrong.
+- **No `pages` entry has ever carried this contradiction**, which is the question that decides
+  whether any published number is at risk: `pages` is the only list an injecting condition reads, so
+  a stale error there suppresses a document in a published column. Applying the same predicate to
+  **every historical revision** of every manifest — 54 revisions across 22 manifest paths in both
+  repositories — returns the same ten `anchors` in a single commit and **zero on `pages`, ever**.
+  Sixty-five `pages` entries across six packs do record a `fetch_error`, and every one of them
+  records `content_hash: null`, `byte_size: 0` and no `cache_file`: honest refusals, HTTP failures,
+  DNS failures and under-floor extractions (ADR-0052, ADR-0053).
+- **That is structural rather than lucky, and this is the first evidence it held.** The contradiction
+  needs one entry fetched twice with different outcomes. `fetch_all` selects the agent **per key**,
+  and ADR-0051 refused a `pages[].user_agent` flag in favour of a fourth key precisely so that a
+  second, differently-agented attempt on the same URL lands in `gated_pages` and never back on
+  `pages`. The list that must stay honest is the one no re-fetch can reach.
 - **The backfill must merge before this gate does.** The packs repository's CI clones this
   repository's default branch and runs `validate_pack` over every pack, so a blocking rule landing
   first turns that suite red on a defect the other repository has already fixed. Same ordering

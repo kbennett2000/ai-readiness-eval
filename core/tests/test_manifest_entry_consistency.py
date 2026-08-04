@@ -7,9 +7,12 @@ success field is overwritten on a re-fetch, and `fetch_error` was the one field 
 path ever wrote — so it survived. ADR-0051's two-agent measurement fetches the same URL twice by
 design, which is what made a latent bug certain.
 
-Nothing scores or injects `fetch_error`, so no published number moves in either direction. What was
-wrong is what a reviewer sees: the anchor a ground-truth citation rests on, declared unreadable in
-the same breath as the proof it was read.
+`fetch_error` is NOT inert — `_InjectedTextCondition._load_text` tests it first, before touching the
+disk, so a page carrying one injects nothing (ADR-0054). A stale one therefore suppresses a page that
+now fetches. No published number moves here only because the ten found sat on `anchors`, which no
+condition reads (ADR-0034), and that was measured rather than assumed. What was wrong is what a
+reviewer sees: the anchor a ground-truth citation rests on, declared unreadable in the same breath as
+the proof it was read.
 
 Two halves, and both are needed. The fetcher fix stops the state being produced; the validator
 refuses it wherever it already sits — including from a hand edit, which no fetcher fix can reach.
@@ -62,6 +65,36 @@ def test_the_contradiction_blocks_at_the_validate_gate_not_only_in_a_helper(tmp_
     results = validate.validate_pack(pack)
     assert results.get("(docs-manifest)"), results
     assert any("may not be both" in e for e in results["(docs-manifest)"])
+
+
+@pytest.mark.parametrize("partial, arrived", [
+    # A hash and a size, but the snapshot was never written or was cleaned up. The first draft of
+    # this rule required all four fields at once and let this through — and it is the shape that
+    # matters most, because a reviewer reading `content_hash` and `byte_size: 4073` has every reason
+    # to believe the page arrived, while the condition injects nothing.
+    ({"cache_file": None}, ["content_hash", "byte_size"]),
+    # Size alone: the fetcher wrote how much text it extracted and then recorded a failure.
+    ({"content_hash": None, "cache_file": None}, ["byte_size"]),
+    # A hash alone.
+    ({"byte_size": 0, "cache_file": None}, ["content_hash"]),
+    # A cache file alone. Caught by the contradiction rule rather than by the no-hash rule, because
+    # the more specific finding is the one a reviewer needs: a failure record pointing at bytes.
+    ({"content_hash": None, "byte_size": 0}, ["cache_file"]),
+])
+def test_a_fetch_error_beside_any_arrival_evidence_is_refused(tmp_path, acme_pack, partial, arrived):
+    """The gate refuses ANY arrival evidence beside an error, not only all of it at once.
+
+    Zero entries of these shapes exist in the cohort, so nothing is being repaired here — this pins
+    that ADR-0056's stated rule and its implemented rule are the same rule.
+    """
+    entry = _entry(fetch_error="HTTP Error 403: Forbidden", **partial)
+    entry = {k: v for k, v in entry.items() if v is not None or k == "content_hash"}
+    pack = _pack_with(tmp_path, acme_pack, entry)
+    errors = validate.validate_docs_manifest(pack)
+    assert len(errors) == 1, errors
+    assert "may not be both" in errors[0]
+    for field in arrived:
+        assert field in errors[0], f"the message must name the evidence it found: {errors[0]}"
 
 
 def test_a_cache_file_without_a_hash_is_refused(tmp_path, acme_pack):

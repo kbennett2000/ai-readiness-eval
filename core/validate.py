@@ -320,6 +320,10 @@ def validate_docs_manifest(pack: Pack) -> list[str]:
     fetcher no longer produces the state; this refuses it wherever it already sits, including from a
     hand edit, which is the half a fetcher fix structurally cannot reach.
 
+    The predicate is `fetch_error` beside ANY arrival evidence, which is the same predicate the
+    cohort sweep applied when it established that no `pages` entry has ever carried one — so the
+    gate and the evidence for the gate test the same thing rather than two nearby things.
+
     Returns errors; `[]` when the pack declares no manifest or the manifest is clean.
     """
     path = Path(pack.docs_manifest_path)
@@ -343,12 +347,22 @@ def validate_docs_manifest(pack: Pack) -> list[str]:
                 has_hash = bool(page.get("content_hash"))
                 has_bytes = bool(page.get("byte_size"))
                 cache_file = page.get("cache_file")
-                if error and has_hash and has_bytes and cache_file:
+                # ANY arrival evidence, not all of it. The first draft required all four fields at
+                # once, which would have passed an entry carrying a `fetch_error` beside a hash and a
+                # non-zero byte size with no `cache_file` — still a page that injects nothing while
+                # claiming content arrived. An honest failure records NO arrival evidence at all
+                # (`content_hash: null`, `byte_size: 0`, no `cache_file`), which is the shape all 65
+                # real failures in the cohort take, so widening costs none of them.
+                arrived = [name for name, present in (("content_hash", has_hash),
+                                                      ("byte_size", has_bytes),
+                                                      ("cache_file", bool(cache_file)))
+                           if present]
+                if error and arrived:
                     errors.append(
-                        f"{where}: records a successful retrieval ({page['content_hash']}, "
-                        f"{page['byte_size']} B, {cache_file}) AND fetch_error "
-                        f"{error!r}. An entry may not be both (ADR-0056) — if the fetch "
-                        "succeeded, drop `fetch_error:`; if it failed, drop the content fields.")
+                        f"{where}: records fetch_error {error!r} AND evidence content arrived "
+                        f"({', '.join(arrived)}). An entry may not be both (ADR-0056) — if the "
+                        "fetch succeeded, drop `fetch_error:`; if it failed, drop the content "
+                        "fields.")
                 elif cache_file and not has_hash:
                     errors.append(
                         f"{where}: names cache_file {cache_file} but records no content_hash, so "
