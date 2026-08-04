@@ -104,7 +104,7 @@ to be absent, and a reviewer reading a gate report should be able to see that th
   one vendor, eleven alternates cite a page the same repository's manifest records at `byte_size:
   0` — client-rendered, and readable by nobody. A URL that returns nothing satisfies every rule
   either gate has. Requiring the cited URL to be one the pack fetched *with readable content* is the
-  next step and is filed, not assumed.
+  next step, filed as issue #97 against both fields rather than assumed.
 - **It cannot tell a derived prefix from an invented one.** ADR-0013 licenses writing a path from
   any point inside a declared base, so a suffix of a cited string is legitimately derivable. The
   note is where that distinction has to be stated in words; nothing mechanical enforces it. The

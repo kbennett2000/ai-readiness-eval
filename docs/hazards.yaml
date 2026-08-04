@@ -3207,10 +3207,10 @@ entries:
     - core/tests/test_base_prefix_evidence.py::test_evidence_on_a_rehosting_host_blocks
     - core/tests/test_base_prefix_evidence.py::test_evidence_that_is_not_a_url_blocks
     fix_queued_to: >
-      Public ai-readiness-eval — filed this cycle. The rule to add is that a cited URL must appear
-      in the pack's own docs-manifest with a non-null `content_hash`, so an entry cannot rest on a
-      page the pack itself recorded as unreadable. It applies to BOTH evidence fields, which is why
-      it is filed rather than bolted onto the newer one alone.
+      Public ai-readiness-eval #97. The rule to add is that a cited URL must appear in the pack's
+      own docs-manifest with a non-null `content_hash`, so an entry cannot rest on a page the pack
+      itself recorded as unreadable. It applies to BOTH evidence fields, which is why it is filed
+      rather than bolted onto the newer one alone.
 
   - id: a-derived-prefix-and-an-invented-one-look-identical-to-the-gate
     adr: adr-0055-a-tolerance-must-cite-the-vendor.md
