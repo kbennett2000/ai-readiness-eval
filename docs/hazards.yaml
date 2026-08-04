@@ -3267,9 +3267,13 @@ entries:
       the first attempt's error under the second attempt's proof. ADR-0051's two-agent measurement
       fetches one URL twice by design, which turned a latent bug into a certain one: all ten
       `anchors` on that pack declared the document unreadable beside the hash, size and cache file
-      proving it had been read. No published number moved — nothing scores or injects
-      `fetch_error` — but an anchor is the artifact a ground-truth citation rests on, and a
-      reviewer opening it found a contradiction with no way to tell which half was stale.
+      proving it had been read. And `fetch_error` is NOT inert: `_load_text` tests it before
+      touching the disk, so a page carrying one injects nothing (ADR-0054) — a stale error
+      suppresses a page that now fetches. No published number moved HERE only because these ten
+      sat on `anchors`, which no condition reads, and the injected bytes were rebuilt and compared
+      (30 slots, 49,594 bytes, 0 changed) rather than assumed. What was wrong is what a reviewer
+      sees: an anchor is the artifact a ground-truth citation rests on, and it contradicted itself
+      with no way to tell which half was stale.
     status: gated
     gated_by:
       - core/tests/test_manifest_entry_consistency.py::test_a_success_record_carrying_a_fetch_error_is_refused_in_every_list

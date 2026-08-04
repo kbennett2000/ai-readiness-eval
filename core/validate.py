@@ -309,11 +309,16 @@ def validate_docs_manifest(pack: Pack) -> list[str]:
     where the same URL is fetched under a plain agent and again under a conventional one — kept the
     first attempt's error beside the second attempt's hash.
 
-    Nothing scores or injects `fetch_error`, so no published number can move either way. What moves
-    is what a reviewer sees: an anchor a ground-truth citation rests on, declared unreadable in the
-    same breath as the hash, byte size and cache file proving it was read. The fetcher no longer
-    produces the state; this refuses it wherever it already sits, including from a hand edit, which
-    is the half a fetcher fix structurally cannot reach.
+    `fetch_error` is NOT inert: `_InjectedTextCondition._load_text` tests it first, before touching
+    the disk, and a page carrying one injects nothing (ADR-0054). That is exactly why a stale one is
+    worth a gate rather than a tidy-up — an error left behind by a superseded attempt suppresses a
+    page that now fetches. Where it was found it sat on `anchors`, which no condition reads
+    (ADR-0034), and the injected bytes were verified identical across every condition and task.
+
+    What was wrong is what a reviewer sees: an anchor a ground-truth citation rests on, declared
+    unreadable in the same breath as the hash, byte size and cache file proving it was read. The
+    fetcher no longer produces the state; this refuses it wherever it already sits, including from a
+    hand edit, which is the half a fetcher fix structurally cannot reach.
 
     Returns errors; `[]` when the pack declares no manifest or the manifest is clean.
     """

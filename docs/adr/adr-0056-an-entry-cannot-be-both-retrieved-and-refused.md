@@ -28,10 +28,22 @@ measurement points the same URL at both `pages` and `gated_pages` and fetches it
 design — the plain agent is refused, the conventional one is served — so a bug that needed a
 re-fetch to appear was guaranteed to appear the moment that ADR shipped.
 
-**No published number moves.** Nothing scores, injects or gates on `fetch_error`: `PublicDocsCondition`
-reads `pages` and checks `fetch_error or byte_size == 0` to decide what to inject, and both halves of
-that test already agreed for every affected entry — they are anchors, which are never injected at
-all. The reproduction gate passes 41 of 41 results directories before and after this change.
+### `fetch_error` is not an inert field, and the first draft of this ADR said it was
+
+Worth stating plainly, because getting it wrong is what would have made this a tidy-up instead of a
+gate. `_InjectedTextCondition._load_text` tests `fetch_error` **first**, before it touches the disk:
+a page carrying one injects nothing at all (ADR-0054). So a stale error is not cosmetic — it
+suppresses a page that now fetches, and it does so in the condition whose whole job is to model what
+a real reader retrieves.
+
+**No published number moves here, and that was measured rather than argued.** The ten stale errors
+sat on `anchors`, which no condition reads (ADR-0034). Rebuilding the injected context for every
+condition and every task on the affected pack, before and after the correction: **30 slots, 49,594
+injected bytes, 0 changed.** The reproduction gate passes 41 of 41 results directories either way.
+
+The fetcher change *is* a live behaviour change, and it is the one intended: a page that failed once
+and now succeeds will inject, where before the superseded error kept it out. That is the bug, not a
+side effect of fixing it.
 
 What was wrong is what a reviewer sees. An anchor is the artifact a ground-truth citation rests on,
 and ADR-0034's whole argument for fetching anchors is that a reviewer can check the claim against a
@@ -98,6 +110,8 @@ The rule is parametrized over `ENTRY_KEYS` itself, so a fifth page list cannot b
   unbuilt one issue #97 needs, and it is not smuggled in here.
 - **It does not make `fetch_error` mean one thing.** The field carries a robots refusal, an HTTP
   status, an empty render and a decode failure, which are different findings sharing a string.
-  Separating them is a schema change and is not this ADR's subject.
+  `_load_text` treats all four identically — inject nothing — which is right for every one of them
+  today, and is the reason nobody had cause to separate them. Doing so is a schema change and is not
+  this ADR's subject.
 - **It cannot detect the inverse omission** — an entry whose fetch failed and which was hand-edited
   to drop the error entirely. Nothing distinguishes that from a page never attempted.
