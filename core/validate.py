@@ -11,6 +11,10 @@ What it checks, per task file:
   3. `ground_truth` has a non-empty `endpoints` list plus the required sibling fields.
   4. Every endpoint is anchored: EITHER a `spec_ref{file, operation_id}` (file matching the pack's
      `spec_ref_file_prefix`, if set) OR `coverage: doc-only` with a `doc_ref{url}`.
+
+And, under the pseudo-file key ``"(docs-manifest)"``, one whole-pack check that is about evidence
+rather than answer keys: a manifest entry may not record a successful retrieval and its own failure
+at the same time (ADR-0056). See `validate_docs_manifest`.
 """
 from __future__ import annotations
 
@@ -19,6 +23,7 @@ from pathlib import Path
 import yaml
 from jsonschema import Draft7Validator
 
+from .docs_fetch import ENTRY_KEYS
 from .pack import Pack
 from .scorer import KNOWN_AUTH_STYLES
 from .taxonomy import BY_COHORT, CATEGORIES, DOCS_CATEGORIES
@@ -288,7 +293,67 @@ def validate_pack(pack: Pack) -> dict[str, list[str]]:
 
     if suite:
         results["(suite)"] = suite
+    manifest_errors = validate_docs_manifest(pack)
+    if manifest_errors:
+        results["(docs-manifest)"] = manifest_errors
     return results
+
+
+def validate_docs_manifest(pack: Pack) -> list[str]:
+    """A manifest entry may not describe a retrieval and its own failure at once (ADR-0056).
+
+    Every fetched entry carries two independent records: whether content arrived (`content_hash`,
+    `byte_size`, `cache_file`) and whether the attempt failed (`fetch_error`). Nothing made them
+    agree. The fetcher overwrites every success field on a re-fetch but only the failure path ever
+    wrote `fetch_error`, so an entry fetched twice — a retry, or ADR-0051's two-agent measurement,
+    where the same URL is fetched under a plain agent and again under a conventional one — kept the
+    first attempt's error beside the second attempt's hash.
+
+    `fetch_error` is NOT inert: `_InjectedTextCondition._load_text` tests it first, before touching
+    the disk, and a page carrying one injects nothing (ADR-0054). That is exactly why a stale one is
+    worth a gate rather than a tidy-up — an error left behind by a superseded attempt suppresses a
+    page that now fetches. Where it was found it sat on `anchors`, which no condition reads
+    (ADR-0034), and the injected bytes were verified identical across every condition and task.
+
+    What was wrong is what a reviewer sees: an anchor a ground-truth citation rests on, declared
+    unreadable in the same breath as the hash, byte size and cache file proving it was read. The
+    fetcher no longer produces the state; this refuses it wherever it already sits, including from a
+    hand edit, which is the half a fetcher fix structurally cannot reach.
+
+    Returns errors; `[]` when the pack declares no manifest or the manifest is clean.
+    """
+    path = Path(pack.docs_manifest_path)
+    if not path.is_file():
+        return []                      # a pack with no docs condition has nothing to contradict
+    try:
+        manifest = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        return [f"docs-manifest.yaml could not be parsed: {exc}"]
+
+    errors: list[str] = []
+    for task_id, entry in (manifest.get("tasks") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        for key in ENTRY_KEYS:
+            for i, page in enumerate(entry.get(key) or []):
+                if not isinstance(page, dict):
+                    continue
+                where = f"{task_id}/{key}[{i}] {page.get('url', '(no url)')}"
+                error = page.get("fetch_error")
+                has_hash = bool(page.get("content_hash"))
+                has_bytes = bool(page.get("byte_size"))
+                cache_file = page.get("cache_file")
+                if error and has_hash and has_bytes and cache_file:
+                    errors.append(
+                        f"{where}: records a successful retrieval ({page['content_hash']}, "
+                        f"{page['byte_size']} B, {cache_file}) AND fetch_error "
+                        f"{error!r}. An entry may not be both (ADR-0056) — if the fetch "
+                        "succeeded, drop `fetch_error:`; if it failed, drop the content fields.")
+                elif cache_file and not has_hash:
+                    errors.append(
+                        f"{where}: names cache_file {cache_file} but records no content_hash, so "
+                        "it points at bytes the manifest does not vouch for (ADR-0056).")
+    return errors
 
 
 def validate_task_groups(task_groups: dict | None, task_ids) -> list[str]:

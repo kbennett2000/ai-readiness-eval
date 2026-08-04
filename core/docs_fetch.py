@@ -478,6 +478,10 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 page["fetch_error"] = (
                     f"robots-disallowed — {policy.host} instructs automated readers not to retrieve "
                     f"this path ({verdict.rule or verdict.source}). Not fetched (ADR-0036).")[:200]
+                # The mirror of the rule below: an entry that attests no content may not keep a
+                # pointer to content (ADR-0056). The snapshot is deleted two lines down, so leaving
+                # the key would name a file that is not there.
+                page.pop("cache_file", None)
                 # A snapshot an earlier fetch already took is deleted, not merely left unread. The
                 # cache is gitignored and regenerable, so nothing is lost that permission would not
                 # restore; keeping bytes we are no longer allowed to retrieve is the thing refused.
@@ -508,6 +512,15 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 page["content_hash"] = f"sha256:{digest}"
                 page["byte_size"] = len(text.encode("utf-8"))
                 page["cache_file"] = f"{cache_dir.name}/{dest.relative_to(cache_dir)}"
+                # A retrieval that SUCCEEDED must not leave behind the error a previous attempt on
+                # this same entry recorded (ADR-0056). The fetcher runs an entry more than once —
+                # a retry, a re-fetch, and above all ADR-0051's two-agent measurement, where the
+                # same URL is fetched under a plain agent and again under a conventional one. Every
+                # success field was overwritten above; `fetch_error` was the one field only the
+                # failure path ever wrote, so it survived, and the entry then read as a document
+                # nobody could retrieve while carrying the hash, size and cache file proving
+                # somebody had.
+                page.pop("fetch_error", None)
                 # Recorded only for a document an external tool extracted (ADR-0044). Conditional so
                 # every HTML-only manifest already on disk stays byte-identical, and present where it
                 # matters because that extraction is lossy, version-dependent, and the reason a
@@ -522,6 +535,12 @@ def fetch_all(manifest_path: str | Path, cache_dir: str | Path, *, today: str | 
                 page["content_hash"] = None
                 page["byte_size"] = 0
                 page["fetch_error"] = str(exc)[:200]
+                # `content_hash: null` already says this entry attests nothing, so a `cache_file`
+                # left over from an earlier success would point at bytes the manifest no longer
+                # vouches for (ADR-0056). The snapshot itself is NOT deleted here — unlike the
+                # robots branch, a network flake is not a withdrawal of permission, and throwing
+                # away a good capture over a transient error is the more expensive mistake.
+                page.pop("cache_file", None)
                 summary[task_id].append((url, 0, f"error: {str(exc)[:80]}"))
     write_manifest(manifest_path, manifest, header)
     return summary
