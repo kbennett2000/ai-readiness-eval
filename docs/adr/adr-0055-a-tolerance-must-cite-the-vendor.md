@@ -77,11 +77,10 @@ The duplicate rule is new and small: `_strip_base_prefix` takes the first match,
 prefix is either dead or a sign the list was assembled from two sources — which is how two entries
 for APIs no task addresses ended up in a nine-item list in the first place.
 
-### The bare-string form is counted, not blocked — for one cycle, and the reason is deployment
+### The bare-string form was counted for one merge, and the reason was deployment
 
-This ADR was first written with a fifth blocking rule refusing the bare-string form outright, on the
-argument that it is the shape which let three uncited entries stand. That rule is **wrong as a
-landing condition**, and the way it was found is the part worth recording.
+Rule 5 refuses the shape which let three uncited entries stand. It did **not** arrive blocking, and
+the one-merge delay is worth recording, because how it was found matters more than that it happened.
 
 The gate ships in this repository; the packs ship in a separate one whose CI clones this
 repository's default branch. A `core` that blocks bare strings fails every unconverted pack, and a
@@ -89,24 +88,18 @@ converted pack fails against a `core` that cannot read its shape. Neither half c
 first check of this gate reported the armed suite green — against the **converted** packs, the one
 baseline on which the conflict is structurally invisible. Run against the unconverted cohort, it
 failed eight packs at `roundtrip`. The claim "backward-compatible, blocks nothing" was made from the
-wrong control, which is the same error class the audit that forced this ADR was written to catch,
-committed here on the audit's own instrument.
+wrong control: the same error class the audit that forced this ADR was written to catch, committed
+on the audit's own instrument.
 
-So rule 5 lands as a **non-blocking count**: `scorer.bare_prefix_entries` names every unconverted
-entry and the `roundtrip` control carries them as a note. The distinction is real rather than
-convenient — a *problem* is a citation this project judged and rejected, a bare string is a citation
-nobody has been asked for yet. What is refused is the third option, letting them pass in silence:
-that is precisely the state the cohort-wide audit found, and a count that prints on every gate run
-is not a note that decays (ADR-0015).
+So rule 5 landed as a non-blocking count (`scorer.bare_prefix_entries`, reported in the `roundtrip`
+control's notes), the cohort was converted in the packs repository, and rule 5 then flipped to
+blocking on a set where **17 entries across 8 packs carry citations and 0 are bare**. The counter is
+deleted with the state it counted. The sequence is checkable in the merge order: gate → conversion →
+flip, each green before the next.
 
-The escape hatch is narrow, and a test pins it: it applies only to an entry citing **nothing**. An
-entry carrying `evidence:` without `note:`, or the reverse, is judged on rules 1–4 in full, so a
-half-citation cannot buy the legacy exemption.
-
-**Issue #98 flips it to blocking**, landing after the cohort is converted — where it blocks nothing,
-and where `bare_prefix_entries` returns empty for every pack on disk. That ordering is checkable
-rather than promised: the flip's own CI runs the armed suite against the converted cohort, so it
-cannot merge while a single bare entry survives.
+What that ordering bought is the thing prose could not give. A rule asserted to cost nothing, and a
+rule *demonstrated* to cost nothing against the exact set it governs, are different claims, and this
+ADR exists because the first kind was believed once already.
 
 ## Decision 2 — parsing and permitting are separate, so no archived score can move
 

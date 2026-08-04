@@ -259,19 +259,14 @@ def check_pack(pack: Pack) -> list[TaskControl]:
     # hand. The round-trip control structurally cannot catch it either — an answer key always
     # matches itself, whatever notation it is written in.
     #
-    # The bare-string form is NOT blocked here, and that is a deployment constraint rather than a
-    # softened bar: this gate ships in `core`, the packs ship in a separate repository, and each
-    # cannot land the other's half first (ADR-0055, rule 5). Every unconverted entry is counted in
-    # a note instead, so the number is visible on every gate run rather than resting on someone
-    # remembering — which is the decay mode ADR-0015 exists to catch. Issue #98 flips it.
+    # The bare-string form blocks here too, as of the cohort's conversion. It spent one merge as a
+    # non-blocking count for a deployment reason rather than an evidence one — this gate ships in
+    # `core`, the packs ship separately, and neither half could land before the other.
     try:
-        raw_bp = getattr(pack, "endpoint_base_prefix", None)
-        bp = scorer.base_prefix_problems(raw_bp)
-        bare = scorer.bare_prefix_entries(raw_bp)
         controls.append(TaskControl(
-            task_id="(endpoint-base-evidence)", ok=not bp, problems=bp,
-            notes=([f"{len(bare)} endpoint-base prefix(es) still declared in the pre-ADR-0055 "
-                    f"bare-string form, citing nothing: {', '.join(bare)}"] if bare else [])))
+            task_id="(endpoint-base-evidence)",
+            ok=not (bp := scorer.base_prefix_problems(getattr(pack, "endpoint_base_prefix", None))),
+            problems=bp))
     except Exception as exc:
         controls.append(TaskControl(
             task_id="(endpoint-base-evidence)", ok=False,

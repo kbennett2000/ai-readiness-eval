@@ -3215,33 +3215,20 @@ entries:
   - id: a-bare-endpoint-base-prefix-is-counted-but-not-refused
     adr: adr-0055-a-tolerance-must-cite-the-vendor.md
     hazard: >
-      The shape this ADR exists to replace still runs. An `endpoint_base_prefix` declared as a bare
-      string cites nothing, widens the endpoint dimension exactly as far as a cited one, and passes
-      the gate — it is reported in a non-blocking note and nothing else. Until the cohort converts,
-      every entry the audit left standing is enforced by prose, which is the state that let three
-      uncited entries through one cycle ago. The reason it landed soft is deployment rather than
+      The shape this ADR exists to replace ran unrefused for one merge. An `endpoint_base_prefix`
+      declared as a bare string cites nothing, widens the endpoint dimension exactly as far as a
+      cited one, and passed the gate with a non-blocking note. The cause was deployment rather than
       evidence: this gate ships in `core`, the packs ship in a separate repository whose CI clones
-      `core`'s default branch, and neither half can land before the other. That conflict was itself
-      nearly missed — the gate's first check ran the armed suite against the CONVERTED packs, the
-      one baseline on which it is structurally invisible, and reported green; against the
-      unconverted cohort it failed eight packs at `roundtrip`.
-    status: ungated
-    ungated_reason: >
-      Gating it is a one-line change already written and already reverted, and the obstacle is not
-      the rule but the merge order across two repositories. A `core` that blocks bare strings fails
-      every unconverted pack; a converted pack fails against a `core` that cannot read its shape.
-      Recording this as gated would be true about a test — the rules that DO block are gated below —
-      and false about the world, where the bare form runs unrefused on every pack not yet converted.
-    drift_pin:
-    - core/tests/test_base_prefix_evidence.py::test_a_bare_string_does_not_block_but_is_counted
-    - core/tests/test_base_prefix_evidence.py::test_a_half_cited_entry_is_judged_rather_than_excused_as_legacy
-    - core/tests/test_base_prefix_evidence.py::test_roundtrip_reports_a_bare_pack_in_a_note_and_does_not_block_it
-    fix_queued_to: >
-      Public ai-readiness-eval #98, and the precondition is checkable rather than promised: the flip
-      cannot merge while a single bare entry survives, because its own CI runs the armed suite
-      against the converted cohort. The count is what keeps this from decaying in the meantime —
-      `scorer.bare_prefix_entries` prints the surviving entries by name on every gate run, so the
-      remaining exposure is a number a reviewer sees rather than a note someone must remember.
+      `core`'s default branch, and neither half could land before the other. That conflict was
+      itself nearly missed — the gate's first check ran the armed suite against the CONVERTED
+      packs, the one baseline on which it is structurally invisible, and reported green; against
+      the unconverted cohort it failed eight packs at `roundtrip`.
+    status: gated
+    gated_by:
+      - core/tests/test_base_prefix_evidence.py::test_a_bare_string_blocks
+      - core/tests/test_base_prefix_evidence.py::test_a_bare_list_blocks_every_entry_not_just_the_first
+      - core/tests/test_base_prefix_evidence.py::test_roundtrip_blocks_a_pack_whose_tolerance_is_a_bare_string
+      - core/tests/test_base_prefix_evidence.py::test_a_cited_entry_is_never_caught_by_the_bare_rule
 
   - id: a-derived-prefix-and-an-invented-one-look-identical-to-the-gate
     adr: adr-0055-a-tolerance-must-cite-the-vendor.md
