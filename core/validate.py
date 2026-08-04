@@ -299,8 +299,16 @@ def validate_pack(pack: Pack) -> dict[str, list[str]]:
     return results
 
 
+# The keys `fetch_all` writes to record that it PROCESSED an entry, on any path it takes. Membership
+# is by key presence, not truthiness: an honest failure records `content_hash: null` and
+# `byte_size: 0`, and both of those are falsy while still being the fetcher's own account of an
+# attempt. A never-attempted entry — a hand-authored `url`/`role`/`note` — carries none of them.
+OUTCOME_KEYS = ("content_hash", "byte_size", "cache_file", "fetch_error")
+
+
 def validate_docs_manifest(pack: Pack) -> list[str]:
-    """A manifest entry may not describe a retrieval and its own failure at once (ADR-0056).
+    """A manifest entry may not describe a retrieval and its own failure at once (ADR-0056), and an
+    entry that records an outcome must say when it was fetched (ADR-0057).
 
     Every fetched entry carries two independent records: whether content arrived (`content_hash`,
     `byte_size`, `cache_file`) and whether the attempt failed (`fetch_error`). Nothing made them
@@ -319,6 +327,24 @@ def validate_docs_manifest(pack: Pack) -> list[str]:
     unreadable in the same breath as the hash, byte size and cache file proving it was read. The
     fetcher no longer produces the state; this refuses it wherever it already sits, including from a
     hand edit, which is the half a fetcher fix structurally cannot reach.
+
+    The predicate is `fetch_error` beside ANY arrival evidence, which is the same predicate the
+    cohort sweep applied when it established that no `pages` entry has ever carried one — so the
+    gate and the evidence for the gate test the same thing rather than two nearby things.
+
+    ADR-0057 adds the date, in two clauses that key on the CLAIM rather than on the entry. An entry
+    recording any outcome must carry a `fetch_date`, because a retrieval or a refusal that does not
+    say *when* is an undated claim; and an entry carrying a `fetch_date` and no outcome at all is
+    refused, because that is the silent-drop shape — a failure whose `fetch_error` went missing reads
+    exactly like a page nobody ever tried, and that is the direction that flatters, since a manifest
+    with no recorded refusals looks like a vendor that refused nothing.
+
+    Keying on the claim is deliberate and was decided against a counterexample. "Every entry must
+    carry a `fetch_date`" is the stronger sentence, and it fires on every entry of a manifest
+    authored before its first fetch — the normal state of a pack under construction, and the literal
+    state of `core/tests/fixtures/pack-acme/docs-manifest.yaml`. A gate that forbids the ordinary way
+    a pack is written would be answered by writing dates that no fetch produced, which is the one
+    outcome this rule exists to prevent.
 
     Returns errors; `[]` when the pack declares no manifest or the manifest is clean.
     """
@@ -343,16 +369,44 @@ def validate_docs_manifest(pack: Pack) -> list[str]:
                 has_hash = bool(page.get("content_hash"))
                 has_bytes = bool(page.get("byte_size"))
                 cache_file = page.get("cache_file")
-                if error and has_hash and has_bytes and cache_file:
+                # ANY arrival evidence, not all of it. The first draft required all four fields at
+                # once, which would have passed an entry carrying a `fetch_error` beside a hash and a
+                # non-zero byte size with no `cache_file` — still a page that injects nothing while
+                # claiming content arrived. An honest failure records NO arrival evidence at all
+                # (`content_hash: null`, `byte_size: 0`, no `cache_file`), which is the shape all 65
+                # real failures in the cohort take, so widening costs none of them.
+                arrived = [name for name, present in (("content_hash", has_hash),
+                                                      ("byte_size", has_bytes),
+                                                      ("cache_file", bool(cache_file)))
+                           if present]
+                if error and arrived:
                     errors.append(
-                        f"{where}: records a successful retrieval ({page['content_hash']}, "
-                        f"{page['byte_size']} B, {cache_file}) AND fetch_error "
-                        f"{error!r}. An entry may not be both (ADR-0056) — if the fetch "
-                        "succeeded, drop `fetch_error:`; if it failed, drop the content fields.")
+                        f"{where}: records fetch_error {error!r} AND evidence content arrived "
+                        f"({', '.join(arrived)}). An entry may not be both (ADR-0056) — if the "
+                        "fetch succeeded, drop `fetch_error:`; if it failed, drop the content "
+                        "fields.")
                 elif cache_file and not has_hash:
                     errors.append(
                         f"{where}: names cache_file {cache_file} but records no content_hash, so "
                         "it points at bytes the manifest does not vouch for (ADR-0056).")
+
+                # ADR-0057. Checked independently of the contradiction above, not chained onto it:
+                # an entry can be both self-contradictory and undated, and those are two different
+                # things wrong with it.
+                recorded = [name for name in OUTCOME_KEYS if name in page]
+                if recorded and not page.get("fetch_date"):
+                    errors.append(
+                        f"{where}: records an outcome ({', '.join(recorded)}) but no fetch_date, so "
+                        "the manifest does not say when this page was retrieved (ADR-0057). "
+                        "`fetch-docs` writes fetch_date on every path it takes — an entry missing "
+                        "one was hand-edited, and the date it lost cannot be recovered from the "
+                        "gitignored cache.")
+                elif page.get("fetch_date") and not recorded:
+                    errors.append(
+                        f"{where}: carries fetch_date {page['fetch_date']} but records neither "
+                        "content nor a fetch_error, so it claims an attempt happened and will not "
+                        "say what came of it (ADR-0057). A page that failed records `fetch_error:`; "
+                        "a page never tried carries no fetch_date.")
     return errors
 
 

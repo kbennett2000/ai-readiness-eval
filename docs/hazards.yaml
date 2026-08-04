@@ -3273,10 +3273,15 @@ entries:
       sat on `anchors`, which no condition reads, and the injected bytes were rebuilt and compared
       (30 slots, 49,594 bytes, 0 changed) rather than assumed. What was wrong is what a reviewer
       sees: an anchor is the artifact a ground-truth citation rests on, and it contradicted itself
-      with no way to tell which half was stale.
+      with no way to tell which half was stale. The gate's first draft was ALSO narrower than the
+      sentence describing it — it required all three arrival fields at once, so an error beside a
+      hash and a byte size with no `cache_file` passed while still suppressing its own injection.
+      Widened to any arrival evidence, which is the predicate the cohort sweep applied, so the gate
+      and the evidence for the gate test the same thing.
     status: gated
     gated_by:
       - core/tests/test_manifest_entry_consistency.py::test_a_success_record_carrying_a_fetch_error_is_refused_in_every_list
+      - core/tests/test_manifest_entry_consistency.py::test_a_fetch_error_beside_any_arrival_evidence_is_refused
       - core/tests/test_manifest_entry_consistency.py::test_the_contradiction_blocks_at_the_validate_gate_not_only_in_a_helper
       - core/tests/test_manifest_entry_consistency.py::test_a_cache_file_without_a_hash_is_refused
       - core/tests/test_manifest_entry_consistency.py::test_a_successful_refetch_clears_the_previous_attempts_error
@@ -3293,13 +3298,55 @@ entries:
       manifest with no recorded refusals looks like a vendor that refused nothing.
     status: ungated
     ungated_reason: >
-      Distinguishing them needs a record of what was ATTEMPTED, which the manifest does not keep;
-      it stores outcomes, not a fetch log. Asserting that every entry carries either content or an
-      error would come closest, but it fires on every entry in a manifest authored before its first
-      fetch, which is the normal state of a pack under construction.
+      PARTLY CLOSED, and deliberately still ungated, because the entry names more than the gate
+      reaches. ADR-0057 took the half this entry queued: an entry carrying a `fetch_date` and
+      neither content nor a `fetch_error` is now refused, which is the dropped-error case whenever
+      the date survived the edit that dropped the error. What remains is the case where BOTH went:
+      an entry stripped back to `url`/`role`/`note` is indistinguishable from a page never tried,
+      and ADR-0057 deliberately lets that shape pass, because it is also the shape of every
+      manifest authored before its first fetch. Distinguishing the two needs a record of what was
+      ATTEMPTED, which the manifest does not keep — it stores outcomes, not a fetch log. Calling
+      this gated would be true about the tests and false about the residue.
+
+      The closed half does have tests — `test_a_date_recording_no_outcome_at_all_is_refused` and
+      `test_any_recorded_outcome_without_a_date_is_refused` in
+      core/tests/test_manifest_entry_consistency.py. They are named here in prose and NOT under
+      `gated_by`, because a partial gate recorded as a gate is precisely the error this registry
+      exists to catch: the entry would then read as closed while the case it names stayed open.
+    drift_pin:
+    - core/tests/test_manifest_entry_consistency.py::test_a_never_attempted_entry_is_not_refused
+    - core/tests/test_manifest_entry_consistency.py::test_the_unfetched_reference_fixture_is_that_shape
     fix_queued_to: >
-      Not queued. The honest cheap half is that `fetch_all` writes `fetch_date` on every path it
-      takes, so an entry with no `fetch_date` was never attempted and one with a `fetch_date` and
-      neither content nor error is the suspect case. A future cycle touching the manifest schema
-      should take that check; it was not bolted on here because it is a different claim from the
-      one this ADR argues.
+      Not queued, and the remainder may not be worth queuing. Closing it means the fetcher writing a
+      record of every URL it was ASKED for, separate from what came back — a second artifact, with
+      its own staleness, to catch a state only a hand edit can now produce. ADR-0057's clause is the
+      cheap 90%; this is the expensive tail, and it should not be taken without a case where it
+      would have caught something.
+
+  # ---------------------------------------------------------------------------------- ADR-0057 -
+  - id: a-capture-date-is-attested-never-corroborated
+    adr: adr-0057-a-recorded-outcome-must-say-when.md
+    hazard: >
+      ADR-0057 refuses an entry that records an outcome without a `fetch_date`. It proves an entry
+      SAYS when it was fetched; it cannot prove the date is true. A hand-edited, mistyped or
+      back-dated `fetch_date` passes every check in this repository, and so does a manifest whose
+      dates were written before the fetch that produced its hashes.
+
+      This is not a corner: `fetch_date` is the only statement of how current the documentation
+      condition was, and the documentation condition is one side of every published gap. The spec
+      side is pinned to a public commit a third party can re-resolve; this side is an attestation.
+    status: ungated
+    ungated_reason: >
+      Nothing in the tree can corroborate a capture date. The artifact that would — the cached page
+      the hash was taken from — is gitignored by licence (`**/docs-cache/`), so a reviewer on a
+      clean checkout cannot re-derive the hash, and a re-fetch of a live documentation site will not
+      reproduce a 2026 hash in any later year. A test asserting the date is well-formed, or not in
+      the future, would be true about a string and silent about the world.
+    drift_pin:
+    - core/tests/test_manifest_entry_consistency.py::test_the_robots_refusal_path_also_writes_what_the_validator_accepts
+    fix_queued_to: >
+      Public ai-readiness-eval #102, which files the boundary this hazard is the inside view of:
+      what a third party can reproduce from a clean checkout (every published score, re-scored from
+      the committed transcripts) and what they cannot (the capture itself). The issue is where the
+      external claim is stated precisely; no fix here would change the fact, only how plainly it is
+      said.
