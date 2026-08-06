@@ -128,6 +128,29 @@ def build_schema(*, spec_ref_file_prefix: str | None = None) -> dict:
                             },
                         },
                     },
+                    # Optional (ADR-0059). The additional versions the vendor documents as current
+                    # for this operation — a GA release published beside a pre-GA release, with
+                    # neither deprecated, being the shape that forced it. Declared per TASK and not
+                    # per pack on purpose: a pack-level tolerance would grant the widening to every
+                    # task including the ones whose page nobody opened, which is the failure the
+                    # citation is for. Shape only here; the six rules that stop a set from becoming
+                    # a way to make any answer right are argued and enforced in
+                    # `scorer.version_alternate_problems`, which the `roundtrip` gate runs before
+                    # any grid. Absent from every pack, so adding it moves no archived score.
+                    "api_version_alternates": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["version", "evidence", "note"],
+                            "properties": {
+                                "version": {"type": "string", "minLength": 1},
+                                "evidence": {"type": "string", "pattern": r"^https?://"},
+                                "note": {"type": "string", "minLength": 40},
+                            },
+                        },
+                    },
                     "required_scopes": {"type": "array"},
                     "key_parameters": {"type": "array", "minItems": 1},
                     "success_shape": {"type": "string", "minLength": 1},

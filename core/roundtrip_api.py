@@ -18,6 +18,7 @@ from .scorer import (
     UNKNOWN_AUTH,
     alternate_problems,
     canonical_auth_flow,
+    version_alternate_problems,
 )
 
 _KNOWN_STYLES = ", ".join(style for style, _markers in _AUTH_STYLES)
@@ -94,6 +95,12 @@ def roundtrip_problems(task: dict) -> list[str]:
     # declaration never fails loudly at scoring time — it silently changes what counts as a correct
     # answer. Each rule is argued in `scorer.alternate_problems` (ADR-0023).
     problems.extend(alternate_problems(gt))
+
+    # And the same for a declared set of acceptable VERSIONS (ADR-0059). Checked here for the
+    # identical reason: a bad declaration never fails loudly at scoring time, it silently changes
+    # what counts as a correct answer — and this one can only ever move the dimension UP. Each rule
+    # is argued in `scorer.version_alternate_problems`.
+    problems.extend(version_alternate_problems(gt))
     return problems
 
 
