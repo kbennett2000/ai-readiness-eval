@@ -45,10 +45,17 @@ WHAT IS DELIBERATE, because each of these is a judgement and not a lookup:
     `SOURCE_NO_HOST`. Folding NXDOMAIN into "unreachable" made the first cohort-wide run report eleven
     violations against a pack whose docs host had simply ceased to exist, which is a conduct accusation
     the evidence does not support.
-  * **A body that carries no directives is an absent robots.txt.** One measured host answers
+  * **A body that carries no GROUPS is an absent robots.txt.** One measured host answers
     /robots.txt with its site-wide JavaScript shell. Parsing yields zero groups, which is treated as
     "no file" rather than sniffed for HTML — the question is whether the host stated a rule, and a page
     with no rules in it did not.
+  * **...but a body that declares groups and names none of ours is a SIXTH thing** (ADR-0060). See
+    `SOURCE_NO_GROUP`. A host may serve a real robots.txt that addresses ten crawlers by name and
+    declares no `*` group; `parse` then returns zero directives for us and the old code fell straight
+    through to "no robots.txt", publishing that the host never stated a policy about a host that had
+    stated one deliberately and at length. Like the refusal above, it permits exactly what an absence
+    permits and says something different about the world — and, like the refusal, it is a fact about a
+    CONVERSATION rather than about the host, because the same file addresses other readers by name.
   * **The group is chosen by the agent actually used.** A pack may override the fetch agent
     (`public_docs.user_agent`, ADR-0007); one does, to a browser string. The policy it is judged against
     has to be the policy for the agent it presents itself as, or the annotation would describe a request
@@ -74,7 +81,7 @@ USER_AGENT = "ai-readiness-eval-docs"
 # Why a source is what it is, in one line each — these strings are written into pack manifests, so they
 # are part of the record a reviewer reads and not just an internal enum.
 SOURCE_RULES = "robots.txt"                 # the host served directives and they were applied
-SOURCE_ABSENT = "no-robots-txt"             # 404-family, or a body with no directives → unrestricted
+SOURCE_ABSENT = "no-robots-txt"             # 404-family, or a body declaring no group → unrestricted
 # 401/403. Permits exactly what SOURCE_ABSENT permits (RFC 9309 §2.3.1.3: a 4xx leaves the host
 # unrestricted), and says something different about the world, which is the entire point (ADR-0052).
 # "No robots.txt" claims the host never stated a policy. This host has one and refused to show it —
@@ -92,6 +99,19 @@ SOURCE_UNREACHABLE = "robots.txt-unreachable"  # 5xx / network failure → the h
 # cohort docs host went NXDOMAIN some time after that pack was measured, and collapsing the two
 # branches reported eleven fabricated violations against it.
 SOURCE_NO_HOST = "host-does-not-resolve"
+# The host served a real robots.txt, it parsed, and not one of the groups in it governs the agent we
+# presented (ADR-0060). Permits exactly what SOURCE_ABSENT permits — zero directives apply, so nothing
+# is Disallowed — and, again, says something different about the world. "No robots.txt" claims the host
+# never stated a policy; this host stated one and did not address us. The distinction is ADR-0052's,
+# reached by a different route: a refusal has a status code and is therefore visible, while this state
+# was invisible because the only trace it leaves is an empty directive list, which an absent file leaves
+# too. The measured case names ten crawler groups, grants each `Allow: /`, and declares no `*` group.
+SOURCE_NO_GROUP = "robots.txt-no-group-for-agent"
+
+# What `agent_group` says when no group governed. NOT "*": in this state there is no `*` group, so
+# recording one would make the annotation assert both that no group addressed us and that the wildcard
+# group applied. Truthy, so the annotation sweep's "which agent decided it" assertion still holds.
+AGENT_GROUP_NONE = "(none)"
 
 # Sentinel statuses for `policy_from_response`, which is where the whole status ruling lives.
 STATUS_NETWORK_FAILURE = 0
@@ -191,6 +211,25 @@ def _crawl_delay(value: str) -> float | None:
     return seconds
 
 
+@dataclass(frozen=True)
+class _Parsed:
+    """Everything one parse of a robots.txt body knows, including the two facts `parse` cannot return.
+
+    `parse` has a three-value contract that a dozen callers and twenty tests depend on, and widening it
+    would mean editing all of them to carry a fact only `policy_from_response` uses. So the parse
+    happens here and `parse` is the narrow view of it.
+
+    `group_names` and `governed` are what separate "this host served no robots.txt" from "this host
+    served one and did not address us" (ADR-0060). `directives` is empty in BOTH cases, which is
+    exactly why the distinction was invisible before there was somewhere to put it.
+    """
+    directives: list[tuple[str, str]]
+    agent_group: str                 # the group that governed, or the "*" fallback
+    crawl_delay: float | None
+    group_names: tuple[str, ...]     # every User-agent group the file declared, in file order
+    governed: bool                   # one of them actually applies to the agent we sent
+
+
 def parse(text: str,
           user_agent: str = USER_AGENT) -> tuple[list[tuple[str, str]], str, float | None]:
     """Parse a robots.txt body and return (directives, agent_group, crawl_delay) for `user_agent`.
@@ -212,6 +251,12 @@ def parse(text: str,
         no convention rules on them, so the tie is broken towards the host: obeying the longer wait can
         only ever be more polite than what was asked, and the other direction cannot say that.
     """
+    p = _parse_groups(text, user_agent)
+    return p.directives, p.agent_group, p.crawl_delay
+
+
+def _parse_groups(text: str, user_agent: str = USER_AGENT) -> _Parsed:
+    """The parse itself. `parse` above is the three-value view of it and carries the argument."""
     groups: dict[str, list[tuple[str, str]]] = {}
     delays: dict[str, float] = {}
     current: list[str] = []
@@ -246,7 +291,11 @@ def parse(text: str,
         if name in agent_l and (best is None or len(name) > len(best)):
             best = name
     chosen = best if best is not None else "*"
-    return groups.get(chosen, []), chosen, delays.get(chosen)
+    # A group governs us if one NAMED us, or if the file declared the wildcard fallback. Where neither
+    # is true `chosen` is still "*" — the directive lookup has to fall back to something — and the
+    # honest reading of that is not "the wildcard group applied" but "no group did" (ADR-0060).
+    return _Parsed(groups.get(chosen, []), chosen, delays.get(chosen),
+                   tuple(groups), best is not None or "*" in groups)
 
 
 def robots_url(url: str) -> str:
@@ -286,9 +335,17 @@ def policy_from_response(host: str, status: int, body: str, *, user_agent: str =
         return RobotsPolicy(host, [], "*", SOURCE_REFUSED, today, "")
     if status >= 400:
         return RobotsPolicy(host, [], "*", SOURCE_ABSENT, today, "")
-    directives, agent_group, delay = parse(body, user_agent)
+    parsed = _parse_groups(body, user_agent)
+    directives, agent_group, delay = parsed.directives, parsed.agent_group, parsed.crawl_delay
     if not directives and not body.strip():
         return RobotsPolicy(host, [], agent_group, SOURCE_ABSENT, today, "")
+    if parsed.group_names and not parsed.governed:
+        # A real robots.txt that does not address the agent we sent (ADR-0060). `directives` is empty
+        # here BY CONSTRUCTION and not by coincidence — `_parse_groups` returns `groups.get("*", [])`
+        # when nothing named us, and `"*"` is absent in precisely this branch — so this ordering
+        # depends on no property of the body. `delay` is None for the same reason: a rate a host
+        # declared for a crawler it named is not a rate it asked of us.
+        return RobotsPolicy(host, [], AGENT_GROUP_NONE, SOURCE_NO_GROUP, today, body, delay)
     if not directives:
         # A 200 that is not a robots file (one cohort host serves its JS shell here). No rule was
         # stated, so no rule is applied — but the body is kept so the record shows what arrived.
