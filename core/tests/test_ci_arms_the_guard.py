@@ -145,16 +145,43 @@ def test_the_required_list_is_not_empty():
     assert assert_guard_ran.REQUIRED, "assert_guard_ran.REQUIRED is empty; it would assert nothing"
 
 
-@pytest.mark.parametrize("name", assert_guard_ran.REQUIRED)
-def test_every_required_test_name_resolves(name):
+def test_the_suite_required_list_is_not_empty():
+    """Same hazard, one mode over: an empty `SUITE_REQUIRED` makes `--names-only` report only
+    failures again, which is the state ADR-0059 changed because a check that was never collected
+    fails nothing."""
+    assert assert_guard_ran.SUITE_REQUIRED, "SUITE_REQUIRED is empty; --names-only would require nothing"
+
+
+_REQUIRED_PAIRS = [(path, name)
+                   for path, names in assert_guard_ran.REQUIRED_BY_FILE.items()
+                   for name in names]
+
+
+@pytest.mark.parametrize("path,name", _REQUIRED_PAIRS, ids=[f"{Path(p).stem}::{n}"
+                                                            for p, n in _REQUIRED_PAIRS])
+def test_every_required_test_name_resolves(path, name):
     """A required name that no longer exists would fail CI for the wrong reason — or, worse, be
-    quietly deleted from the list to make CI green again. Fail here first, where the fix is obvious."""
-    target = REPO_ROOT / assert_guard_ran.GUARD_FILE
-    assert target.is_file(), f"{assert_guard_ran.GUARD_FILE} does not exist"
+    quietly deleted from the list to make CI green again. Fail here first, where the fix is obvious.
+
+    Resolved against the file the map says it lives in, so a name moved between files is caught as
+    readily as a name deleted."""
+    target = REPO_ROOT / path
+    assert target.is_file(), f"{path} does not exist"
     assert name in _top_level_functions(target), (
-        f"{assert_guard_ran.GUARD_FILE} defines no top-level '{name}'. If it was renamed, update "
+        f"{path} defines no top-level '{name}'. If it was renamed, update "
         f"tools/assert_guard_ran.py — do not delete the requirement."
     )
+
+
+def test_the_guard_file_view_is_exactly_the_guard_files_own_requirements():
+    """`REQUIRED` is the privacy-guard job's set, and that job runs GUARD_FILE ALONE.
+
+    If a name from another file leaked into it, the guard job would report "did not run" for a test
+    it never asked pytest to collect — a red build for a reason that is not a privacy failure, which
+    is how a gate gets made advisory.
+    """
+    assert assert_guard_ran.REQUIRED == assert_guard_ran.REQUIRED_BY_FILE[assert_guard_ran.GUARD_FILE]
+    assert not set(assert_guard_ran.SUITE_REQUIRED) & set(assert_guard_ran.REQUIRED)
 
 
 # --------------------------------------------------------- the checker refuses what it claims ---
@@ -309,8 +336,44 @@ def test_the_names_only_reporter_prints_names_and_nothing_else():
     assert "test_b" not in out, "the reporter named a passing test"
 
 
+@pytest.mark.parametrize("missing", assert_guard_ran.SUITE_REQUIRED)
+def test_a_missing_suite_required_check_fails_names_only_one_at_a_time(missing):
+    """The hole ADR-0059 closed: `--names-only` reported only what FAILED, so a gate that was
+    renamed away or never collected produced an empty failure list and a green `OK`.
+
+    Per name rather than in aggregate, for the reason the guard-mode equivalent is: a break test
+    that could pass because a DIFFERENT requirement still fired proves nothing.
+    """
+    cases = [(n, None) for n in assert_guard_ran.SUITE_REQUIRED if n != missing]
+    problems, _ = assert_guard_ran.failures_by_name(_xml(cases))
+    assert any(missing in p and "did not run" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("state,phrase", [("skipped", "skipped"), ("failure", "failed"),
+                                          ("error", "errored")])
+def test_a_suite_required_check_that_did_not_pass_is_caught(state, phrase):
+    """Including SKIPPED. The whole suite skips legitimately in several places, so `--names-only`
+    does not ban skips generally — but a REQUIRED check that skipped ran nothing."""
+    cases = [(n, None) for n in assert_guard_ran.SUITE_REQUIRED[1:]]
+    cases.insert(0, (assert_guard_ran.SUITE_REQUIRED[0], state))
+    problems, _ = assert_guard_ran.failures_by_name(_xml(cases))
+    assert any(assert_guard_ran.SUITE_REQUIRED[0] in p and phrase in p for p in problems), problems
+
+
+def test_an_unrelated_skip_does_not_fail_names_only():
+    """The converse, and the reason the skip rule is not shared between the two modes: the full
+    suite skips where no packs are on disk, and that must not turn the whole-suite job red."""
+    cases = [(n, None) for n in assert_guard_ran.SUITE_REQUIRED]
+    cases.append(("test_something_that_legitimately_skips", "skipped"))
+    problems, _ = assert_guard_ran.failures_by_name(_xml(cases))
+    assert not problems, problems
+
+
 def test_the_names_only_reporter_passes_a_clean_run():
-    xml = '<testsuites><testsuite><testcase classname="c" name="test_a"/></testsuite></testsuites>'
+    xml = ('<testsuites><testsuite><testcase classname="c" name="test_a"/>'
+           + "".join(f'<testcase classname="c" name="{n}"/>'
+                     for n in assert_guard_ran.SUITE_REQUIRED)
+           + "</testsuite></testsuites>")
     report = REPO_ROOT / "_names_only_clean_probe.xml"
     report.write_text(xml)
     try:

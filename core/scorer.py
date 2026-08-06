@@ -409,6 +409,120 @@ def alternate_problems(ground_truth: dict | None) -> list[str]:
     return problems
 
 
+def declared_version_alternates(ground_truth: dict | None) -> list[str]:
+    """The additional `api_version` values a task declares as acceptable, in file order (ADR-0059).
+
+    The exact counterpart of `declared_alternates`, and for the same reason: reads only well-formed
+    entries, because a malformed declaration must be caught by `version_alternate_problems` at the
+    `roundtrip` gate — which runs before any grid burns — rather than quietly widening or quietly
+    narrowing what counts as correct.
+    """
+    raw = (ground_truth or {}).get("api_version_alternates") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(a["version"]) for a in raw if isinstance(a, dict) and a.get("version")]
+
+
+def version_alternate_problems(ground_truth: dict | None) -> list[str]:
+    """Every reason a task's `api_version_alternates` declaration is not acceptable (ADR-0059).
+
+    A version tolerance can only ever move the `api_version` dimension UP, so an uncited one is
+    indistinguishable from a score rescue until someone opens the page by hand — the argument
+    ADR-0055 made for `endpoint_base_prefix`, applied unchanged. Each of these is blocking rather
+    than a note. Rules 3 and 4 are ADR-0023's word for word, because the claim being made is the
+    same claim: that *the vendor* publishes this as a current version.
+
+      1. An alternate may not normalize to "". `normalize_version` collapses every spelling of
+         "there is no version" to the empty string (ADR-0008), so `version: none` would accept EVERY
+         answer that names no version at all against a key that names one — the maximal widening of
+         this dimension, and invisible in the file because it reads like a version. This is the
+         version-space form of `alternate_problems` rule 5: applicable, and unfalsifiable.
+      2. It must differ, NORMALIZED, from every `api_version` the task's own endpoints declare.
+         Declaring the key's own version widens nothing while making the key read as if it covered
+         two. Compared normalized rather than literally because `26.2` and `v26.2` are one version
+         (ADR-0025/0027), so a redundant declaration spelled the other way would otherwise pass.
+      3. It must carry a first-party `evidence:` URL. A copy of a document is not the vendor's
+         claim (ADR-0017), so a `rehosting_host()` is refused.
+      4. It must carry a `note:` of at least 40 characters. A bare URL grants the tolerance for
+         free; the note is what makes it reviewable by someone who was not there.
+      5. No duplicate after normalization — one tolerance recorded twice is either dead or a sign
+         the list was assembled from two sources.
+      6. The bare-string form is refused. Unlike ADR-0055's equivalent rule, which had to spend a
+         merge as a non-blocking count because a gate here and packs elsewhere could not land in
+         either order, this one arrives blocking: nothing declares the key, so there is no
+         transitional shape to grandfather and there never will be.
+    """
+    gt = ground_truth or {}
+    raw = gt.get("api_version_alternates")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        return ["api_version_alternates must be a non-empty list (omit the key entirely if there "
+                "are none)"]
+
+    problems: list[str] = []
+    key_versions = {normalize_version(e.get("api_version"))
+                    for e in (gt.get("endpoints") or []) if isinstance(e, dict)}
+    seen: set[str] = set()
+
+    for i, entry in enumerate(raw):
+        where = f"api_version_alternates[{i}]"
+        if isinstance(entry, str):                                                   # rule 6
+            problems.append(
+                f"{where}: {entry!r} is declared as a bare string with no evidence. Every version "
+                "tolerance must cite the first-party artifact that publishes this version as "
+                "current (ADR-0059): {version, evidence, note}"
+            )
+            continue
+        if not isinstance(entry, dict):
+            problems.append(f"{where} is not a mapping with version/evidence/note")
+            continue
+
+        version = str(entry.get("version") or "").strip()
+        normalized = normalize_version(version)
+        if not version:
+            problems.append(f"{where}: needs a `version:` string (got {entry.get('version')!r})")
+        elif not normalized:                                                         # rule 1
+            problems.append(
+                f"{where}: '{version}' normalizes to the no-version sentinel, so it would accept "
+                "every answer that names no version at all against a key that names one. That is "
+                "the widest this dimension can be made, and it reads in the file like a version"
+            )
+        elif normalized in key_versions:                                             # rule 2
+            problems.append(
+                f"{where}: '{version}' is already the version this task's ground truth declares, so "
+                "it widens nothing and misrepresents the key as covering two versions"
+            )
+        if normalized and normalized in seen:                                        # rule 5
+            problems.append(
+                f"{where}: '{version}' is declared more than once (normalized '{normalized}'). One "
+                "tolerance recorded twice is either dead or a sign the list came from two sources"
+            )
+        if normalized:
+            seen.add(normalized)
+
+        evidence = str(entry.get("evidence") or "").strip()
+        if not evidence.startswith(("http://", "https://")):                         # rule 3
+            problems.append(
+                f"{where}: needs an `evidence:` URL on the vendor's own documentation showing that "
+                "it publishes this version as a current target for this operation"
+            )
+        else:
+            bad = rehosting_host(evidence)
+            if bad is not None:
+                problems.append(
+                    f"{where}: evidence is on {bad}, which rehosts rather than publishes. A version "
+                    "tolerance rests on the vendor's own claim (ADR-0017), never on a copy of it"
+                )
+        note = str(entry.get("note") or "").strip()
+        if len(note) < 40:                                                           # rule 4
+            problems.append(
+                f"{where}: needs a `note:` of at least 40 characters saying where the vendor "
+                f"publishes this version as current alongside the key's own (got {len(note)})"
+            )
+    return problems
+
+
 def declared_prefix_entries(raw) -> list[dict]:
     """Normalize a pack's `endpoint_base_prefix` declaration to `[{prefix, evidence, note}, ...]`.
 
@@ -652,7 +766,8 @@ def _strip_base_prefix(segments: list[str], prefix) -> list[str]:
 
 
 def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
-                     base_prefix=None) -> list[dict]:
+                     base_prefix=None, version_alternates: tuple[str, ...] | list[str] = ()
+                     ) -> list[dict]:
     """Greedily match each ground-truth endpoint to an answer endpoint by path.
 
     Returns one record per ground-truth endpoint with match + method/version flags.
@@ -662,8 +777,16 @@ def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
     `base_prefix` is empty for every pack that does not opt in, in which case this behaves
     exactly as it did before ADR-0017 and no archived score can move. It accepts one prefix or
     several; see `as_prefix_list`.
+
+    `version_alternates` (ADR-0059) is the task's authored, evidenced set of ADDITIONAL versions
+    the vendor publishes as current. Empty for every task that does not declare one, in which case
+    the accepted set is `{gt_version}` and the comparison is the equality it has always been. It
+    cannot reach an unmatched endpoint: `api_version` is credited only where the PATH matched, and
+    the path is where a service segment lives, so a version tolerance can never credit the wrong
+    resource.
     """
     pre = as_prefix_list(base_prefix)
+    alternates = [normalize_version(a) for a in version_alternates or ()]
     used: set[int] = set()
     ans_norm = [(i, _strip_base_prefix(normalize_path(e.path), pre)) for i, e in enumerate(ans_eps)]
     records: list[dict] = []
@@ -700,7 +823,14 @@ def _match_endpoints(gt_eps: list[dict], ans_eps: list[Endpoint],
             # ADR-0020 in the first place.
             rec["answer_api_version"] = ans.api_version
             rec["method_ok"] = rec["answer_method"] == gt_method
-            rec["version_ok"] = normalize_version(ans.api_version) == gt_version
+            ans_version = normalize_version(ans.api_version)
+            rec["version_ok"] = ans_version == gt_version or ans_version in alternates
+            # Written only when the credit came from an ALTERNATE rather than from the key itself —
+            # the `format_repaired` shape, conditional so every archived record stays byte-identical
+            # while a widened cell says on the record which half of it a reader can re-check
+            # (ADR-0058). A tolerance that leaves no trace in the artifact has to be remembered.
+            if ans_version != gt_version and rec["version_ok"]:
+                rec["version_via_alternate"] = ans.api_version
         records.append(rec)
     return records
 
@@ -717,7 +847,8 @@ def score_task(task: dict, answer: AnswerSummary,
 
     # --- endpoint / method / api_version (per-endpoint, aggregated) ---------
     gt_eps = gt["endpoints"]
-    records = _match_endpoints(gt_eps, answer.endpoints, base_prefix)
+    version_alternates = declared_version_alternates(gt)
+    records = _match_endpoints(gt_eps, answer.endpoints, base_prefix, version_alternates)
     result.endpoint_matches = records
     total = len(records)
     matched = sum(1 for r in records if r["matched"])
@@ -729,9 +860,16 @@ def score_task(task: dict, answer: AnswerSummary,
         "method", (sum(1 for r in records if r["method_ok"]) / total) if total else None,
         f"{sum(1 for r in records if r['method_ok'])}/{total} methods correct on matched paths",
     )
+    # The detail names the declared alternates when there are any, for the reason the auth detail
+    # names its own: a widened cell that reads identically to an un-widened one gives a reviewer
+    # nothing to disagree with. Appended rather than substituted, so the string every task without a
+    # declaration produces is byte-identical to the one it produced before ADR-0059.
+    version_detail = f"{sum(1 for r in records if r['version_ok'])}/{total} api_versions correct"
+    if version_alternates:
+        version_detail += f" (also accepting {', '.join(version_alternates)}; ADR-0059)"
     result.dimensions["api_version"] = DimensionScore(
         "api_version", (sum(1 for r in records if r["version_ok"]) / total) if total else None,
-        f"{sum(1 for r in records if r['version_ok'])}/{total} api_versions correct",
+        version_detail,
     )
 
     # --- auth_flow (concept containment; ADR-0004, ADR-0023, ADR-0041) ------

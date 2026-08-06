@@ -3404,3 +3404,33 @@ entries:
     fix_queued_to: >
       Packs repository #72, the same gate as the entry above. A card gate that lives beside the archives
       can require the claim and verify it in one place, which is the only place both exist.
+
+  # ---------------------------------------------------------------------------- ADR-0059 ---
+
+  - id: a-version-tolerance-cites-a-page-nobody-opens-again
+    adr: adr-0059-a-second-recommended-version-is-cited-per-task.md
+    hazard: >
+      `api_version_alternates` can only move the `api_version` dimension UP, and the gate checks
+      that a first-party URL is present and is not a rehosting host — never that the page says what
+      the note says, and never that it still says it. A citation is a pin date, not a subscription:
+      a version that was current when the note was written and has since been deprecated keeps
+      scoring 1.0, and nothing in the tree notices. The round-trip control cannot help either,
+      because an answer key matches itself whatever set of versions it accepts (ADR-0010).
+
+      Identical in kind to the hole ADR-0055 recorded for its two sibling fields, which is why it is
+      recorded rather than argued away: on one vendor, eleven `auth_flow_alternates` cite a page the
+      same repository's manifest records at `byte_size: 0`.
+
+      The gates below reach what a test can reach: that an uncited alternate BLOCKS at `roundtrip`
+      before a grid burns, that a cited one is not blocked, and that the citation must be
+      first-party and carry a written reason. What no test here reaches is the CONTENT of the cited
+      page, which is the residue this entry exists to keep visible. Public issue #97 files that half
+      against all three tolerances at once, since the fix — requiring the cited URL to be one the
+      pack fetched with readable content — is the same fix for each.
+    status: gated
+    gated_by:
+    - core/tests/test_version_alternates.py::test_a_cited_alternate_fires
+    - core/tests/test_version_alternates.py::test_an_uncited_alternate_is_refused
+    - core/tests/test_version_alternates.py::test_the_refusal_is_specific_and_not_a_blanket_block
+    - core/tests/test_version_alternates.py::test_rule_3_evidence_on_a_rehosting_host_blocks
+    - core/tests/test_version_alternates.py::test_rule_4_a_note_under_forty_characters_blocks
