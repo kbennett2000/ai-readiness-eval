@@ -55,6 +55,7 @@ from xml.etree import ElementTree
 #     fails the build instead of reporting a green tick for the absence of a check.
 GUARD_FILE = "core/tests/test_core_no_vendor.py"
 VERSION_ALTERNATES_FILE = "core/tests/test_version_alternates.py"
+ROBOTS_NO_GROUP_FILE = "core/tests/test_robots_no_group.py"
 
 REQUIRED_BY_FILE: dict[str, list[str]] = {
     # The privacy rule: the assertions whose absence would let a prospect name reach a public tree.
@@ -79,6 +80,16 @@ REQUIRED_BY_FILE: dict[str, list[str]] = {
         "test_a_cited_alternate_fires",
         "test_an_uncited_alternate_is_refused",
         "test_a_task_declaring_nothing_scores_exactly_as_before",
+    ],
+    # ADR-0060. The sixth robots state makes a CONDUCT claim — what a vendor's host told an
+    # automated reader, and what this project wrote down about it. A new state can only do damage by
+    # taking cases from an old one, so the fire and both theft checks are required by name: the
+    # served-but-unaddressed body is not an absence, a real absence still is one, and a group that
+    # governs us is untouched.
+    ROBOTS_NO_GROUP_FILE: [
+        "test_a_served_robots_txt_naming_no_group_for_us_is_not_recorded_as_absent",
+        "test_a_genuinely_absent_robots_txt_is_still_recorded_as_absent",
+        "test_a_matching_group_is_unaffected",
     ],
 }
 

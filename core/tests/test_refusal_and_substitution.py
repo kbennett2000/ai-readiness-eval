@@ -59,7 +59,12 @@ def test_the_refused_state_is_its_own_string():
     reads. Two states that mean different things may not share one."""
     assert robots.SOURCE_REFUSED != robots.SOURCE_ABSENT
     assert robots.SOURCE_REFUSED not in (robots.SOURCE_UNREACHABLE, robots.SOURCE_NO_HOST,
-                                         robots.SOURCE_RULES)
+                                         robots.SOURCE_RULES, robots.SOURCE_NO_GROUP)
+    # Stated as a property of the whole vocabulary rather than of this one member, because the
+    # sentence above is true of every state and was asserted for exactly one of them (ADR-0060).
+    states = [v for name, v in vars(robots).items()
+              if name.startswith("SOURCE_") and isinstance(v, str)]
+    assert len(states) == len(set(states)), f"two robots states share one string: {sorted(states)}"
 
 
 def test_a_refusal_still_permits_every_url():

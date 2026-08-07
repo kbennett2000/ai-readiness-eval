@@ -96,24 +96,28 @@ def test_every_url_carries_a_complete_annotation(manifest):
 def test_the_annotation_records_which_agent_and_which_source_decided_it():
     """`robots_disallowed: false` alone is a verdict with no working shown. The other fields are what
     let a reviewer re-derive it: which agent group applied, and whether the host stated a rule at all."""
-    from core.robots import (SOURCE_ABSENT, SOURCE_NO_HOST, SOURCE_REFUSED, SOURCE_RULES,
-                             SOURCE_UNREACHABLE)
+    from core import robots
+    from core.robots import SOURCE_ABSENT, SOURCE_NO_GROUP, SOURCE_NO_HOST
 
-    # Five states since ADR-0052, not four: a 401/403 on robots.txt is `robots.txt-refused` and not
-    # `no-robots-txt`. The two permit the same things and say different things about the world, so a
-    # manifest that records one where the other happened is publishing a false sentence about
-    # conduct. This list went stale the moment that ADR landed and was caught by the first pack to
-    # carry the new state — which is the argument for enumerating it from `core.robots` rather than
-    # restating the vocabulary here.
-    known = {SOURCE_RULES, SOURCE_ABSENT, SOURCE_UNREACHABLE, SOURCE_NO_HOST, SOURCE_REFUSED}
+    # ENUMERATED, not restated. This was a hand-written set of five, and its own comment recorded
+    # why that was a defect: the list "went stale the moment ADR-0052 landed and was caught by the
+    # first pack to carry the new state". ADR-0060 adds a sixth, which would have gone stale the
+    # same way, so the set is now derived from the module that defines the vocabulary. A seventh
+    # state is admitted here automatically and cannot be admitted into a MANIFEST silently, because
+    # `core.robots` is the only place a state can be born.
+    known = {v for name, v in vars(robots).items()
+             if name.startswith("SOURCE_") and isinstance(v, str)}
+    assert len(known) >= 6, f"only {len(known)} source state(s) found — is the derivation reaching them?"
     for _m, task_id, url, page in ALL:
         assert page["robots_source"] in known, \
             f"{task_id}: {url} records an unknown robots_source {page['robots_source']!r}"
         assert page["robots_agent"], f"{task_id}: {url} does not say which agent group applied"
-        # A host that stated no rule cannot have produced a matching directive, and vice versa.
-        if page["robots_source"] in (SOURCE_ABSENT, SOURCE_NO_HOST):
+        # A host that stated no rule REACHING US cannot have produced a matching directive, and vice
+        # versa. `SOURCE_NO_GROUP` belongs here for a reason the other two do not have: that host DID
+        # state rules, at length, and none of them is ours to cite (ADR-0060).
+        if page["robots_source"] in (SOURCE_ABSENT, SOURCE_NO_HOST, SOURCE_NO_GROUP):
             assert page["robots_rule"] is None, \
-                f"{task_id}: {url} cites a directive from a host that served none"
+                f"{task_id}: {url} cites a directive from a host that served none it applies to us"
 
 
 @pytest.mark.skipif(not ALL, reason="no manifest URLs on disk")

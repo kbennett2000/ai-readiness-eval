@@ -3434,3 +3434,72 @@ entries:
     - core/tests/test_version_alternates.py::test_the_refusal_is_specific_and_not_a_blanket_block
     - core/tests/test_version_alternates.py::test_rule_3_evidence_on_a_rehosting_host_blocks
     - core/tests/test_version_alternates.py::test_rule_4_a_note_under_forty_characters_blocks
+
+  # ---------------------------------------------------------------------------- ADR-0060 ---
+
+  - id: a-new-provenance-state-can-quietly-take-cases-from-an-old-one
+    adr: adr-0060-a-robots-txt-that-does-not-address-us.md
+    hazard: >
+      `robots_source` is a CONDUCT claim — what a vendor's host told an automated reader, published
+      in a manifest and cited on a card. Adding a sixth state to that vocabulary can only do damage
+      one way: by taking cases from a state that already exists. If the new branch had claimed the
+      404 family, or the empty body, or the site shell, then 140 committed annotations across 8
+      packs would silently have started describing a different world than the one they were written
+      for — and nothing else in the suite could notice, because a manifest is static YAML and no
+      code change can move it.
+
+      Sharpened by a fact ADR-0052 did not have to face: the state is invisible in the record. A
+      refusal has a status code, so a mis-classification leaves a trace. This one's only trace is an
+      empty directive list, which is exactly what the state it was collapsed into also leaves.
+
+      The gates below are the fire and both theft checks, plus the sweep that carries the teeth: for
+      every pack, for every `robots_source` string its manifests actually record, the classifier is
+      fed the inputs that string stands for and must still map every one of them back to it. Break
+      the classifier in either direction and it fails naming real packs over 438 real entries,
+      because both the packs and the strings come off disk. The permission half is gated separately,
+      because a recording change that started forbidding URLs would be the wrong thing built.
+    status: gated
+    gated_by:
+    - core/tests/test_robots_no_group.py::test_a_served_robots_txt_naming_no_group_for_us_is_not_recorded_as_absent
+    - core/tests/test_robots_no_group.py::test_a_genuinely_absent_robots_txt_is_still_recorded_as_absent
+    - core/tests/test_robots_no_group.py::test_a_matching_group_is_unaffected
+    - core/tests/test_robots_no_group.py::test_the_new_state_permits_exactly_what_absence_permits
+    - core/tests/test_robots_no_group.py::test_a_named_crawlers_grant_is_not_ours
+    - core/tests/test_robots_state_archive.py::test_every_committed_provenance_string_still_means_what_it_meant
+    - core/tests/test_robots_state_archive.py::test_the_witness_check_can_actually_fail
+    - core/tests/test_robots_state_archive.py::test_every_state_the_module_defines_has_a_witness
+
+  - id: a-provenance-field-cannot-be-re-derived-from-the-archive
+    adr: adr-0060-a-robots-txt-that-does-not-address-us.md
+    hazard: >
+      `robots_source` records a conclusion and the evidence for it is discarded. `ANNOTATION_FIELDS`
+      is five keys; neither the robots.txt body nor the HTTP status is among them, and
+      `RobotsPolicy.body` is populated in-process and never persisted anywhere in either repository.
+
+      So this ADR's own ruling cannot be applied backwards. The four inputs that produce
+      `no-robots-txt` and the one that produces `robots.txt-no-group-for-agent` are indistinguishable
+      once the body is dropped, and `robots_agent` cannot break the tie because it is `'*'` on 409 of
+      409 annotations cohort-wide. 140 entries across 8 packs are permanently unsorted, and
+      re-fetching does not recover them — it records today's policy against a date the archive pins.
+
+      The general form is the finding: a provenance field that records a verdict about a fetched
+      artifact and keeps nothing a later reader could re-derive it from. Robots is the instance.
+      Same fault class as ADR-0043 (a control that cannot tell absent from broken) and ADR-0058
+      (a number stating which half of it can be re-checked), reaching the fields that make this
+      project's conduct claims.
+    status: ungated
+    ungated_reason: >
+      No test can gate it. The evidence does not exist to assert anything about; a test could only
+      re-state that the fields are absent, which is true of the code and says nothing about the
+      archive. The sweep that DOES exist checks the classifier rather than the record — it catches a
+      state drifting under a committed string, never a committed string whose input is gone — and
+      its docstring says so rather than implying coverage it lacks.
+    fix_queued_to: >
+      Public issue #110, filed in the general form rather than as a robots detail. Not fixed in
+      ADR-0060's cycle deliberately: it changes the manifest schema and rests on design calls nobody
+      has made — per-page or per-host, full body or hash, and whether the status code lands
+      separately — and bundling it would have decided all three by default. It is forward-only
+      whatever is chosen; the existing 438 annotations stay un-re-derivable and that has to be
+      disclosed rather than closed.
+    drift_pin:
+    - core/tests/test_robots_state_archive.py::test_no_archived_manifest_records_the_new_state
